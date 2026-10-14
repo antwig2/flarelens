@@ -117,6 +117,17 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResp
 	candidateName := fmt.Sprintf("%s-%s", req.Service, candidateSlot)
 	prevName := fmt.Sprintf("%s-%s", req.Service, currentSlot)
 
+	// If Ephemeral PR Preview, allocate isolated preview port and container name
+	if req.IsPreview {
+		previewPort := 9000 + (req.PRNumber % 900)
+		candidatePort = cmp.Or(req.HostPortGreen, previewPort)
+		candidateName = fmt.Sprintf("%s-pr-%d", req.Service, req.PRNumber)
+		candidateSlot = Slot(fmt.Sprintf("pr-%d", req.PRNumber))
+		if req.Domain == "" {
+			req.Domain = fmt.Sprintf("pr-%d-%s.kiwid.io", req.PRNumber, req.Service)
+		}
+	}
+
 	o.emitProgress(req, "pulling", fmt.Sprintf("Pulling candidate image: %s", req.Image), 15)
 
 	// 2. Pull candidate container image
@@ -232,7 +243,71 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResp
 		}
 	}
 
-	// 6. SUCCESS PATH: Atomic Traffic Route Switch
+	currentPort := o.portForSlot(currentSlot, portBlue, portGreen)
+
+	// If Ephemeral PR Preview, register dedicated route and do not touch/drain live production slots
+	if req.IsPreview {
+		o.emitProgress(req, "preview_routing", fmt.Sprintf("Candidate healthy! Registering ephemeral preview route https://%s -> port %d", req.Domain, candidatePort), 90)
+		if err := o.traefik.FlipRoute(candidateName, req.Domain, candidatePort); err != nil {
+			o.logger.Error("Failed to register Traefik preview route", "error", err)
+			_ = o.runner.StopContainer(ctx, containerID, 2)
+			_ = o.runner.RemoveContainer(ctx, containerID)
+			return o.failResponse(req, "Preview route creation failed: "+err.Error(), currentSlot, startTime)
+		}
+
+		o.emitProgress(req, "completed", fmt.Sprintf("Ephemeral PR preview environment live at https://%s", req.Domain), 100)
+		return DeployResponse{
+			DeploymentID: req.DeploymentID,
+			Service:      req.Service,
+			Status:       "success",
+			ActiveSlot:   string(candidateSlot),
+			ActivePort:   candidatePort,
+			Message:      fmt.Sprintf("Ephemeral PR preview environment live at https://%s", req.Domain),
+			DurationMS:   time.Since(startTime).Milliseconds(),
+		}
+	}
+
+	// 6a. Optional Canary Soak Phase (Traffic Splitting)
+	if req.CanaryWeight > 0 && req.CanaryWeight < 100 && req.Domain != "" {
+		o.emitProgress(req, "canary", fmt.Sprintf("Candidate healthy! Starting canary soak: %d%% candidate, %d%% live", req.CanaryWeight, 100-req.CanaryWeight), 75)
+		if err := o.traefik.SetCanaryRoute(req.Service, req.Domain, currentPort, candidatePort, req.CanaryWeight); err != nil {
+			o.logger.Error("Failed to configure canary route", "error", err)
+			_ = o.runner.StopContainer(ctx, containerID, 2)
+			_ = o.runner.RemoveContainer(ctx, containerID)
+			return o.failResponse(req, "Canary route setup failed: "+err.Error(), currentSlot, startTime)
+		}
+
+		soakDuration := time.Duration(cmp.Or(req.CanaryDuration, 5)) * time.Second
+		o.logger.Info("Holding canary traffic soak", "weight", req.CanaryWeight, "duration", soakDuration)
+
+		select {
+		case <-ctx.Done():
+			_ = o.traefik.FlipRoute(req.Service, req.Domain, currentPort)
+			_ = o.runner.StopContainer(ctx, containerID, 2)
+			_ = o.runner.RemoveContainer(ctx, containerID)
+			return o.failResponse(req, "Deployment cancelled during canary soak", currentSlot, startTime)
+		case <-time.After(soakDuration):
+			// Probe candidate again to ensure it remained healthy during soak
+			if err := o.prober.Probe(ctx, probeURL, 5*time.Second, 500*time.Millisecond); err != nil {
+				o.logger.Warn("Candidate failed during canary soak! Rolling back to 100% live", "error", err)
+				_ = o.traefik.FlipRoute(req.Service, req.Domain, currentPort)
+				_ = o.runner.StopContainer(ctx, containerID, 2)
+				_ = o.runner.RemoveContainer(ctx, containerID)
+				return DeployResponse{
+					DeploymentID: req.DeploymentID,
+					Service:      req.Service,
+					Status:       "rolled_back",
+					ActiveSlot:   string(currentSlot),
+					ActivePort:   currentPort,
+					Message:      fmt.Sprintf("Canary soak failed: %v. Rolled back to %s.", err, currentSlot),
+					DurationMS:   time.Since(startTime).Milliseconds(),
+				}
+			}
+			o.emitProgress(req, "canary_passed", "Canary soak successful with 0 errors. Promoting to 100% traffic...", 85)
+		}
+	}
+
+	// 6b. Final Traffic Route Switch
 	o.emitProgress(req, "flipping", fmt.Sprintf("Candidate healthy! Atomically flipping route %s to %s (port %d)", req.Domain, candidateSlot, candidatePort), 85)
 
 	if req.Domain != "" {
@@ -276,6 +351,35 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResp
 		Message:      fmt.Sprintf("Successfully deployed %s to slot %s", req.Service, candidateSlot),
 		DurationMS:   time.Since(startTime).Milliseconds(),
 	}
+}
+
+// TeardownPreview destroys an ephemeral PR preview container and removes its Traefik dynamic route
+func (o *Orchestrator) TeardownPreview(ctx context.Context, req TeardownRequest) error {
+	previewName := fmt.Sprintf("%s-pr-%d", req.Service, req.PRNumber)
+	o.logger.Info("Tearing down ephemeral PR preview environment",
+		"service", req.Service,
+		"pr_number", req.PRNumber,
+		"container", previewName,
+	)
+
+	// 1. Remove Traefik route first so traffic drops immediately
+	if err := o.traefik.RemoveRoute(previewName); err != nil {
+		o.logger.Warn("Failed to remove Traefik preview route", "container", previewName, "error", err)
+	}
+
+	// 2. Stop and remove container
+	if containerID, err := o.runner.FindContainerIDByName(ctx, previewName); err == nil && containerID != "" {
+		_ = o.runner.StopContainer(ctx, containerID, 5)
+		if err := o.runner.RemoveContainer(ctx, containerID); err != nil {
+			return fmt.Errorf("failed to remove preview container %s: %w", previewName, err)
+		}
+	}
+
+	o.logger.Info("Successfully destroyed ephemeral PR preview environment",
+		"service", req.Service,
+		"pr_number", req.PRNumber,
+	)
+	return nil
 }
 
 func (o *Orchestrator) portForSlot(s Slot, portBlue, portGreen int) int {

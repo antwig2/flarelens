@@ -21,6 +21,17 @@ type DeployRequest struct {
 	NodeID            string            `json:"node_id"`          // target node or "all"
 	RunMigrations     bool              `json:"run_migrations"`
 	MigrationCmd      string            `json:"migration_cmd"`    // e.g. "migrate up"
+	CanaryWeight      int               `json:"canary_weight"`    // percentage of traffic to candidate (e.g. 10 for 10%)
+	CanaryDuration    int               `json:"canary_duration"`  // seconds to hold canary before 100% promotion
+	IsPreview         bool              `json:"is_preview"`       // ephemeral PR preview environment
+	PRNumber          int               `json:"pr_number"`        // GitHub Pull Request number
+}
+
+// TeardownRequest defines parameters to tear down an ephemeral PR preview container and route
+type TeardownRequest struct {
+	Service  string `json:"service"`
+	PRNumber int    `json:"pr_number"`
+	NodeID   string `json:"node_id"`
 }
 
 // DeployProgress reports incremental status during rollout

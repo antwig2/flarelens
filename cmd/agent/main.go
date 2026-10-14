@@ -366,6 +366,47 @@ func registerCommandListeners(
 		}(msg.Reply)
 	})
 
+	// 8. Ephemeral PR Preview Teardown Trigger
+	handleTeardown := func(msg *nats.Msg) {
+		var req deploy.TeardownRequest
+		if err := json.Unmarshal(msg.Data, &req); err != nil {
+			logger.Error("Malformed teardown request payload", "error", err)
+			return
+		}
+
+		if req.NodeID != "" && req.NodeID != "all" && req.NodeID != nodeID {
+			return
+		}
+
+		logger.Info("Received PR preview teardown command via NATS",
+			"service", req.Service,
+			"pr_number", req.PRNumber,
+			"subject", msg.Subject,
+		)
+
+		go func(r deploy.TeardownRequest, replySubject string) {
+			err := orchestrator.TeardownPreview(context.Background(), r)
+			statusSubj := fmt.Sprintf("kiwid.node.%s.preview.teardown.status", nodeID)
+			statusPayload := map[string]any{
+				"service":   r.Service,
+				"pr_number": r.PRNumber,
+				"status":    "destroyed",
+			}
+			if err != nil {
+				statusPayload["status"] = "failed"
+				statusPayload["error"] = err.Error()
+			}
+			_ = nc.PublishJSON(statusSubj, statusPayload)
+			if replySubject != "" {
+				_ = nc.PublishJSON(replySubject, statusPayload)
+			}
+		}(req, msg.Reply)
+	}
+
+	teardownSubj := fmt.Sprintf("kiwid.node.%s.preview.teardown", nodeID)
+	_, _ = nc.Subscribe(teardownSubj, handleTeardown)
+	_, _ = nc.Subscribe("kiwid.fleet.all.preview.teardown", handleTeardown)
+
 	logger.Info("NATS command listeners registered",
 		"reboot_subject", rebootSubj,
 		"config_subject", configSubj,
@@ -374,6 +415,7 @@ func registerCommandListeners(
 		"backup_subject", backupSubj,
 		"restore_subject", restoreSubj,
 		"list_subject", listSubj,
+		"teardown_subject", teardownSubj,
 	)
 }
 

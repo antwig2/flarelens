@@ -177,3 +177,84 @@ func TestMigrationFailureTriggersRollback(t *testing.T) {
 		t.Errorf("Expected migration failure message, got: %s", resp.Message)
 	}
 }
+
+func TestTraefikCanaryRoute(t *testing.T) {
+	tmpDir := t.TempDir()
+	flipper := NewTraefikRouteFlipper(tmpDir)
+
+	err := flipper.SetCanaryRoute("bill-api", "bill.kiwid.io", 8081, 8082, 10)
+	if err != nil {
+		t.Fatalf("Failed to set Traefik canary route: %v", err)
+	}
+
+	routeFile := filepath.Join(tmpDir, "bill-api.yaml")
+	content, err := os.ReadFile(routeFile)
+	if err != nil {
+		t.Fatalf("Failed to read generated canary route file: %v", err)
+	}
+
+	str := string(content)
+	if !strings.Contains(str, "weighted:") {
+		t.Errorf("Expected weighted round-robin service, got: %s", str)
+	}
+	if !strings.Contains(str, "weight: 90") {
+		t.Errorf("Expected active weight 90, got: %s", str)
+	}
+	if !strings.Contains(str, "weight: 10") {
+		t.Errorf("Expected candidate weight 10, got: %s", str)
+	}
+	if !strings.Contains(str, "http://127.0.0.1:8081") {
+		t.Errorf("Expected active port 8081, got: %s", str)
+	}
+	if !strings.Contains(str, "http://127.0.0.1:8082") {
+		t.Errorf("Expected candidate port 8082, got: %s", str)
+	}
+}
+
+func TestTraefikRemoveRoute(t *testing.T) {
+	tmpDir := t.TempDir()
+	flipper := NewTraefikRouteFlipper(tmpDir)
+
+	_ = flipper.FlipRoute("bill-api-pr-42", "pr-42.kiwid.io", 9042)
+	routeFile := filepath.Join(tmpDir, "bill-api-pr-42.yaml")
+	if _, err := os.Stat(routeFile); os.IsNotExist(err) {
+		t.Fatalf("Expected route file to exist before removal")
+	}
+
+	if err := flipper.RemoveRoute("bill-api-pr-42"); err != nil {
+		t.Fatalf("Failed to remove route: %v", err)
+	}
+	if _, err := os.Stat(routeFile); !os.IsNotExist(err) {
+		t.Errorf("Expected route file to be removed")
+	}
+
+	// Removing non-existent route should not error
+	if err := flipper.RemoveRoute("bill-api-pr-42"); err != nil {
+		t.Errorf("Expected idempotent remove to succeed, got: %v", err)
+	}
+}
+
+func TestTeardownPreview(t *testing.T) {
+	tmpDir := t.TempDir()
+	flipper := NewTraefikRouteFlipper(tmpDir)
+	runner := NewDockerRunner("mock://")
+	prober := NewHealthProber()
+	orch := NewOrchestrator(runner, prober, flipper, nil, "node-1", nil)
+
+	// Pre-create route file
+	_ = flipper.FlipRoute("bill-api-pr-42", "pr-42-bill-api.kiwid.io", 9042)
+
+	err := orch.TeardownPreview(context.Background(), TeardownRequest{
+		Service:  "bill-api",
+		PRNumber: 42,
+	})
+	if err != nil {
+		t.Fatalf("TeardownPreview failed: %v", err)
+	}
+
+	routeFile := filepath.Join(tmpDir, "bill-api-pr-42.yaml")
+	if _, err := os.Stat(routeFile); !os.IsNotExist(err) {
+		t.Errorf("Expected preview route file to be removed after teardown")
+	}
+}
+
