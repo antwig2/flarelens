@@ -1,0 +1,73 @@
+version: 2
+
+project_name: flarelens-agent
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: flarelens-agent
+    main: ./cmd/agent
+    binary: flarelens-agent
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.Commit={{.Commit}}
+      - -X main.Date={{.Date}}
+      - -X main.BuiltBy=goreleaser
+
+archives:
+  - id: archive
+    builds:
+      - flarelens-agent
+    name_template: "flarelens-agent_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE*
+
+  - id: raw-binary
+    builds:
+      - flarelens-agent
+    name_template: "flarelens-agent-{{ .Os }}-{{ .Arch }}"
+    format: binary
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - 'Merge pull request'
+      - 'Merge branch'
+
+release:
+  github:
+    owner: antwig2
+    name: flarelens
+  draft: false
+  prerelease: auto
+  make_latest: true

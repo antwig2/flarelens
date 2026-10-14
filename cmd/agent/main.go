@@ -25,9 +25,19 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-const Version = "2.1.0"
+var (
+	Version = "2.1.0"
+	Commit  = "none"
+	Date    = "unknown"
+	BuiltBy = "unknown"
+)
 
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-version" || os.Args[1] == "-v") {
+		fmt.Printf("FlareLens Host Agent v%s (commit: %s, built at: %s, built by: %s)\n", Version, Commit, Date, BuiltBy)
+		os.Exit(0)
+	}
+
 	// 1. Load configuration (Precedence: CLI Flags > ENV > Config File > Defaults)
 	cfg, err := config.Load(os.Args[1:])
 	if err != nil {

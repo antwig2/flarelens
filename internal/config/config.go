@@ -208,9 +208,15 @@ func Load(args []string) (*Config, error) {
 	meshFlag := fs.Bool("mesh", true, "Enable WireGuard Mesh overlay")
 	meshPortFlag := fs.Int("mesh-port", 0, "WireGuard Mesh listen UDP port")
 	meshIfaceFlag := fs.String("mesh-iface", "", "WireGuard Mesh network interface name")
+	versionFlag := fs.Bool("version", false, "Print version information and exit")
+	vFlag := fs.Bool("v", false, "Print version information and exit")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
+	}
+
+	if *versionFlag || *vFlag {
+		return nil, flag.ErrHelp
 	}
 
 	// 1. Determine config file path
