@@ -43,9 +43,14 @@ func (m *MigrationRunner) Run(
 		cmdArgs = append(cmdArgs, "-e", env)
 	}
 
-	cmdArgs = append(cmdArgs, image)
 	parts := strings.Fields(command)
-	cmdArgs = append(cmdArgs, parts...)
+	if len(parts) > 0 && strings.HasPrefix(parts[0], "/") {
+		cmdArgs = append(cmdArgs, "--entrypoint", parts[0], image)
+		cmdArgs = append(cmdArgs, parts[1:]...)
+	} else {
+		cmdArgs = append(cmdArgs, image)
+		cmdArgs = append(cmdArgs, parts...)
+	}
 
 	m.logger.Info("Executing database migration in ephemeral container",
 		"image", image,
