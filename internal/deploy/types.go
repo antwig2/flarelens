@@ -18,6 +18,7 @@ type DeployRequest struct {
 	Secrets           map[string]string `json:"secrets"`          // in-memory env secrets (zero disk write)
 	Network           string            `json:"network"`          // docker network, e.g. "kiwid-edge"
 	PreDeploySnapshot bool              `json:"pre_deploy_snapshot"`
+	NodeID            string            `json:"node_id"`          // target node or "all"
 }
 
 // DeployProgress reports incremental status during rollout

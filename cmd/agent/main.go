@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -215,19 +217,24 @@ func registerCommandListeners(
 		_ = flagStore.UpdateFromJSON(msg.Data)
 	})
 
-	// 4. GitOps & Zero-Downtime Blue/Green Deploy Trigger
-	deploySubj := fmt.Sprintf("kiwid.node.%s.deploy", nodeID)
-	_, _ = nc.Subscribe(deploySubj, func(msg *nats.Msg) {
+	// 4. GitOps & Zero-Downtime Blue/Green Deploy Trigger (Single Node & Fleet Multi-Node Rollout)
+	handleDeploy := func(msg *nats.Msg) {
 		var req deploy.DeployRequest
 		if err := json.Unmarshal(msg.Data, &req); err != nil {
 			logger.Error("Malformed deploy request payload", "error", err)
 			return
 		}
 
-		logger.Info("Received remote deploy command via NATS",
+		// Filter if targeted
+		if req.NodeID != "" && req.NodeID != "all" && req.NodeID != "all-prod" && req.NodeID != nodeID {
+			return
+		}
+
+		logger.Info("Received deploy command via NATS",
 			"service", req.Service,
 			"image", req.Image,
 			"deployment_id", req.DeploymentID,
+			"subject", msg.Subject,
 		)
 
 		// Execute Blue/Green rollout asynchronously
@@ -240,8 +247,31 @@ func registerCommandListeners(
 			if replySubject != "" {
 				_ = nc.PublishJSON(replySubject, resp)
 			}
+
+			// Report deployment outcome to Cloudflare Worker Control Plane
+			if cfg.ControlPlane.Endpoint != "" {
+				reportHTTPStatus(
+					fmt.Sprintf("%s/api/v1/control/deploy/status", cfg.ControlPlane.Endpoint),
+					cfg.ControlPlane.EnrollToken,
+					map[string]any{
+						"deployment_id": resp.DeploymentID,
+						"service":       resp.Service,
+						"status":        resp.Status,
+						"active_slot":   resp.ActiveSlot,
+						"active_port":   resp.ActivePort,
+						"message":       resp.Message,
+						"duration_ms":   resp.DurationMS,
+					},
+					logger,
+				)
+			}
 		}(req, msg.Reply)
-	})
+	}
+
+	deploySubj := fmt.Sprintf("kiwid.node.%s.deploy", nodeID)
+	_, _ = nc.Subscribe(deploySubj, handleDeploy)
+	_, _ = nc.Subscribe("kiwid.fleet.all.deploy", handleDeploy)
+	_, _ = nc.Subscribe("kiwid.fleet.prod.deploy", handleDeploy)
 
 	// 5. On-Demand Database Backup Trigger
 	backupSubj := fmt.Sprintf("kiwid.node.%s.backup", nodeID)
@@ -282,16 +312,35 @@ func registerCommandListeners(
 		go func(r backup.RestoreTriggerRequest, replySubject string) {
 			err := backupMgr.RestoreBackup(context.Background(), r.Key, r.TargetDB)
 			statusSubj := fmt.Sprintf("kiwid.node.%s.backup.restore.status", nodeID)
+			restoreStatus := "completed"
+			errMsg := ""
 			if err != nil {
+				restoreStatus = "failed"
+				errMsg = err.Error()
 				_ = nc.PublishJSON(statusSubj, map[string]any{"status": "failed", "error": err.Error(), "key": r.Key})
 				if replySubject != "" {
 					_ = nc.PublishJSON(replySubject, map[string]any{"status": "failed", "error": err.Error()})
 				}
-				return
+			} else {
+				_ = nc.PublishJSON(statusSubj, map[string]any{"status": "success", "key": r.Key, "target_db": r.TargetDB})
+				if replySubject != "" {
+					_ = nc.PublishJSON(replySubject, map[string]any{"status": "success", "key": r.Key})
+				}
 			}
-			_ = nc.PublishJSON(statusSubj, map[string]any{"status": "success", "key": r.Key, "target_db": r.TargetDB})
-			if replySubject != "" {
-				_ = nc.PublishJSON(replySubject, map[string]any{"status": "success", "key": r.Key})
+
+			// Report restore status to Cloudflare Worker Control Plane
+			if cfg.ControlPlane.Endpoint != "" {
+				reportHTTPStatus(
+					fmt.Sprintf("%s/api/v1/control/backup/status", cfg.ControlPlane.Endpoint),
+					cfg.ControlPlane.EnrollToken,
+					map[string]any{
+						"node_id": nodeID,
+						"key":     r.Key,
+						"status":  restoreStatus,
+						"error":   errMsg,
+					},
+					logger,
+				)
 			}
 		}(req, msg.Reply)
 	})
@@ -321,4 +370,31 @@ func registerCommandListeners(
 		"restore_subject", restoreSubj,
 		"list_subject", listSubj,
 	)
+}
+
+func reportHTTPStatus(url string, token string, payload any, logger *slog.Logger) {
+	if url == "" {
+		return
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	go func() {
+		client := &http.Client{Timeout: 10 * time.Second}
+		req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+		if err != nil {
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if token != "" {
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			logger.Warn("Failed to report HTTP status to control plane", "url", url, "error", err)
+			return
+		}
+		_ = resp.Body.Close()
+	}()
 }
