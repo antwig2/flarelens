@@ -15,8 +15,9 @@ type DeployRequest struct {
 	HealthPath     string            `json:"health_path"`      // e.g. "/healthz"
 	TimeoutSeconds int               `json:"timeout_seconds"`  // e.g. 30
 	DrainSeconds   int               `json:"drain_seconds"`    // e.g. 15
-	Secrets        map[string]string `json:"secrets"`          // in-memory env secrets (zero disk write)
-	Network        string            `json:"network"`          // docker network, e.g. "kiwid-edge"
+	Secrets           map[string]string `json:"secrets"`          // in-memory env secrets (zero disk write)
+	Network           string            `json:"network"`          // docker network, e.g. "kiwid-edge"
+	PreDeploySnapshot bool              `json:"pre_deploy_snapshot"`
 }
 
 // DeployProgress reports incremental status during rollout

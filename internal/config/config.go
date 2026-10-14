@@ -86,6 +86,9 @@ type BackupConfig struct {
 	Prefix              string `yaml:"prefix"`
 	PreDeploySnapshot   bool   `yaml:"pre_deploy_snapshot"`
 	CrossCloudR2Enabled bool   `yaml:"cross_cloud_r2_enabled"`
+	R2Endpoint          string `yaml:"r2_endpoint"`
+	R2AccessKeyID       string `yaml:"r2_access_key_id"`
+	R2SecretAccessKey   string `yaml:"r2_secret_access_key"`
 }
 
 type TelemetryConfig struct {
@@ -253,6 +256,24 @@ func Load(args []string) (*Config, error) {
 			tags[i] = strings.TrimSpace(tags[i])
 		}
 		cfg.Identity.Tags = tags
+	}
+
+	// Cloudflare R2 / S3 Backup Credentials
+	if val := os.Getenv("R2_ENDPOINT"); val != "" {
+		cfg.Database.Backup.R2Endpoint = val
+	}
+	if val := os.Getenv("R2_ACCESS_KEY_ID"); val != "" {
+		cfg.Database.Backup.R2AccessKeyID = val
+	} else if val := os.Getenv("AWS_ACCESS_KEY_ID"); val != "" {
+		cfg.Database.Backup.R2AccessKeyID = val
+	}
+	if val := os.Getenv("R2_SECRET_ACCESS_KEY"); val != "" {
+		cfg.Database.Backup.R2SecretAccessKey = val
+	} else if val := os.Getenv("AWS_SECRET_ACCESS_KEY"); val != "" {
+		cfg.Database.Backup.R2SecretAccessKey = val
+	}
+	if val := os.Getenv("R2_BUCKET"); val != "" {
+		cfg.Database.Backup.R2Bucket = val
 	}
 
 	// 4. Override with CLI Flags (Highest Precedence)

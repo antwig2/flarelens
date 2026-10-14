@@ -84,3 +84,34 @@ func TestHealthProberTimeout(t *testing.T) {
 		t.Errorf("Expected timeout error message, got: %v", err)
 	}
 }
+
+func TestPreDeployHookAbortsOnFailure(t *testing.T) {
+	runner := NewDockerRunner("unix:///nonexistent.sock")
+	prober := NewHealthProber()
+	traefik := NewTraefikRouteFlipper(t.TempDir())
+	orch := NewOrchestrator(runner, prober, traefik, nil, "test-node", nil)
+
+	hookCalled := false
+	orch.SetPreDeployHook(func(ctx context.Context, tag string) error {
+		hookCalled = true
+		return context.DeadlineExceeded
+	})
+
+	req := DeployRequest{
+		DeploymentID:      "dep-1",
+		Service:           "bill-api",
+		Image:             "kiwid/bill-api:v2",
+		PreDeploySnapshot: true,
+	}
+
+	resp := orch.Deploy(context.Background(), req)
+	if !hookCalled {
+		t.Fatalf("Expected pre-deploy hook to be invoked")
+	}
+	if resp.Status != "failed" {
+		t.Fatalf("Expected deploy to fail when pre-deploy hook fails, got status: %s", resp.Status)
+	}
+	if !strings.Contains(resp.Message, "Pre-deploy snapshot guardrail failed") {
+		t.Errorf("Expected guardrail error message, got: %s", resp.Message)
+	}
+}

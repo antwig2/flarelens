@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/antwig2/flarelens/internal/backup"
 	"github.com/antwig2/flarelens/internal/config"
 	"github.com/antwig2/flarelens/internal/deploy"
 	"github.com/antwig2/flarelens/internal/docker"
@@ -76,6 +77,31 @@ func main() {
 	natsClient := transport.NewNATSClient(cfg.NATS.URL, cfg.NATS.AuthToken, logger)
 	deployOrchestrator := deploy.NewOrchestrator(dockerRunner, healthProber, traefikFlipper, natsClient, cfg.Identity.NodeID, logger)
 
+	// 6. Initialize Database Backup Engine (Zero-Disk Cloudflare R2 streaming)
+	dumper := backup.NewPostgresDumper(
+		cfg.Database.Mode,
+		cfg.Database.ServiceName,
+		cfg.Database.Host,
+		cfg.Database.Port,
+		os.Getenv("PGUSER"),
+		os.Getenv("PGDATABASE"),
+	)
+	r2Client := backup.NewR2Client(
+		cfg.Database.Backup.R2Endpoint,
+		cfg.Database.Backup.R2AccessKeyID,
+		cfg.Database.Backup.R2SecretAccessKey,
+	)
+	backupMgr := backup.NewManager(dumper, r2Client, natsClient, cfg, logger)
+
+	// Hook pre-deploy database snapshot guardrail into deploy orchestrator
+	deployOrchestrator.SetPreDeployHook(func(hookCtx context.Context, tag string) error {
+		_, hookErr := backupMgr.CreateBackup(hookCtx, tag)
+		return hookErr
+	})
+
+	// Start automated cron scheduler for backups
+	backupMgr.StartCron(ctx)
+
 	if cfg.NATS.Mode == "embedded" || cfg.DevMode {
 		embedOpts := transport.EmbeddedOptions{
 			DontListen: cfg.DevMode, // In dev mode, run 100% in-process with zero open ports!
@@ -86,7 +112,7 @@ func main() {
 		if err := natsClient.StartEmbedded(ctx, embedOpts); err != nil {
 			logger.Error("Failed to start embedded NATS server", "error", err)
 		} else {
-			registerCommandListeners(natsClient, deployOrchestrator, cfg, logger)
+			registerCommandListeners(natsClient, deployOrchestrator, backupMgr, cfg, logger)
 		}
 	} else {
 		if err := natsClient.Connect(ctx); err != nil {
@@ -95,7 +121,7 @@ func main() {
 				"error", err,
 			)
 		} else {
-			registerCommandListeners(natsClient, deployOrchestrator, cfg, logger)
+			registerCommandListeners(natsClient, deployOrchestrator, backupMgr, cfg, logger)
 		}
 	}
 	defer natsClient.Close()
@@ -158,6 +184,7 @@ func initLogger(levelStr string) *slog.Logger {
 func registerCommandListeners(
 	nc *transport.NATSClient,
 	orchestrator *deploy.Orchestrator,
+	backupMgr *backup.Manager,
 	cfg *config.Config,
 	logger *slog.Logger,
 ) {
@@ -210,10 +237,82 @@ func registerCommandListeners(
 		}(req, msg.Reply)
 	})
 
+	// 5. On-Demand Database Backup Trigger
+	backupSubj := fmt.Sprintf("kiwid.node.%s.backup", nodeID)
+	_, _ = nc.Subscribe(backupSubj, func(msg *nats.Msg) {
+		var req backup.BackupTriggerRequest
+		_ = json.Unmarshal(msg.Data, &req)
+
+		logger.Info("Received on-demand database backup request via NATS", "tag", req.Tag)
+
+		go func(tag string, replySubject string) {
+			meta, err := backupMgr.CreateBackup(context.Background(), tag)
+			statusSubj := fmt.Sprintf("kiwid.node.%s.backup.status", nodeID)
+			if err != nil {
+				_ = nc.PublishJSON(statusSubj, map[string]any{"status": "failed", "error": err.Error(), "tag": tag})
+				if replySubject != "" {
+					_ = nc.PublishJSON(replySubject, map[string]any{"status": "failed", "error": err.Error()})
+				}
+				return
+			}
+			_ = nc.PublishJSON(statusSubj, map[string]any{"status": "success", "metadata": meta})
+			if replySubject != "" {
+				_ = nc.PublishJSON(replySubject, map[string]any{"status": "success", "metadata": meta})
+			}
+		}(req.Tag, msg.Reply)
+	})
+
+	// 6. Database Restore Trigger
+	restoreSubj := fmt.Sprintf("kiwid.node.%s.backup.restore", nodeID)
+	_, _ = nc.Subscribe(restoreSubj, func(msg *nats.Msg) {
+		var req backup.RestoreTriggerRequest
+		if err := json.Unmarshal(msg.Data, &req); err != nil {
+			logger.Error("Malformed restore request payload", "error", err)
+			return
+		}
+
+		logger.Info("Received database restore request via NATS", "key", req.Key, "target_db", req.TargetDB)
+
+		go func(r backup.RestoreTriggerRequest, replySubject string) {
+			err := backupMgr.RestoreBackup(context.Background(), r.Key, r.TargetDB)
+			statusSubj := fmt.Sprintf("kiwid.node.%s.backup.restore.status", nodeID)
+			if err != nil {
+				_ = nc.PublishJSON(statusSubj, map[string]any{"status": "failed", "error": err.Error(), "key": r.Key})
+				if replySubject != "" {
+					_ = nc.PublishJSON(replySubject, map[string]any{"status": "failed", "error": err.Error()})
+				}
+				return
+			}
+			_ = nc.PublishJSON(statusSubj, map[string]any{"status": "success", "key": r.Key, "target_db": r.TargetDB})
+			if replySubject != "" {
+				_ = nc.PublishJSON(replySubject, map[string]any{"status": "success", "key": r.Key})
+			}
+		}(req, msg.Reply)
+	})
+
+	// 7. Backup Listing Query
+	listSubj := fmt.Sprintf("kiwid.node.%s.backup.list", nodeID)
+	_, _ = nc.Subscribe(listSubj, func(msg *nats.Msg) {
+		if msg.Reply == "" {
+			return
+		}
+		go func(replySubject string) {
+			objs, err := backupMgr.ListBackups(context.Background())
+			if err != nil {
+				_ = nc.PublishJSON(replySubject, map[string]any{"error": err.Error()})
+				return
+			}
+			_ = nc.PublishJSON(replySubject, map[string]any{"backups": objs, "count": len(objs)})
+		}(msg.Reply)
+	})
+
 	logger.Info("NATS command listeners registered",
 		"reboot_subject", rebootSubj,
 		"config_subject", configSubj,
 		"flag_subject", flagSubj,
 		"deploy_subject", deploySubj,
+		"backup_subject", backupSubj,
+		"restore_subject", restoreSubj,
+		"list_subject", listSubj,
 	)
 }

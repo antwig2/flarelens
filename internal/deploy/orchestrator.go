@@ -11,13 +11,17 @@ import (
 	"github.com/antwig2/flarelens/internal/transport"
 )
 
+// PreDeploySnapshotHook defines a callback executed before candidate container staging
+type PreDeploySnapshotHook func(ctx context.Context, tag string) error
+
 // Orchestrator executes zero-downtime Blue/Green deployments with automated rollback
 type Orchestrator struct {
-	runner     *DockerRunner
-	prober     *HealthProber
-	traefik    *TraefikRouteFlipper
-	natsClient *transport.NATSClient
-	logger     *slog.Logger
+	runner        *DockerRunner
+	prober        *HealthProber
+	traefik       *TraefikRouteFlipper
+	natsClient    *transport.NATSClient
+	logger        *slog.Logger
+	preDeployHook PreDeploySnapshotHook
 
 	mu          sync.RWMutex
 	activeSlots map[string]Slot
@@ -46,6 +50,11 @@ func NewOrchestrator(
 	}
 }
 
+// SetPreDeployHook registers a pre-deploy backup guardrail hook
+func (o *Orchestrator) SetPreDeployHook(hook PreDeploySnapshotHook) {
+	o.preDeployHook = hook
+}
+
 // Deploy executes the complete 7-step zero-downtime Blue/Green deployment sequence
 func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResponse {
 	startTime := time.Now()
@@ -55,7 +64,19 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResp
 		"image", req.Image,
 		"env", req.Env,
 		"domain", req.Domain,
+		"pre_deploy_snapshot", req.PreDeploySnapshot,
 	)
+
+	// 0. Pre-Deploy Guardrail: Database Snapshot (if requested)
+	if req.PreDeploySnapshot && o.preDeployHook != nil {
+		o.emitProgress(req, "backup", "Executing pre-deploy database snapshot guardrail...", 5)
+		snapshotTag := fmt.Sprintf("pre-deploy-%s", req.Service)
+		if err := o.preDeployHook(ctx, snapshotTag); err != nil {
+			o.logger.Error("Pre-deploy database snapshot failed! Aborting deployment", "error", err)
+			return o.failResponse(req, "Pre-deploy snapshot guardrail failed: "+err.Error(), SlotBlue, startTime)
+		}
+		o.emitProgress(req, "backup", "Pre-deploy database snapshot verified and stored in Cloudflare R2", 10)
+	}
 
 	// 1. Identify active slot and target candidate slot
 	o.mu.Lock()
