@@ -115,3 +115,23 @@ func TestPreDeployHookAbortsOnFailure(t *testing.T) {
 		t.Errorf("Expected guardrail error message, got: %s", resp.Message)
 	}
 }
+
+func TestParseEnvLines(t *testing.T) {
+	raw := `
+# Production Database
+DATABASE_URL=postgres://user:pass@127.0.0.1:5432/db
+REDIS_URL="redis://localhost:6379"
+API_KEY='secret-key-123'
+EMPTY_LINE=
+`
+	parsed := parseEnvLines(raw)
+	if parsed["DATABASE_URL"] != "postgres://user:pass@127.0.0.1:5432/db" {
+		t.Errorf("Mismatch DATABASE_URL: %s", parsed["DATABASE_URL"])
+	}
+	if parsed["REDIS_URL"] != "redis://localhost:6379" {
+		t.Errorf("Mismatch REDIS_URL: %s", parsed["REDIS_URL"])
+	}
+	if parsed["API_KEY"] != "secret-key-123" {
+		t.Errorf("Mismatch API_KEY: %s", parsed["API_KEY"])
+	}
+}

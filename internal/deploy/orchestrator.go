@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -119,14 +121,21 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResp
 		_ = o.runner.RemoveContainer(ctx, oldID)
 	}
 
-	// 4. Inject in-memory secrets directly into container environment (zero disk write!)
-	envList := make([]string, 0, len(req.Secrets)+3)
+	// 4. Inject secrets into container environment
+	// Priority 1: In-memory secrets passed from FlareLens Vault (zero disk write)
+	// Priority 2: Fallback to local .env file on host disk for unmigrated services
+	activeSecrets := req.Secrets
+	if len(activeSecrets) == 0 {
+		activeSecrets = loadFallbackEnv(req.Service)
+	}
+
+	envList := make([]string, 0, len(activeSecrets)+3)
 	envList = append(envList,
 		fmt.Sprintf("DEPLOY_ENV=%s", cmp.Or(req.Env, "production")),
 		fmt.Sprintf("DEPLOY_SLOT=%s", candidateSlot),
 		fmt.Sprintf("SERVICE_NAME=%s", req.Service),
 	)
-	for k, v := range req.Secrets {
+	for k, v := range activeSecrets {
 		envList = append(envList, fmt.Sprintf("%s=%s", k, v))
 	}
 
@@ -272,4 +281,42 @@ func (o *Orchestrator) emitProgress(req DeployRequest, stage, message string, pe
 		subject := fmt.Sprintf("kiwid.node.%s.deploy.progress", o.nodeID)
 		_ = o.natsClient.PublishJSON(subject, progress)
 	}
+}
+
+func loadFallbackEnv(service string) map[string]string {
+	candidates := []string{
+		fmt.Sprintf("/opt/kiwid/prod/%s.env", service),
+		"/opt/kiwid/prod/.env",
+		fmt.Sprintf("%s.env", service),
+		".env",
+	}
+
+	for _, path := range candidates {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			return parseEnvLines(string(data))
+		}
+	}
+	return nil
+}
+
+func parseEnvLines(content string) map[string]string {
+	res := make(map[string]string)
+	lines := strings.Split(content, "\n")
+	for _, l := range lines {
+		trimmed := strings.TrimSpace(l)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		k, v, found := strings.Cut(trimmed, "=")
+		if found {
+			k = strings.TrimSpace(k)
+			v = strings.TrimSpace(v)
+			v = strings.Trim(v, `"'`)
+			if k != "" {
+				res[k] = v
+			}
+		}
+	}
+	return res
 }

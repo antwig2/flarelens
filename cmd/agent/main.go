@@ -17,6 +17,7 @@ import (
 	"github.com/antwig2/flarelens/internal/config"
 	"github.com/antwig2/flarelens/internal/deploy"
 	"github.com/antwig2/flarelens/internal/docker"
+	"github.com/antwig2/flarelens/internal/flags"
 	"github.com/antwig2/flarelens/internal/heartbeat"
 	"github.com/antwig2/flarelens/internal/system"
 	"github.com/antwig2/flarelens/internal/transport"
@@ -102,6 +103,9 @@ func main() {
 	// Start automated cron scheduler for backups
 	backupMgr.StartCron(ctx)
 
+	// 7. Initialize in-memory Feature Flags Store
+	flagStore := flags.NewStore(logger)
+
 	if cfg.NATS.Mode == "embedded" || cfg.DevMode {
 		embedOpts := transport.EmbeddedOptions{
 			DontListen: cfg.DevMode, // In dev mode, run 100% in-process with zero open ports!
@@ -112,7 +116,7 @@ func main() {
 		if err := natsClient.StartEmbedded(ctx, embedOpts); err != nil {
 			logger.Error("Failed to start embedded NATS server", "error", err)
 		} else {
-			registerCommandListeners(natsClient, deployOrchestrator, backupMgr, cfg, logger)
+			registerCommandListeners(natsClient, deployOrchestrator, backupMgr, flagStore, cfg, logger)
 		}
 	} else {
 		if err := natsClient.Connect(ctx); err != nil {
@@ -121,7 +125,7 @@ func main() {
 				"error", err,
 			)
 		} else {
-			registerCommandListeners(natsClient, deployOrchestrator, backupMgr, cfg, logger)
+			registerCommandListeners(natsClient, deployOrchestrator, backupMgr, flagStore, cfg, logger)
 		}
 	}
 	defer natsClient.Close()
@@ -185,6 +189,7 @@ func registerCommandListeners(
 	nc *transport.NATSClient,
 	orchestrator *deploy.Orchestrator,
 	backupMgr *backup.Manager,
+	flagStore *flags.Store,
 	cfg *config.Config,
 	logger *slog.Logger,
 ) {
@@ -203,10 +208,11 @@ func registerCommandListeners(
 		logger.Info("Received OTA dynamic configuration update via NATS", "subject", msg.Subject)
 	})
 
-	// 3. Fleet-wide feature flag updates
+	// 3. Fleet-wide feature flag updates (Sub-50ms instant broadcast)
 	flagSubj := "kiwid.fleet.all.flags"
 	_, _ = nc.Subscribe(flagSubj, func(msg *nats.Msg) {
 		logger.Debug("Received fleet feature flag broadcast", "subject", msg.Subject)
+		_ = flagStore.UpdateFromJSON(msg.Data)
 	})
 
 	// 4. GitOps & Zero-Downtime Blue/Green Deploy Trigger
