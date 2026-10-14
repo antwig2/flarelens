@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/antwig2/flarelens/internal/config"
+	"github.com/antwig2/flarelens/internal/deploy"
 	"github.com/antwig2/flarelens/internal/docker"
 	"github.com/antwig2/flarelens/internal/heartbeat"
 	"github.com/antwig2/flarelens/internal/system"
@@ -65,8 +67,15 @@ func main() {
 		logger.Info("Connected to Docker Engine", "socket", cfg.Docker.Socket)
 	}
 
-	// 4. Connect to NATS Event Fabric (Embedded or Client mode)
+	// 4. Initialize Blue/Green deployment engine
+	dockerRunner := deploy.NewDockerRunner(cfg.Docker.Socket)
+	healthProber := deploy.NewHealthProber()
+	traefikFlipper := deploy.NewTraefikRouteFlipper("/etc/traefik/dynamic")
+
+	// 5. Connect to NATS Event Fabric (Embedded or Client mode)
 	natsClient := transport.NewNATSClient(cfg.NATS.URL, cfg.NATS.AuthToken, logger)
+	deployOrchestrator := deploy.NewOrchestrator(dockerRunner, healthProber, traefikFlipper, natsClient, cfg.Identity.NodeID, logger)
+
 	if cfg.NATS.Mode == "embedded" || cfg.DevMode {
 		embedOpts := transport.EmbeddedOptions{
 			DontListen: cfg.DevMode, // In dev mode, run 100% in-process with zero open ports!
@@ -77,7 +86,7 @@ func main() {
 		if err := natsClient.StartEmbedded(ctx, embedOpts); err != nil {
 			logger.Error("Failed to start embedded NATS server", "error", err)
 		} else {
-			registerCommandListeners(natsClient, cfg, logger)
+			registerCommandListeners(natsClient, deployOrchestrator, cfg, logger)
 		}
 	} else {
 		if err := natsClient.Connect(ctx); err != nil {
@@ -86,7 +95,7 @@ func main() {
 				"error", err,
 			)
 		} else {
-			registerCommandListeners(natsClient, cfg, logger)
+			registerCommandListeners(natsClient, deployOrchestrator, cfg, logger)
 		}
 	}
 	defer natsClient.Close()
@@ -146,7 +155,12 @@ func initLogger(levelStr string) *slog.Logger {
 	return slog.New(handler)
 }
 
-func registerCommandListeners(nc *transport.NATSClient, cfg *config.Config, logger *slog.Logger) {
+func registerCommandListeners(
+	nc *transport.NATSClient,
+	orchestrator *deploy.Orchestrator,
+	cfg *config.Config,
+	logger *slog.Logger,
+) {
 	nodeID := cfg.Identity.NodeID
 
 	// 1. Target node reboot command
@@ -168,9 +182,38 @@ func registerCommandListeners(nc *transport.NATSClient, cfg *config.Config, logg
 		logger.Debug("Received fleet feature flag broadcast", "subject", msg.Subject)
 	})
 
+	// 4. GitOps & Zero-Downtime Blue/Green Deploy Trigger
+	deploySubj := fmt.Sprintf("kiwid.node.%s.deploy", nodeID)
+	_, _ = nc.Subscribe(deploySubj, func(msg *nats.Msg) {
+		var req deploy.DeployRequest
+		if err := json.Unmarshal(msg.Data, &req); err != nil {
+			logger.Error("Malformed deploy request payload", "error", err)
+			return
+		}
+
+		logger.Info("Received remote deploy command via NATS",
+			"service", req.Service,
+			"image", req.Image,
+			"deployment_id", req.DeploymentID,
+		)
+
+		// Execute Blue/Green rollout asynchronously
+		go func(r deploy.DeployRequest, replySubject string) {
+			resp := orchestrator.Deploy(context.Background(), r)
+
+			statusSubj := fmt.Sprintf("kiwid.node.%s.deploy.status", nodeID)
+			_ = nc.PublishJSON(statusSubj, resp)
+
+			if replySubject != "" {
+				_ = nc.PublishJSON(replySubject, resp)
+			}
+		}(req, msg.Reply)
+	})
+
 	logger.Info("NATS command listeners registered",
 		"reboot_subject", rebootSubj,
 		"config_subject", configSubj,
 		"flag_subject", flagSubj,
+		"deploy_subject", deploySubj,
 	)
 }

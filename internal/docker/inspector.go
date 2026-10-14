@@ -1,9 +1,11 @@
 package docker
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -22,8 +24,9 @@ type ContainerSummary struct {
 
 // Inspector queries Docker Engine via Unix domain socket
 type Inspector struct {
-	client *http.Client
-	socket string
+	client       *http.Client
+	streamClient *http.Client
+	socket       string
 }
 
 // NewInspector creates a new Docker socket inspector
@@ -40,6 +43,10 @@ func NewInspector(socketPath string) *Inspector {
 		client: &http.Client{
 			Transport: transport,
 			Timeout:   5 * time.Second,
+		},
+		streamClient: &http.Client{
+			Transport: transport,
+			Timeout:   0, // Unlimited timeout for long-lived log streaming
 		},
 		socket: cleanPath,
 	}
@@ -119,4 +126,27 @@ func (in *Inspector) ListContainers(ctx context.Context, all bool) ([]ContainerS
 	}
 
 	return summaries, nil
+}
+
+// StreamLogs returns an io.ReadCloser streaming container stdout and stderr
+func (in *Inspector) StreamLogs(ctx context.Context, containerID string, tail string) (io.ReadCloser, error) {
+	tailParam := cmp.Or(tail, "50")
+	url := fmt.Sprintf("http://localhost/containers/%s/logs?stdout=true&stderr=true&follow=true&tail=%s", containerID, tailParam)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := in.streamClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("docker logs request failed with status %d", resp.StatusCode)
+	}
+
+	return resp.Body, nil
 }
