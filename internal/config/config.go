@@ -22,6 +22,7 @@ type Config struct {
 	Deployments  DeploymentsConfig  `yaml:"deployments"`
 	Database     DatabaseConfig     `yaml:"database"`
 	Telemetry    TelemetryConfig    `yaml:"telemetry"`
+	Mesh         MeshConfig         `yaml:"mesh"`
 
 	// Runtime / CLI metadata
 	ConfigFile string `yaml:"-"`
@@ -104,6 +105,14 @@ type WALBufferConfig struct {
 	MaxSizeMB int    `yaml:"max_size_mb"`
 }
 
+type MeshConfig struct {
+	Enabled   bool   `yaml:"enabled"`
+	Interface string `yaml:"interface"`
+	Port      int    `yaml:"port"`
+	KeyPath   string `yaml:"key_path"`
+	Endpoint  string `yaml:"endpoint"`
+}
+
 // DefaultConfig provides production-ready fallback defaults
 func DefaultConfig() *Config {
 	hostname, _ := os.Hostname()
@@ -168,6 +177,13 @@ func DefaultConfig() *Config {
 				MaxSizeMB: 2048,
 			},
 		},
+		Mesh: MeshConfig{
+			Enabled:   true,
+			Interface: "flarelens0",
+			Port:      51820,
+			KeyPath:   "/etc/flarelens/mesh.key",
+			Endpoint:  "",
+		},
 	}
 }
 
@@ -189,6 +205,9 @@ func Load(args []string) (*Config, error) {
 	logLevelFlag := fs.String("log-level", "", "Logging level (debug, info, warn, error)")
 	natsURLFlag := fs.String("nats-url", "", "NATS server URL")
 	devFlag := fs.Bool("dev", false, "Run in local development mode")
+	meshFlag := fs.Bool("mesh", true, "Enable WireGuard Mesh overlay")
+	meshPortFlag := fs.Int("mesh-port", 0, "WireGuard Mesh listen UDP port")
+	meshIfaceFlag := fs.String("mesh-iface", "", "WireGuard Mesh network interface name")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -276,6 +295,17 @@ func Load(args []string) (*Config, error) {
 		cfg.Database.Backup.R2Bucket = val
 	}
 
+	// WireGuard Mesh Overrides
+	if val := os.Getenv("FLARELENS_MESH_ENABLED"); val != "" {
+		cfg.Mesh.Enabled = val == "true" || val == "1"
+	}
+	if val := os.Getenv("FLARELENS_MESH_IFACE"); val != "" {
+		cfg.Mesh.Interface = val
+	}
+	if val := os.Getenv("FLARELENS_MESH_ENDPOINT"); val != "" {
+		cfg.Mesh.Endpoint = val
+	}
+
 	// 4. Override with CLI Flags (Highest Precedence)
 	if *nodeIDFlag != "" {
 		cfg.Identity.NodeID = *nodeIDFlag
@@ -291,6 +321,15 @@ func Load(args []string) (*Config, error) {
 	}
 	if *natsURLFlag != "" {
 		cfg.NATS.URL = *natsURLFlag
+	}
+	if *meshIfaceFlag != "" {
+		cfg.Mesh.Interface = *meshIfaceFlag
+	}
+	if *meshPortFlag > 0 {
+		cfg.Mesh.Port = *meshPortFlag
+	}
+	if fs.Lookup("mesh") != nil && fs.Lookup("mesh").Value.String() != "" {
+		cfg.Mesh.Enabled = *meshFlag
 	}
 	if *devFlag {
 		cfg.DevMode = true

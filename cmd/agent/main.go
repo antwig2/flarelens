@@ -21,6 +21,7 @@ import (
 	"github.com/antwig2/flarelens/internal/docker"
 	"github.com/antwig2/flarelens/internal/flags"
 	"github.com/antwig2/flarelens/internal/heartbeat"
+	"github.com/antwig2/flarelens/internal/mesh"
 	"github.com/antwig2/flarelens/internal/system"
 	"github.com/antwig2/flarelens/internal/transport"
 	"github.com/nats-io/nats.go"
@@ -113,6 +114,73 @@ func main() {
 	// 7. Initialize in-memory Feature Flags Store
 	flagStore := flags.NewStore(logger)
 
+	// 8. Initialize WireGuard Mesh Engine (Embedded Overlay Network)
+	var meshMgr *mesh.Manager
+	if cfg.Mesh.Enabled {
+		meshPrivKey, meshPubKey, err := mesh.LoadOrGenerateKeypair(cfg.Mesh.KeyPath)
+		if err != nil {
+			logger.Warn("Failed to load or generate WireGuard keypair", "error", err)
+		} else {
+			meshCfg := mesh.Config{
+				Enabled:        true,
+				InterfaceName:  cfg.Mesh.Interface,
+				ListenPort:     cfg.Mesh.Port,
+				KeyPath:        cfg.Mesh.KeyPath,
+				PublicEndpoint: cfg.Mesh.Endpoint,
+				Subnet:         "10.42.0.0/16",
+			}
+			meshMgr = mesh.NewManager(meshCfg, meshPrivKey, meshPubKey, nil, logger)
+
+			// Async registration with Cloudflare Worker Mesh Control Plane
+			go func() {
+				if cfg.ControlPlane.Endpoint == "" {
+					return
+				}
+				regURL := fmt.Sprintf("%s/api/v1/control/mesh/register", strings.TrimRight(cfg.ControlPlane.Endpoint, "/"))
+				payload := map[string]any{
+					"node_id":     cfg.Identity.NodeID,
+					"name":        cfg.Identity.Hostname,
+					"public_key":  meshPubKey,
+					"endpoint":    cfg.Mesh.Endpoint,
+					"listen_port": cfg.Mesh.Port,
+				}
+				bodyBytes, _ := json.Marshal(payload)
+				req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, regURL, bytes.NewReader(bodyBytes))
+				if err != nil {
+					return
+				}
+				req.Header.Set("Content-Type", "application/json")
+				if cfg.ControlPlane.EnrollToken != "" {
+					req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cfg.ControlPlane.EnrollToken))
+				}
+				client := &http.Client{Timeout: 10 * time.Second}
+				resp, err := client.Do(req)
+				if err != nil {
+					logger.Warn("WireGuard mesh control plane registration skipped or failed", "error", err)
+					return
+				}
+				defer resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					var regResp mesh.MeshRegisterResponse
+					if err := json.NewDecoder(resp.Body).Decode(&regResp); err == nil {
+						logger.Info("Mesh node registered with control plane",
+							"overlay_ip", regResp.Peer.OverlayIP,
+							"subnet", regResp.Subnet,
+							"peers_count", len(regResp.Peers),
+						)
+						meshCfg.OverlayIP = regResp.Peer.OverlayIP
+						meshMgr = mesh.NewManager(meshCfg, meshPrivKey, meshPubKey, nil, logger)
+						if err := meshMgr.InitInterface(context.Background()); err != nil {
+							logger.Warn("WireGuard interface init warning (requires kernel module & CAP_NET_ADMIN)", "error", err)
+						} else {
+							_ = meshMgr.SyncPeers(context.Background(), regResp.Peers)
+						}
+					}
+				}
+			}()
+		}
+	}
+
 	if cfg.NATS.Mode == "embedded" || cfg.DevMode {
 		embedOpts := transport.EmbeddedOptions{
 			DontListen: cfg.DevMode, // In dev mode, run 100% in-process with zero open ports!
@@ -123,7 +191,7 @@ func main() {
 		if err := natsClient.StartEmbedded(ctx, embedOpts); err != nil {
 			logger.Error("Failed to start embedded NATS server", "error", err)
 		} else {
-			registerCommandListeners(natsClient, deployOrchestrator, backupMgr, flagStore, cfg, logger)
+			registerCommandListeners(natsClient, deployOrchestrator, backupMgr, flagStore, meshMgr, cfg, logger)
 		}
 	} else {
 		if err := natsClient.Connect(ctx); err != nil {
@@ -132,7 +200,7 @@ func main() {
 				"error", err,
 			)
 		} else {
-			registerCommandListeners(natsClient, deployOrchestrator, backupMgr, flagStore, cfg, logger)
+			registerCommandListeners(natsClient, deployOrchestrator, backupMgr, flagStore, meshMgr, cfg, logger)
 		}
 	}
 	defer natsClient.Close()
@@ -197,6 +265,7 @@ func registerCommandListeners(
 	orchestrator *deploy.Orchestrator,
 	backupMgr *backup.Manager,
 	flagStore *flags.Store,
+	meshMgr *mesh.Manager,
 	cfg *config.Config,
 	logger *slog.Logger,
 ) {
@@ -406,6 +475,23 @@ func registerCommandListeners(
 	teardownSubj := fmt.Sprintf("kiwid.node.%s.preview.teardown", nodeID)
 	_, _ = nc.Subscribe(teardownSubj, handleTeardown)
 	_, _ = nc.Subscribe("kiwid.fleet.all.preview.teardown", handleTeardown)
+
+	// 9. Dynamic WireGuard Mesh Peer Sync
+	if meshMgr != nil {
+		syncHandler := func(msg *nats.Msg) {
+			var peers []mesh.Peer
+			if err := json.Unmarshal(msg.Data, &peers); err == nil && len(peers) > 0 {
+				logger.Info("Received dynamic mesh peer broadcast via NATS", "peers_count", len(peers))
+				if err := meshMgr.SyncPeers(context.Background(), peers); err != nil {
+					logger.Warn("Failed to sync WireGuard mesh peers", "error", err)
+				}
+			}
+		}
+		_, _ = nc.Subscribe("flarelens.fleet.all.mesh.peers", syncHandler)
+		_, _ = nc.Subscribe("kiwid.fleet.all.mesh.peers", syncHandler)
+		nodeMeshSubj := fmt.Sprintf("flarelens.node.%s.mesh.sync", nodeID)
+		_, _ = nc.Subscribe(nodeMeshSubj, syncHandler)
+	}
 
 	logger.Info("NATS command listeners registered",
 		"reboot_subject", rebootSubj,
