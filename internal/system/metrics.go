@@ -23,6 +23,7 @@ type MetricsSnapshot struct {
 	LoadAvg5       float64   `json:"load_avg_5"`
 	LoadAvg15      float64   `json:"load_avg_15"`
 	UptimeSeconds  uint64    `json:"uptime_seconds"`
+	RebootRequired bool      `json:"reboot_required"`
 }
 
 // Sampler maintains previous CPU ticks to calculate accurate CPU usage percentages
@@ -76,8 +77,9 @@ func (s *Sampler) Sample() MetricsSnapshot {
 	// 4. Load Averages
 	m.LoadAvg1, m.LoadAvg5, m.LoadAvg15 = readLoadAvg()
 
-	// 5. Uptime
+	// 5. Uptime & Pending OS Reboot
 	m.UptimeSeconds = readUptime()
+	m.RebootRequired = IsRebootRequired()
 
 	return m
 }

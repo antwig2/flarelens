@@ -75,7 +75,22 @@ type containerCreateConfig struct {
 type containerHostConfig struct {
 	PortBindings  map[string][]portBindingEntry `json:"PortBindings,omitempty"`
 	NetworkMode   string                        `json:"NetworkMode,omitempty"`
+	OomScoreAdj   int                           `json:"OomScoreAdj"`
 	RestartPolicy restartPolicy                 `json:"RestartPolicy"`
+}
+
+func determineOomScore(serviceName string) int {
+	lower := strings.ToLower(serviceName)
+	if strings.Contains(lower, "postgres") || strings.Contains(lower, "db") {
+		return -900
+	}
+	if strings.Contains(lower, "redis") || strings.Contains(lower, "dragonfly") {
+		return -800
+	}
+	if strings.Contains(lower, "worker") || strings.Contains(lower, "cron") {
+		return 500
+	}
+	return 0
 }
 
 type portBindingEntry struct {
@@ -112,6 +127,7 @@ func (r *DockerRunner) CreateContainer(
 				},
 			},
 			NetworkMode: network,
+			OomScoreAdj: determineOomScore(name),
 			RestartPolicy: restartPolicy{
 				Name: "always",
 			},

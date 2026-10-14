@@ -56,6 +56,9 @@ func main() {
 		logger.Info("Loaded configuration file", "path", cfg.ConfigFile)
 	}
 
+	// Protect agent daemon from Linux kernel OOM killer (Section 17.1)
+	system.ProtectFromOOM(logger)
+
 	// 3. Initialize host metrics sampler and Docker inspector
 	sampler := system.NewSampler()
 	inspector := docker.NewInspector(cfg.Docker.Socket)
@@ -257,7 +260,12 @@ func registerCommandListeners(
 	rebootSubj := fmt.Sprintf("kiwid.node.%s.reboot", nodeID)
 	_, _ = nc.Subscribe(rebootSubj, func(msg *nats.Msg) {
 		logger.Warn("Received remote reboot command via NATS", "subject", msg.Subject)
-		// Coordination logic handled in Phase 6
+		go func() {
+			logger.Warn("Initiating coordinated host reboot sequence (15s connection drain window)...")
+			time.Sleep(15 * time.Second)
+			logger.Warn("Executing system reboot now")
+			executeSystemReboot(logger)
+		}()
 	})
 
 	// 2. Target node dynamic config update (OTA Hot Reload)
