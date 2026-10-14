@@ -102,6 +102,11 @@ func main() {
 		return hookErr
 	})
 
+	// Hook automated snapshot rollback in case of migration failure
+	deployOrchestrator.SetRollbackHook(func(hookCtx context.Context, tag string) error {
+		return backupMgr.RestoreLatestMatchingTag(hookCtx, tag, "")
+	})
+
 	// Start automated cron scheduler for backups
 	backupMgr.StartCron(ctx)
 

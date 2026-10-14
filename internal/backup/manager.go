@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -151,6 +152,26 @@ func (m *Manager) ListBackups(ctx context.Context) ([]S3Object, error) {
 	prefix := cmp.Or(m.cfg.Database.Backup.Prefix, "postgres/")
 
 	return m.r2Client.ListObjects(ctx, bucket, prefix)
+}
+
+// RestoreLatestMatchingTag finds the most recent snapshot matching the given tag and restores it
+func (m *Manager) RestoreLatestMatchingTag(ctx context.Context, tag, targetDB string) error {
+	objs, err := m.ListBackups(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list snapshots for rollback: %w", err)
+	}
+
+	for i := len(objs) - 1; i >= 0; i-- {
+		if strings.Contains(objs[i].Key, tag) {
+			m.logger.Info("Found matching snapshot for automated rollback",
+				"key", objs[i].Key,
+				"tag", tag,
+			)
+			return m.RestoreBackup(ctx, objs[i].Key, targetDB)
+		}
+	}
+
+	return fmt.Errorf("no snapshot found matching tag: %s", tag)
 }
 
 // StartCron launches periodic backup schedule (daily at 02:00 UTC)

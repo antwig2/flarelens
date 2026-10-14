@@ -16,6 +16,9 @@ import (
 // PreDeploySnapshotHook defines a callback executed before candidate container staging
 type PreDeploySnapshotHook func(ctx context.Context, tag string) error
 
+// PreDeployRollbackHook defines a callback executed if candidate staging or migrations fail
+type PreDeployRollbackHook func(ctx context.Context, tag string) error
+
 // Orchestrator executes zero-downtime Blue/Green deployments with automated rollback
 type Orchestrator struct {
 	runner        *DockerRunner
@@ -24,6 +27,8 @@ type Orchestrator struct {
 	natsClient    *transport.NATSClient
 	logger        *slog.Logger
 	preDeployHook PreDeploySnapshotHook
+	rollbackHook  PreDeployRollbackHook
+	migrator      *MigrationRunner
 
 	mu          sync.RWMutex
 	activeSlots map[string]Slot
@@ -49,12 +54,18 @@ func NewOrchestrator(
 		logger:      logger,
 		activeSlots: make(map[string]Slot),
 		nodeID:      nodeID,
+		migrator:    NewMigrationRunner(logger),
 	}
 }
 
 // SetPreDeployHook registers a pre-deploy backup guardrail hook
 func (o *Orchestrator) SetPreDeployHook(hook PreDeploySnapshotHook) {
 	o.preDeployHook = hook
+}
+
+// SetRollbackHook registers an automated rollback hook for failed migrations/rollouts
+func (o *Orchestrator) SetRollbackHook(hook PreDeployRollbackHook) {
+	o.rollbackHook = hook
 }
 
 // Deploy executes the complete 7-step zero-downtime Blue/Green deployment sequence
@@ -140,6 +151,31 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResp
 	}
 
 	network := cmp.Or(req.Network, "kiwid-edge")
+
+	// 3b. Execute Database Schema Migrations (if requested)
+	if req.RunMigrations {
+		migrationCmd := cmp.Or(req.MigrationCmd, "migrate up")
+		o.emitProgress(req, "migrating", fmt.Sprintf("Executing database schema migration: %s", migrationCmd), 25)
+		migrationOutput, err := o.migrator.Run(ctx, req.Image, migrationCmd, envList, network)
+		if err != nil {
+			o.logger.Error("Database schema migration failed! Aborting deployment", "error", err, "output", migrationOutput)
+
+			// Automated rollback to pre-deploy snapshot if guardrail was enabled
+			if req.PreDeploySnapshot && o.rollbackHook != nil {
+				o.emitProgress(req, "rollback", "Restoring database schema to pre-deploy snapshot...", 28)
+				snapshotTag := fmt.Sprintf("pre-deploy-%s", req.Service)
+				if rbErr := o.rollbackHook(ctx, snapshotTag); rbErr != nil {
+					o.logger.Error("Failed to restore pre-deploy snapshot after migration error", "error", rbErr)
+				} else {
+					o.logger.Info("Database schema successfully rolled back to pre-deploy snapshot")
+				}
+			}
+
+			return o.failResponse(req, "Database migration failed: "+err.Error(), currentSlot, startTime)
+		}
+		o.emitProgress(req, "migrated", "Database schema migration applied successfully", 30)
+	}
+
 	containerID, err := o.runner.CreateContainer(
 		ctx,
 		candidateName,

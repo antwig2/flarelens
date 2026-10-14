@@ -19,6 +19,8 @@ type DeployRequest struct {
 	Network           string            `json:"network"`          // docker network, e.g. "kiwid-edge"
 	PreDeploySnapshot bool              `json:"pre_deploy_snapshot"`
 	NodeID            string            `json:"node_id"`          // target node or "all"
+	RunMigrations     bool              `json:"run_migrations"`
+	MigrationCmd      string            `json:"migration_cmd"`    // e.g. "migrate up"
 }
 
 // DeployProgress reports incremental status during rollout

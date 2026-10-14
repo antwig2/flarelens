@@ -39,6 +39,9 @@ func NewDockerRunner(socketPath string) *DockerRunner {
 
 // PullImage pulls candidate container image from registry
 func (r *DockerRunner) PullImage(ctx context.Context, image string) error {
+	if strings.HasPrefix(r.socket, "mock") {
+		return nil
+	}
 	u := fmt.Sprintf("http://localhost/images/create?fromImage=%s", url.QueryEscape(image))
 	req, err := http.NewRequestWithContext(ctx, "POST", u, nil)
 	if err != nil {
@@ -219,6 +222,9 @@ func (r *DockerRunner) RemoveContainer(ctx context.Context, containerID string) 
 
 // FindContainerIDByName looks up an existing container ID by name
 func (r *DockerRunner) FindContainerIDByName(ctx context.Context, name string) (string, error) {
+	if strings.HasPrefix(r.socket, "mock") {
+		return "", nil
+	}
 	u := fmt.Sprintf("http://localhost/containers/%s/json", url.PathEscape(name))
 	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {

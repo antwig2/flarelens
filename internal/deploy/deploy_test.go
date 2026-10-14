@@ -135,3 +135,45 @@ EMPTY_LINE=
 		t.Errorf("Mismatch API_KEY: %s", parsed["API_KEY"])
 	}
 }
+
+func TestMigrationFailureTriggersRollback(t *testing.T) {
+	runner := NewDockerRunner("mock://socket")
+	prober := NewHealthProber()
+	traefik := NewTraefikRouteFlipper(t.TempDir())
+	orch := NewOrchestrator(runner, prober, traefik, nil, "test-node", nil)
+
+	snapshotCalled := false
+	orch.SetPreDeployHook(func(ctx context.Context, tag string) error {
+		snapshotCalled = true
+		return nil
+	})
+
+	rollbackCalled := false
+	orch.SetRollbackHook(func(ctx context.Context, tag string) error {
+		rollbackCalled = true
+		return nil
+	})
+
+	req := DeployRequest{
+		DeploymentID:      "dep-mig-fail",
+		Service:           "bill-api",
+		Image:             "nonexistent-image:invalid",
+		PreDeploySnapshot: true,
+		RunMigrations:     true,
+		MigrationCmd:      "exit 1",
+	}
+
+	resp := orch.Deploy(context.Background(), req)
+	if !snapshotCalled {
+		t.Errorf("Expected pre-deploy snapshot to be taken before migration")
+	}
+	if !rollbackCalled {
+		t.Errorf("Expected snapshot rollback hook to be invoked when migration fails")
+	}
+	if resp.Status != "failed" {
+		t.Errorf("Expected deploy status to be 'failed', got: %s", resp.Status)
+	}
+	if !strings.Contains(resp.Message, "Database migration failed") {
+		t.Errorf("Expected migration failure message, got: %s", resp.Message)
+	}
+}
