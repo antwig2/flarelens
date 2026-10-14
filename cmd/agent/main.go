@@ -10,9 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/antwig2/flarelens/internal/backup"
@@ -214,31 +212,15 @@ func main() {
 	// 6. Launch background telemetry heartbeat loop (every 15s)
 	go reporter.StartHeartbeatLoop(ctx)
 
-	// 7. Handle OS Signals (Graceful shutdown & SIGHUP hot reload)
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
-
-	for {
-		sig := <-sigChan
-		switch sig {
-		case syscall.SIGHUP:
-			logger.Info("Received SIGHUP, reloading configuration...")
-			if reloaded, err := config.Load(os.Args[1:]); err == nil {
-				cfg = reloaded
-				logger.Info("Configuration reloaded successfully", "log_level", cfg.Telemetry.LogLevel)
-			} else {
-				logger.Error("Failed to reload configuration", "error", err)
-			}
-
-		case syscall.SIGINT, syscall.SIGTERM:
-			logger.Info("Received shutdown signal, terminating gracefully...", "signal", sig.String())
-			cancel()
-			// Brief grace period for active streams to flush
-			time.Sleep(500 * time.Millisecond)
-			logger.Info("FlareLens Agent stopped")
-			return
+	// 7. Handle OS Signals (Graceful shutdown & SIGHUP hot reload on Unix)
+	waitForShutdown(cancel, logger, func() {
+		if reloaded, err := config.Load(os.Args[1:]); err == nil {
+			cfg = reloaded
+			logger.Info("Configuration reloaded successfully", "log_level", cfg.Telemetry.LogLevel)
+		} else {
+			logger.Error("Failed to reload configuration", "error", err)
 		}
-	}
+	})
 }
 
 func initLogger(levelStr string) *slog.Logger {

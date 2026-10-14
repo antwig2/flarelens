@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -145,15 +144,9 @@ func readRAMUsage() (total uint64, used uint64) {
 }
 
 func readDiskUsage(path string) (total uint64, used uint64) {
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(path, &stat); err != nil {
+	total, used, err := getDiskStats(path)
+	if err != nil {
 		return 0, 0
-	}
-
-	total = stat.Blocks * uint64(stat.Bsize)
-	free := stat.Bavail * uint64(stat.Bsize)
-	if total >= free {
-		used = total - free
 	}
 	return total, used
 }

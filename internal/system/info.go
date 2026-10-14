@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 )
 
 // NodeSpecs represents the static hardware specifications of the host node
@@ -68,12 +67,11 @@ func getRAMTotal() uint64 {
 }
 
 func getDiskTotal(path string) uint64 {
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(path, &stat); err != nil {
+	total, _, err := getDiskStats(path)
+	if err != nil {
 		return 0
 	}
-	// Total bytes = blocks * block size
-	return stat.Blocks * uint64(stat.Bsize)
+	return total
 }
 
 // GetHostname returns the local machine hostname
