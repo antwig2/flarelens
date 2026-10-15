@@ -42,8 +42,8 @@ The official high-performance, cross-platform host agent and P2P WireGuard mesh 
 ### Linux (30-Second Bootstrap)
 
 ```bash
-curl -fsSL https://control.kiwid.io/install.sh | sudo bash -s -- \
-  --control "https://control.kiwid.io" \
+curl -fsSL https://control.flarelens.dev/install.sh | sudo bash -s -- \
+  --control "https://control.flarelens.dev" \
   --token "your-enrollment-token"
 ```
 
@@ -52,7 +52,7 @@ curl -fsSL https://control.kiwid.io/install.sh | sudo bash -s -- \
 Open PowerShell as Administrator:
 
 ```powershell
-iwr -useb https://control.kiwid.io/install.ps1 | iex
+iwr -useb https://control.flarelens.dev/install.ps1 | iex
 ```
 
 ### Manual Download
@@ -88,7 +88,7 @@ identity:
   tags: ["app", "prod"]
 
 control_plane:
-  endpoint: "https://control.kiwid.io"
+  endpoint: "https://control.flarelens.dev"
   enroll_token: "${KIWID_ENROLL_TOKEN}"
   heartbeat_interval: 15s
 
@@ -125,7 +125,7 @@ flarelens-agent --config /etc/kiwid/agent.yaml
 flarelens-agent --dev --log-level debug
 
 # Override mesh port and control URL
-flarelens-agent --mesh-port 51820 --control-url https://control.kiwid.io
+flarelens-agent --mesh-port 51820 --control-url https://control.flarelens.dev
 ```
 
 ---

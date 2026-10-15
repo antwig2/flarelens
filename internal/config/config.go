@@ -127,7 +127,7 @@ func DefaultConfig() *Config {
 			Tags:     []string{"app", "prod"},
 		},
 		ControlPlane: ControlPlaneConfig{
-			Endpoint:          "https://control.kiwid.io",
+			Endpoint:          "https://control.flarelens.dev",
 			HeartbeatInterval: 15 * time.Second,
 		},
 		NATS: NATSConfig{
@@ -340,7 +340,7 @@ func Load(args []string) (*Config, error) {
 	if *devFlag {
 		cfg.DevMode = true
 		cfg.Telemetry.LogLevel = "debug"
-		if *controlURLFlag == "" && cfg.ControlPlane.Endpoint == "https://control.kiwid.io" {
+		if *controlURLFlag == "" && cfg.ControlPlane.Endpoint == "https://control.flarelens.dev" {
 			cfg.ControlPlane.Endpoint = "http://localhost:8787"
 		}
 	}
