@@ -31,22 +31,21 @@ builds:
 
 archives:
   - id: archive
-    builds:
-      - flarelens-agent
     name_template: "flarelens-agent_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format: tar.gz
+    formats:
+      - tar.gz
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
     files:
       - README.md
       - LICENSE*
 
   - id: raw-binary
-    builds:
-      - flarelens-agent
     name_template: "flarelens-agent-{{ .Os }}-{{ .Arch }}"
-    format: binary
+    formats:
+      - binary
 
 checksum:
   name_template: "checksums.txt"
