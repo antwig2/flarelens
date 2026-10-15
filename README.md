@@ -1,53 +1,80 @@
-# FlareLens Host Agent (`flarelens-agent`)
+# FlareLens
 
-The official high-performance, cross-platform host agent and P2P WireGuard mesh daemon for the **FlareLens Unified Edge Control Plane**.
+> **The unified control plane for modern infrastructure — combining zero-trust networking, observability, and deployments into a single lightweight binary.**
 
 [![CI](https://github.com/antwig2/flarelens/actions/workflows/ci.yml/badge.svg)](https://github.com/antwig2/flarelens/actions/workflows/ci.yml)
 [![Release](https://github.com/antwig2/flarelens/actions/workflows/release.yml/badge.svg)](https://github.com/antwig2/flarelens/actions/workflows/release.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/antwig2/flarelens)](https://goreportcard.com/report/github.com/antwig2/flarelens)
+[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Platforms](https://img.shields.io/badge/Platforms-Linux_|_Windows_|_macOS-informational)](https://github.com/antwig2/flarelens/releases)
 
 ---
 
-## ⚡ What is FlareLens Agent?
+## ⚡ Overview
 
-`flarelens-agent` is a single static Go binary designed to run on any host—from a $10/mo bare-metal VM up to multi-cloud fleets. It connects back to your Cloudflare Workers edge control plane via NATS WebSocket / TLS tunnels, replacing 15 disparate commercial tools (Datadog, ArgoCD, Ansible, Tailscale, Vault, LaunchDarkly, ManageEngine PAM360, etc.) with zero egress costs.
+**FlareLens** unifies fleet management, peer-to-peer zero-trust networking, continuous delivery, and full-stack observability into a single static Go daemon (`flarelens-agent`) orchestrated by a serverless Cloudflare edge control plane.
 
-### Key Capabilities
+Whether running on bare-metal servers, cloud VMs, Raspberry Pis, or developer workstations, FlareLens connects your fleet over an encrypted WireGuard mesh without opening public firewall ports or paying bandwidth egress tolls.
 
-1. **Kernel-Level WireGuard Mesh (Tailscale / PAM360 Alternative)**:
-   - Automated Curve25519 key generation (`RFC 7748`).
-   - Pure P2P UDP overlay network (`flarelens0`) with $0 egress.
-   - Operators can connect securely from Windows, Linux, or macOS without third-party VPN clients.
-2. **Zero-Downtime Blue/Green Deployments**:
-   - Docker engine orchestration with pre-warming and Traefik dynamic router traffic swapping.
-   - 30-second health check polling and zero dropped in-flight requests.
-3. **Automated Database Migrations & Rollback Guardrails**:
-   - Automatic pre-deploy database snapshot (`pg_dump` streamed directly to Cloudflare R2).
-   - Atomic rollback execution if migration fails or health check times out.
-4. **Kernel OOM Protection & Score Governance**:
-   - Host daemon auto-configured with `/proc/self/oom_score_adj = -1000`.
-   - Dynamic container OOM protection (-900 for PostgreSQL, -800 for Redis, +500 for background workers).
-5. **Real-Time Telemetry & Local WAL Buffer**:
-   - Host metrics (CPU, RAM, Disk, Load, Uptime, Pending OS Reboots).
-   - Ephemeral disk WAL buffer so no telemetry or logs are lost during network blips.
-6. **Cross-Platform Native Support**:
-   - Linux (x86_64, ARM64)
-   - Windows (x86_64 PE64 executable)
-   - macOS (Intel & Apple Silicon)
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                   CLOUDFLARE EDGE CONTROL PLANE                        │
+│                   https://control.flarelens.dev                        │
+│                                                                        │
+│   • Cloudflare Access (SSO / OTP)     • Cloudflare R2 (Logs / Backups) │
+│   • Fleet KV (State & Registry)       • WebSocket Real-time Telemetry  │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │ Encrypted TLS / WS Tunnel
+                                   ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                      FLARELENS HOST AGENT (Go)                         │
+│                                                                        │
+│  [ P2P WireGuard Mesh ]  ─── P2P UDP ───  [ Other Nodes & Laptops ]    │
+│  [ Blue/Green GitOps  ]  ─── Docker ────  [ Zero-Downtime Traffic ]    │
+│  [ Kernel OOM Shield  ]  ── /proc score ─ [ -1000 Protection ]         │
+│  [ Telemetry & WAL    ]  ── Metrics ───  [ CPU, RAM, Disk, Reboots ]   │
+│  [ Database Snapshot  ]  ── pg_dump ───  [ Direct-to-R2 Stream ]       │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## ✨ Core Pillars
+
+### 🌐 1. Zero-Trust WireGuard Mesh
+- **Pure Peer-to-Peer**: Automated Curve25519 key generation (`RFC 7748`) establishing direct kernel-level WireGuard overlays (`10.42.0.0/16`) between nodes.
+- **Zero Open Ports**: Traverses NATs and corporate firewalls without public IP requirements or centralized VPN concentrators.
+- **Operator Access**: Generate dynamic `.conf` profiles or mobile QR codes in seconds for instant developer access to private internal services.
+
+### 🔄 2. Blue/Green Zero-Downtime GitOps
+- **Production Pre-Warming**: Pulls new Docker images, starts the target container, and validates HTTP health checks before swapping traffic.
+- **Traefik Dynamic Routing**: Live router hot-swap with 0 dropped in-flight requests.
+- **Automatic Rollback**: Instant fallback to the previous healthy container if migration or readiness probes fail.
+
+### 💾 3. Automated Database Safety & R2 Backups
+- **Pre-Deploy Snapshots**: Automatically streams compressed PostgreSQL backups (`pg_dump`) directly to Cloudflare R2 before running schema migrations.
+- **Zero Egress Fees**: Eliminates cloud egress transfer costs entirely through Cloudflare R2's S3-compatible architecture.
+
+### 🛡️ 4. Kernel OOM Protection & Governance
+- **Self-Preservation**: Auto-configures `/proc/self/oom_score_adj = -1000` so the daemon survives under severe host memory exhaustion.
+- **Container Prioritization**: Adjusts scores across workloads (`-900` for databases, `-800` for caches, `+500` for background queue workers).
+
+### 📊 5. Edge Observability & Resilient WAL
+- **Host & Container Metrics**: Real-time collection of CPU, Memory, Disk, Load Averages, and OS reboot requirements.
+- **Local Write-Ahead Log (WAL)**: Telemetry and logs are buffered on disk during network disconnects and flushed when connectivity recovers.
 
 ---
 
 ## 🚀 Quick Install
 
-### Linux (30-Second Bootstrap)
+### Linux (One-Line Bootstrap)
 
 ```bash
 curl -fsSL https://control.flarelens.dev/install.sh | sudo bash -s -- \
-  --control "https://control.flarelens.dev" \
-  --token "your-enrollment-token"
+  --control "https://control.flarelens.dev"
 ```
 
-### Windows (PowerShell 1-Liner)
+### Windows (PowerShell)
 
 Open PowerShell as Administrator:
 
@@ -55,41 +82,38 @@ Open PowerShell as Administrator:
 iwr -useb https://control.flarelens.dev/install.ps1 | iex
 ```
 
-### Manual Download
+### Pre-Built Binaries
 
-Download pre-compiled binaries from [GitHub Releases](https://github.com/antwig2/flarelens/releases):
+Download signed release binaries from [GitHub Releases](https://github.com/antwig2/flarelens/releases):
 
 | OS | Architecture | Binary Asset | Archive |
 | :--- | :--- | :--- | :--- |
-| **Linux** | x86_64 (amd64) | `flarelens-agent-linux-amd64` | `.tar.gz` |
-| **Linux** | ARM64 (aarch64) | `flarelens-agent-linux-arm64` | `.tar.gz` |
-| **Windows** | x86_64 (amd64) | `flarelens-agent-windows-amd64.exe` | `.zip` |
-| **macOS** | Apple Silicon | `flarelens-agent-darwin-arm64` | `.tar.gz` |
-| **macOS** | Intel (amd64) | `flarelens-agent-darwin-amd64` | `.tar.gz` |
+| **Linux** | x86_64 (`amd64`) | `flarelens-agent-linux-amd64` | `.tar.gz` |
+| **Linux** | ARM64 (`arm64`) | `flarelens-agent-linux-arm64` | `.tar.gz` |
+| **Windows** | x86_64 (`amd64`) | `flarelens-agent-windows-amd64.exe` | `.zip` |
+| **macOS** | Apple Silicon (`arm64`) | `flarelens-agent-darwin-arm64` | `.tar.gz` |
+| **macOS** | Intel (`amd64`) | `flarelens-agent-darwin-amd64` | `.tar.gz` |
 
 ---
 
 ## ⚙️ Configuration
 
-Configuration is loaded in the following order of precedence:
-1. CLI Flags (`--config`, `--node-id`, `--control-url`, etc.)
+Configuration is loaded dynamically from:
+1. CLI Flags (`--config`, `--node-id`, `--control-url`)
 2. Environment Variables (`KIWID_NODE_ID`, `KIWID_CONTROL_URL`, `KIWID_ENROLL_TOKEN`)
-3. YAML Configuration File (`/etc/kiwid/agent.yaml` on Linux, `$ProgramData\FlareLens\agent.yaml` on Windows)
-4. Built-in Production Defaults
+3. YAML Configuration (`/etc/kiwid/agent.yaml` on Linux, `$ProgramData\FlareLens\agent.yaml` on Windows)
 
-### Sample `/etc/kiwid/agent.yaml`
+### Sample `agent.yaml`
 
 ```yaml
 identity:
   node_id: "node-fra-01"
   hostname: "app-prod-1"
-  provider: "bare-metal"
   region: "fra1"
   tags: ["app", "prod"]
 
 control_plane:
   endpoint: "https://control.flarelens.dev"
-  enroll_token: "${KIWID_ENROLL_TOKEN}"
   heartbeat_interval: 15s
 
 mesh:
@@ -115,17 +139,17 @@ database:
 ## 🛠️ CLI Usage
 
 ```bash
-# Print version and build metadata
+# Print agent version and build information
 flarelens-agent --version
 
-# Run daemon with custom config
+# Run daemon with explicit configuration file
 flarelens-agent --config /etc/kiwid/agent.yaml
 
-# Run in development mode
+# Run in development mode with debug logging
 flarelens-agent --dev --log-level debug
 
-# Override mesh port and control URL
-flarelens-agent --mesh-port 51820 --control-url https://control.flarelens.dev
+# Connect to custom control plane and specify mesh port
+flarelens-agent --control-url https://control.flarelens.dev --mesh-port 51820
 ```
 
 ---
@@ -134,37 +158,27 @@ flarelens-agent --mesh-port 51820 --control-url https://control.flarelens.dev
 
 ### Prerequisites
 
-- Go 1.22+ installed
-- Docker daemon running (optional for container deploy testing)
-
-### Build Locally
+- Go 1.22 or later
+- Docker (optional, for Blue/Green deploy testing)
 
 ```bash
-# Build for host architecture
-go build -o bin/flarelens-agent ./cmd/agent
+# Clone repository
+git clone https://github.com/antwig2/flarelens.git
+cd flarelens
 
-# Test all packages
+# Run test suite
 go test -v ./...
 
-# Cross-compile for Windows
-GOOS=windows GOARCH=amd64 go build -o bin/flarelens-agent.exe ./cmd/agent
+# Build binary locally
+go build -ldflags="-s -w" -o bin/flarelens-agent ./cmd/agent
 
-# Cross-compile for Linux ARM64
-GOOS=linux GOARCH=arm64 go build -o bin/flarelens-agent-arm64 ./cmd/agent
-```
-
-### Release Build with GoReleaser
-
-```bash
-# Verify GoReleaser configuration
-goreleaser check
-
-# Generate snapshot release locally
-goreleaser release --snapshot --clean
+# Cross-compile matrix
+make cross-compile
 ```
 
 ---
 
 ## 📄 License
 
-Apache 2.0. Copyright &copy; 2026 FlareLens Authors.
+Licensed under the [Apache License, Version 2.0](LICENSE).  
+Copyright &copy; 2026 FlareLens Authors.
