@@ -18,7 +18,7 @@
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                   CLOUDFLARE EDGE CONTROL PLANE                        │
-│                   https://control.flarelens.dev                        │
+│                   https://control.kiwidbilling.com                        │
 │                                                                        │
 │   Single Dashboard for Logs, Metrics, Health, Alerts, Secrets & Flags │
 └──────────────────────────────────┬─────────────────────────────────────┘
@@ -128,8 +128,8 @@ Private inter-server communications, database replication, internal microservice
 ### Linux (One-Line Bootstrap)
 
 ```bash
-curl -fsSL https://control.flarelens.dev/install.sh | sudo bash -s -- \
-  --control "https://control.flarelens.dev"
+curl -fsSL https://control.kiwidbilling.com/install.sh | sudo bash -s -- \
+  --control "https://control.kiwidbilling.com"
 ```
 
 ### Windows (PowerShell)
@@ -137,7 +137,7 @@ curl -fsSL https://control.flarelens.dev/install.sh | sudo bash -s -- \
 Open PowerShell as Administrator:
 
 ```powershell
-iwr -useb https://control.flarelens.dev/install.ps1 | iex
+iwr -useb https://control.kiwidbilling.com/install.ps1 | iex
 ```
 
 ### Pre-Built Binaries
@@ -172,7 +172,7 @@ identity:
   tags: ["app", "prod"]
 
 control_plane:
-  endpoint: "https://control.flarelens.dev"
+  endpoint: "https://control.kiwidbilling.com"
   enroll_token: "${KIWID_ENROLL_TOKEN}"
   heartbeat_interval: 15s
 
@@ -209,7 +209,7 @@ flarelens-agent --config /etc/kiwid/agent.yaml
 flarelens-agent --dev --log-level debug
 
 # Connect to custom control plane and specify mesh port
-flarelens-agent --control-url https://control.flarelens.dev --mesh-port 51820
+flarelens-agent --control-url https://control.kiwidbilling.com --mesh-port 51820
 ```
 
 ---
