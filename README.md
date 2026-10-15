@@ -13,12 +13,52 @@
 
 ## ⚡ Overview
 
-**FlareLens** transforms distributed, heterogeneous infrastructure into a self-healing, unified private cloud. Operated by a single static Go daemon (`flarelens-agent`) and a serverless edge control plane, FlareLens manages **bare-metal servers, virtual machines, containers, and developer workstations** without requiring expensive SaaS subscriptions, complex Kubernetes clusters, or centralized VPN concentrators.
+**FlareLens** is the unified operational control plane for your infrastructure.
+
+It unifies 4 major systems that previously required 4 separate tools:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                               FLARELENS                                │
+│                                                                        │
+│   1. OBSERVABILITY      ───  Live Logs, Metrics, Global Uptime Checks  │
+│   2. ZERO-TRUST MESH    ───  P2P WireGuard Overlay (No Bastion/SSH)    │
+│   3. GITOPS DEPLOYMENTS ───  Atomic Blue/Green Container Swaps (<1ms)  │
+│   4. SECRETS & FLAGS    ───  Edge AES-256 Vault & Real-Time Flags      │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### The 4 Pillars of FlareLens:
+
+#### 1. Observability (Replaces Grafana / Datadog / BetterStack)
+- **Real-Time Live Tail**: Stream container and host logs in real time over SSE/WebSocket.
+- **Serverless Edge Lakehouse**: Saves cold logs as compressed columnar Parquet files directly in Cloudflare R2 ($0 bandwidth egress fees).
+- **Global Uptime Monitoring**: Cloudflare Worker pings your services every 60 seconds from 300+ cities worldwide and sends alerts to Telegram, Slack, WhatsApp, or Email.
+
+#### 2. Zero-Trust Networking (Replaces Bastion Hosts / Tailscale / OpenVPN)
+- **Outbound-Only Signaling**: Replaces open inbound SSH ports (port 22) with secure outbound-only TLS/WebSocket connections.
+- **Built-in Pure Go WireGuard**: Automatically meshes your servers and developer laptops over an encrypted private network (`10.42.0.0/16`) without needing central VPN concentrators.
+
+#### 3. GitOps & Zero-Downtime Deployments (Replaces Portainer / Jenkins / ArgoCD)
+- **Atomic Blue/Green Rollouts**: Deploys the new container (Green), verifies its health on localhost, and performs an atomic inotify swap on Traefik routing in **< 1 millisecond** (zero dropped TCP connections).
+- **Isolated Migration Runner**: Executes database schema migrations in an ephemeral container with auto-rollback before live traffic hits the new app version.
+
+#### 4. Secrets Vault & Feature Flags (Replaces HashiCorp Vault / LaunchDarkly)
+- **Encrypted Secrets Vault (AES-256-GCM)**: All your production secrets live encrypted at the Cloudflare edge.
+- **RAM-Only Injection**: Secrets and cryptographic PEM keys are injected directly into container memory (`-e KEY=VAL`), leaving zero plaintext `.env` files on host hard drives.
+- **Edge Feature Flags**: Evaluate toggle flags locally in **< 1 microsecond** with instant propagation from the dashboard.
+
+> **In One Sentence:**  
+> **FlareLens is Observability + Zero-Trust Networking + Continuous Deployment + Secrets Management, managed from a single serverless Cloudflare dashboard.**
+
+---
+
+### Fleet Overview
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                   CLOUDFLARE EDGE CONTROL PLANE                        │
-│                   https://control.kiwidbilling.com                        │
+│                   https://control.kiwidbilling.com                     │
 │                                                                        │
 │   Single Dashboard for Logs, Metrics, Health, Alerts, Secrets & Flags │
 └──────────────────────────────────┬─────────────────────────────────────┘
