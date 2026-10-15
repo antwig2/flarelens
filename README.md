@@ -58,7 +58,7 @@ It unifies 4 major systems that previously required 4 separate tools:
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                   CLOUDFLARE EDGE CONTROL PLANE                        │
-│                   https://control.kiwidbilling.com                     │
+│               https://<your-worker-subdomain>.workers.dev              │
 │                                                                        │
 │   Single Dashboard for Logs, Metrics, Health, Alerts, Secrets & Flags │
 └──────────────────────────────────┬─────────────────────────────────────┘
@@ -163,28 +163,59 @@ Private inter-server communications, database replication, internal microservice
 
 ---
 
-## 🚀 Quick Install
+## 🚀 Getting Started
 
-### Linux (One-Line Bootstrap)
+Deploying FlareLens consists of two straightforward steps:
+1. **Deploy your Control Plane**: Run the serverless Worker on **your own Cloudflare account**.
+2. **Install the Agent on your Nodes**: Download the agent binary directly from **GitHub Releases** and point it to **your deployed Worker URL**.
+
+---
+
+### Step 1: Deploy Your Control Plane (Cloudflare Worker)
+
+FlareLens uses Cloudflare Workers, KV, and R2 as a 100% serverless, zero-maintenance control plane. You deploy this into **your own Cloudflare account** for complete data ownership and zero SaaS markup.
 
 ```bash
-curl -fsSL https://control.kiwidbilling.com/install.sh | sudo bash -s -- \
-  --control "https://control.kiwidbilling.com"
+# 1. Clone the repository
+git clone https://github.com/antwig2/flarelens.git
+cd flarelens/flarelens-worker
+
+# 2. Install dependencies
+npm install
+
+# 3. Create required Cloudflare KV namespace and R2 bucket
+npx wrangler kv namespace create FLEET_KV
+npx wrangler r2 bucket create flarelens-logs-cold
+
+# Ensure the KV ID returned above is set in wrangler.toml under [[kv_namespaces]]
+
+# 4. Set your dashboard password and ingest token
+npx wrangler secret put DASHBOARD_PASSWORD
+npx wrangler secret put INGEST_SECRET
+
+# 5. Deploy to your Cloudflare account
+npx wrangler deploy
 ```
 
-### Windows (PowerShell)
-
-Open PowerShell as Administrator:
-
-```powershell
-iwr -useb https://control.kiwidbilling.com/install.ps1 | iex
+Once deployed, Cloudflare will output your unique live endpoint:
+```text
+https://flarelens.<your-subdomain>.workers.dev
 ```
+*(You can also attach a custom domain in the Cloudflare dashboard, e.g. `https://control.yourdomain.com`)*.
 
-### Pre-Built Binaries
+> ⚠️ **Important:** This deployed URL is **your control plane endpoint**. You will provide this URL when configuring and running your FlareLens agents. Never use someone else's control plane URL.
 
-Download signed release binaries from [GitHub Releases](https://github.com/antwig2/flarelens/releases):
+---
 
-| OS | Architecture | Binary Asset | Archive |
+### Step 2: Install FlareLens Agent on Your Nodes
+
+Once your control plane is running, install `flarelens-agent` on your servers, VMs, or developer workstations.
+
+#### Option A: Download Pre-Built Binaries from GitHub Releases (Recommended)
+
+Standalone, statically compiled release binaries are hosted directly on **[GitHub Releases](https://github.com/antwig2/flarelens/releases)**:
+
+| OS | Architecture | Binary Asset | Format |
 | :--- | :--- | :--- | :--- |
 | **Linux** | x86_64 (`amd64`) | `flarelens-agent-linux-amd64` | `.tar.gz` |
 | **Linux** | ARM64 (`arm64`) | `flarelens-agent-linux-arm64` | `.tar.gz` |
@@ -192,16 +223,44 @@ Download signed release binaries from [GitHub Releases](https://github.com/antwi
 | **macOS** | Apple Silicon (`arm64`) | `flarelens-agent-darwin-arm64` | `.tar.gz` |
 | **macOS** | Intel (`amd64`) | `flarelens-agent-darwin-amd64` | `.tar.gz` |
 
+```bash
+# Example: Download latest Linux amd64 binary directly from GitHub
+curl -L -o /usr/local/bin/flarelens-agent \
+  https://github.com/antwig2/flarelens/releases/latest/download/flarelens-agent-linux-amd64
+chmod +x /usr/local/bin/flarelens-agent
+
+# Run agent pointing to YOUR deployed Cloudflare Worker URL
+flarelens-agent \
+  --control-url "https://<your-worker-subdomain>.workers.dev" \
+  --enroll-token "<YOUR_INGEST_SECRET>"
+```
+
+#### Option B: One-Line Installer (Served by Your Deployed Worker)
+
+Your deployed worker serves ready-to-use bootstrap installers for your fleet:
+
+**Linux:**
+```bash
+curl -fsSL https://<your-worker-subdomain>.workers.dev/install.sh | sudo bash -s -- \
+  --control "https://<your-worker-subdomain>.workers.dev" \
+  --token "<YOUR_INGEST_SECRET>"
+```
+
+**Windows (Run PowerShell as Administrator):**
+```powershell
+iwr -useb https://<your-worker-subdomain>.workers.dev/install.ps1 | iex
+```
+
 ---
 
 ## ⚙️ Configuration Reference
 
 Configuration is loaded dynamically with the following precedence:
-1. CLI Flags (`--config`, `--node-id`, `--control-url`)
-2. Environment Variables (`KIWID_NODE_ID`, `KIWID_CONTROL_URL`, `KIWID_ENROLL_TOKEN`)
-3. YAML Configuration (`/etc/kiwid/agent.yaml` on Linux, `$ProgramData\FlareLens\agent.yaml` on Windows)
+1. **CLI Flags** (`--config`, `--node-id`, `--control-url`)
+2. **Environment Variables** (`FLARELENS_NODE_ID`, `FLARELENS_CONTROL_URL`, `FLARELENS_ENROLL_TOKEN`)
+3. **YAML Configuration** (`/etc/flarelens/agent.yaml` on Linux, `$ProgramData\FlareLens\agent.yaml` on Windows)
 
-### Sample `/etc/kiwid/agent.yaml`
+### Sample `/etc/flarelens/agent.yaml`
 
 ```yaml
 identity:
@@ -212,8 +271,9 @@ identity:
   tags: ["app", "prod"]
 
 control_plane:
-  endpoint: "https://control.kiwidbilling.com"
-  enroll_token: "${KIWID_ENROLL_TOKEN}"
+  # Point to YOUR Cloudflare Worker URL
+  endpoint: "https://<your-worker-subdomain>.workers.dev"
+  enroll_token: "${FLARELENS_ENROLL_TOKEN}"
   heartbeat_interval: 15s
 
 mesh:
@@ -243,13 +303,13 @@ database:
 flarelens-agent --version
 
 # Run daemon with explicit configuration file
-flarelens-agent --config /etc/kiwid/agent.yaml
+flarelens-agent --config /etc/flarelens/agent.yaml
 
 # Run in development mode with debug logging
 flarelens-agent --dev --log-level debug
 
-# Connect to custom control plane and specify mesh port
-flarelens-agent --control-url https://control.kiwidbilling.com --mesh-port 51820
+# Connect to YOUR deployed control plane and specify WireGuard mesh port
+flarelens-agent --control-url https://<your-worker-subdomain>.workers.dev --mesh-port 51820
 ```
 
 ---

@@ -220,9 +220,10 @@ func Load(args []string) (*Config, error) {
 	}
 
 	// 1. Determine config file path
-	configFile := cmp.Or(*configPathFlag, os.Getenv("KIWID_CONFIG"))
+	configFile := cmp.Or(*configPathFlag, os.Getenv("FLARELENS_CONFIG"), os.Getenv("KIWID_CONFIG"))
 	if configFile == "" {
 		candidates := []string{
+			"/etc/flarelens/agent.yaml",
 			"/etc/kiwid/agent.yaml",
 			"agent.yaml",
 			"configs/agent.yaml",
@@ -239,7 +240,7 @@ func Load(args []string) (*Config, error) {
 	if configFile != "" {
 		data, err := os.ReadFile(configFile)
 		if err == nil {
-			// Expand environment variables inside YAML (e.g. ${KIWID_ENROLL_TOKEN})
+			// Expand environment variables inside YAML (e.g. ${FLARELENS_ENROLL_TOKEN} or ${KIWID_ENROLL_TOKEN})
 			expanded := os.ExpandEnv(string(data))
 			if err := yaml.Unmarshal([]byte(expanded), cfg); err != nil {
 				return nil, fmt.Errorf("error parsing config file %s: %w", configFile, err)
@@ -251,31 +252,31 @@ func Load(args []string) (*Config, error) {
 	}
 
 	// 3. Override with Environment Variables
-	if val := os.Getenv("KIWID_NODE_ID"); val != "" {
+	if val := cmp.Or(os.Getenv("FLARELENS_NODE_ID"), os.Getenv("KIWID_NODE_ID")); val != "" {
 		cfg.Identity.NodeID = val
 	}
-	if val := os.Getenv("KIWID_CONTROL_URL"); val != "" {
+	if val := cmp.Or(os.Getenv("FLARELENS_CONTROL_URL"), os.Getenv("KIWID_CONTROL_URL")); val != "" {
 		cfg.ControlPlane.Endpoint = val
 	}
-	if val := os.Getenv("KIWID_ENROLL_TOKEN"); val != "" {
+	if val := cmp.Or(os.Getenv("FLARELENS_ENROLL_TOKEN"), os.Getenv("KIWID_ENROLL_TOKEN")); val != "" {
 		cfg.ControlPlane.EnrollToken = val
 	}
-	if val := os.Getenv("KIWID_LOG_LEVEL"); val != "" {
+	if val := cmp.Or(os.Getenv("FLARELENS_LOG_LEVEL"), os.Getenv("KIWID_LOG_LEVEL")); val != "" {
 		cfg.Telemetry.LogLevel = val
 	}
-	if val := os.Getenv("KIWID_NATS_URL"); val != "" {
+	if val := cmp.Or(os.Getenv("FLARELENS_NATS_URL"), os.Getenv("KIWID_NATS_URL")); val != "" {
 		cfg.NATS.URL = val
 	}
-	if val := os.Getenv("KIWID_NATS_TOKEN"); val != "" {
+	if val := cmp.Or(os.Getenv("FLARELENS_NATS_TOKEN"), os.Getenv("KIWID_NATS_TOKEN")); val != "" {
 		cfg.NATS.AuthToken = val
 	}
-	if val := os.Getenv("KIWID_PROVIDER"); val != "" {
+	if val := cmp.Or(os.Getenv("FLARELENS_PROVIDER"), os.Getenv("KIWID_PROVIDER")); val != "" {
 		cfg.Identity.Provider = val
 	}
-	if val := os.Getenv("KIWID_REGION"); val != "" {
+	if val := cmp.Or(os.Getenv("FLARELENS_REGION"), os.Getenv("KIWID_REGION")); val != "" {
 		cfg.Identity.Region = val
 	}
-	if val := os.Getenv("KIWID_TAGS"); val != "" {
+	if val := cmp.Or(os.Getenv("FLARELENS_TAGS"), os.Getenv("KIWID_TAGS")); val != "" {
 		tags := strings.Split(val, ",")
 		for i := range tags {
 			tags[i] = strings.TrimSpace(tags[i])
