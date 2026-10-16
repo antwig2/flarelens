@@ -596,10 +596,15 @@ type NodeCommand struct {
 	CanaryWeight      int               `json:"canary_weight"`
 	CanaryDuration    int               `json:"canary_duration"`
 	PreDeploySnapshot bool              `json:"pre_deploy_snapshot"`
-	RunMigrations     bool              `json:"run_migrations"`
-	MigrationCmd      string            `json:"migration_cmd"`
-	IsPreview         bool              `json:"is_preview"`
-	PRNumber          int               `json:"pr_number"`
+	RunMigrations     bool                `json:"run_migrations"`
+	MigrationCmd      string              `json:"migration_cmd"`
+	Command           []string            `json:"command"`
+	Entrypoint        []string            `json:"entrypoint"`
+	Networks          []string            `json:"networks"`
+	Volumes           []string            `json:"volumes"`
+	Workers           []deploy.WorkerSpec `json:"workers"`
+	IsPreview         bool                `json:"is_preview"`
+	PRNumber          int                 `json:"pr_number"`
 }
 
 type CommandsResponse struct {
@@ -697,6 +702,11 @@ func pollAndExecuteCommands(ctx context.Context, client *http.Client, backupMgr 
 						HostPortBlue:      c.HostPortBlue,
 						HostPortGreen:     c.HostPortGreen,
 						HealthPath:        c.HealthPath,
+						Command:           c.Command,
+						Entrypoint:        c.Entrypoint,
+						Networks:          c.Networks,
+						Volumes:           c.Volumes,
+						Workers:           c.Workers,
 						Secrets:           c.Secrets,
 						Network:           c.Network,
 						CanaryWeight:      c.CanaryWeight,
