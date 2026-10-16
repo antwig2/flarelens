@@ -184,10 +184,16 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResp
 		return o.failResponse(req, "Image pull failed: "+err.Error(), currentSlot, startTime)
 	}
 
-	// 4. Inject secrets into container environment
-	activeSecrets := req.Secrets
-	if len(activeSecrets) == 0 {
-		activeSecrets = loadFallbackEnv(baseServiceName, envName, string(candidateSlot))
+	// 4. Inject secrets into container environment (layered hierarchy)
+	// Base layer: Host .env files (shared env -> service env -> slot env)
+	activeSecrets := loadFallbackEnv(baseServiceName, envName, string(candidateSlot))
+	if activeSecrets == nil {
+		activeSecrets = make(map[string]string)
+	}
+
+	// Overlay layer: In-memory secrets passed directly in DeployRequest (e.g. CI/CD or Cloudflare)
+	for k, v := range req.Secrets {
+		activeSecrets[k] = v
 	}
 
 	envList := make([]string, 0, len(activeSecrets)+4)
@@ -638,30 +644,51 @@ func (o *Orchestrator) emitProgress(req DeployRequest, stage, message string, pe
 }
 
 func loadFallbackEnv(service, envName string, slot ...string) map[string]string {
-	var candidates []string
-	if len(slot) > 0 && slot[0] != "" {
-		candidates = append(candidates,
-			fmt.Sprintf("/opt/kiwid/%s/services/%s-%s/.env", envName, service, slot[0]),
-		)
-	}
-	candidates = append(candidates,
-		fmt.Sprintf("/opt/kiwid/%s/services/%s/.env", envName, service),
-		fmt.Sprintf("/opt/kiwid/%s/services/%s-blue/.env", envName, service),
-		fmt.Sprintf("/opt/kiwid/%s/services/%s-green/.env", envName, service),
-		fmt.Sprintf("/opt/kiwid/%s/.env", envName),
-		fmt.Sprintf("/opt/kiwid/%s/%s.env", envName, service),
-		fmt.Sprintf("/opt/kiwid/prod/%s.env", service),
-		fmt.Sprintf("%s.env", service),
-		".env",
-	)
+	result := make(map[string]string)
 
-	for _, path := range candidates {
-		data, err := os.ReadFile(path)
-		if err == nil {
-			return parseEnvLines(string(data))
+	// Layer 1: Global shared environment (e.g. /opt/kiwid/uat/.env)
+	sharedPaths := []string{
+		fmt.Sprintf("/opt/kiwid/%s/.env", envName),
+		".env",
+	}
+	for _, p := range sharedPaths {
+		if data, err := os.ReadFile(p); err == nil {
+			for k, v := range parseEnvLines(string(data)) {
+				result[k] = v
+			}
+			break
 		}
 	}
-	return nil
+
+	// Layer 2: Service-level environment (e.g. /opt/kiwid/uat/services/bill-api/.env)
+	servicePaths := []string{
+		fmt.Sprintf("/opt/kiwid/%s/services/%s/.env", envName, service),
+		fmt.Sprintf("/opt/kiwid/%s/%s.env", envName, service),
+		fmt.Sprintf("%s.env", service),
+	}
+	for _, p := range servicePaths {
+		if data, err := os.ReadFile(p); err == nil {
+			for k, v := range parseEnvLines(string(data)) {
+				result[k] = v
+			}
+			break
+		}
+	}
+
+	// Layer 3: Slot-specific environment (e.g. /opt/kiwid/uat/services/bill-api-green/.env)
+	if len(slot) > 0 && slot[0] != "" {
+		slotPath := fmt.Sprintf("/opt/kiwid/%s/services/%s-%s/.env", envName, service, slot[0])
+		if data, err := os.ReadFile(slotPath); err == nil {
+			for k, v := range parseEnvLines(string(data)) {
+				result[k] = v
+			}
+		}
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 func parseEnvLines(content string) map[string]string {
