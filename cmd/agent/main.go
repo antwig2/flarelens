@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -259,6 +260,9 @@ func main() {
 
 	// 6. Launch background telemetry heartbeat loop (every 15s)
 	go reporter.StartHeartbeatLoop(ctx)
+
+	// 6b. Launch background command poller loop (polls control plane every 3s for UI snapshots & restores)
+	go startCommandPoller(ctx, backupMgr, cfg, logger)
 
 	// 7. Handle OS Signals (Graceful shutdown & SIGHUP hot reload on Unix)
 	waitForShutdown(cancel, logger, func() {
@@ -565,4 +569,148 @@ func reportHTTPStatus(url string, token string, payload any, logger *slog.Logger
 		}
 		_ = resp.Body.Close()
 	}()
+}
+
+type NodeCommand struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	NodeID   string `json:"node_id"`
+	Tag      string `json:"tag"`
+	Key      string `json:"key"`
+	TargetDB string `json:"target_db"`
+}
+
+type CommandsResponse struct {
+	Commands []NodeCommand `json:"commands"`
+}
+
+func startCommandPoller(ctx context.Context, backupMgr *backup.Manager, cfg *config.Config, logger *slog.Logger) {
+	if cfg.ControlPlane.Endpoint == "" {
+		return
+	}
+	logger.Info("Starting FlareLens command poller loop", "endpoint", cfg.ControlPlane.Endpoint, "node_id", cfg.Identity.NodeID)
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	nodeID := cfg.Identity.NodeID
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			pollAndExecuteCommands(ctx, client, backupMgr, cfg, nodeID, logger)
+		}
+	}
+}
+
+func pollAndExecuteCommands(ctx context.Context, client *http.Client, backupMgr *backup.Manager, cfg *config.Config, nodeID string, logger *slog.Logger) {
+	reqURL := fmt.Sprintf("%s/api/v1/control/commands?node_id=%s", strings.TrimRight(cfg.ControlPlane.Endpoint, "/"), url.QueryEscape(nodeID))
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	if err != nil {
+		return
+	}
+	if cfg.ControlPlane.EnrollToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cfg.ControlPlane.EnrollToken))
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return
+	}
+
+	var cmdResp CommandsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&cmdResp); err != nil {
+		return
+	}
+
+	for _, cmd := range cmdResp.Commands {
+		logger.Info("Received queued command from FlareLens Control Plane", "id", cmd.ID, "type", cmd.Type, "tag", cmd.Tag)
+		switch cmd.Type {
+		case "backup":
+			go func(c NodeCommand) {
+				tag := c.Tag
+				if tag == "" {
+					tag = "manual_ui"
+				}
+				logger.Info("Executing queued database backup...", "tag", tag, "command_id", c.ID)
+				meta, err := backupMgr.CreateBackup(context.Background(), tag)
+				statusPayload := map[string]any{
+					"key":     c.Key,
+					"node_id": nodeID,
+					"tag":     tag,
+				}
+				if err != nil {
+					logger.Error("Command backup execution failed", "id", c.ID, "error", err)
+					statusPayload["status"] = "failed"
+					statusPayload["error"] = err.Error()
+				} else {
+					logger.Info("Command backup execution succeeded", "id", c.ID, "key", meta.Key)
+					statusPayload["key"] = meta.Key
+					statusPayload["status"] = "completed"
+				}
+
+				// Report status back to control plane
+				reportHTTPStatus(
+					fmt.Sprintf("%s/api/v1/control/backup/status", strings.TrimRight(cfg.ControlPlane.Endpoint, "/")),
+					cfg.ControlPlane.EnrollToken,
+					statusPayload,
+					logger,
+				)
+
+				// Acknowledge command so it gets removed from the queue
+				ackCommand(cfg, client, c.ID, nodeID, logger)
+			}(cmd)
+
+		case "restore":
+			go func(c NodeCommand) {
+				logger.Info("Executing queued database restore...", "key", c.Key, "target_db", c.TargetDB, "command_id", c.ID)
+				err := backupMgr.RestoreBackup(context.Background(), c.Key, c.TargetDB)
+				statusPayload := map[string]any{
+					"key":       c.Key,
+					"node_id":   nodeID,
+					"target_db": c.TargetDB,
+					"status":    "completed",
+				}
+				if err != nil {
+					logger.Error("Command restore execution failed", "id", c.ID, "error", err)
+					statusPayload["status"] = "failed"
+					statusPayload["error"] = err.Error()
+				} else {
+					logger.Info("Command restore execution succeeded", "id", c.ID, "key", c.Key)
+				}
+				reportHTTPStatus(
+					fmt.Sprintf("%s/api/v1/control/backup/status", strings.TrimRight(cfg.ControlPlane.Endpoint, "/")),
+					cfg.ControlPlane.EnrollToken,
+					statusPayload,
+					logger,
+				)
+				ackCommand(cfg, client, c.ID, nodeID, logger)
+			}(cmd)
+		}
+	}
+}
+
+func ackCommand(cfg *config.Config, client *http.Client, cmdID string, nodeID string, logger *slog.Logger) {
+	ackURL := fmt.Sprintf("%s/api/v1/control/commands/ack?id=%s&node_id=%s",
+		strings.TrimRight(cfg.ControlPlane.Endpoint, "/"),
+		url.QueryEscape(cmdID),
+		url.QueryEscape(nodeID),
+	)
+	req, err := http.NewRequest("POST", ackURL, nil)
+	if err != nil {
+		return
+	}
+	if cfg.ControlPlane.EnrollToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cfg.ControlPlane.EnrollToken))
+	}
+	if resp, err := client.Do(req); err == nil {
+		_ = resp.Body.Close()
+	}
 }
