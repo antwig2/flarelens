@@ -91,13 +91,54 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResp
 		o.emitProgress(req, "backup", "Pre-deploy database snapshot verified and stored in Cloudflare R2", 10)
 	}
 
-	// 1. Identify active slot and target candidate slot
+	// 1. Resolve declarative service profile (Kamal-style multi-role, workers, ports, migrations, networks)
+	envName := strings.ToLower(req.Env)
+	if envName == "" {
+		envName = "uat"
+	}
+	profile := resolveServiceProfile(req.Service, envName)
+
+	// User overrides in DeployRequest take precedence
+	if req.ContainerPort > 0 {
+		profile.ContainerPort = req.ContainerPort
+	}
+	if req.HealthPath != "" {
+		profile.HealthPath = req.HealthPath
+	}
+	if len(req.Networks) > 0 {
+		profile.Networks = req.Networks
+	}
+	if len(req.Command) > 0 {
+		profile.Command = req.Command
+	}
+	if len(req.Entrypoint) > 0 {
+		profile.Entrypoint = req.Entrypoint
+	}
+	if len(req.Volumes) > 0 {
+		profile.Volumes = req.Volumes
+	}
+	if req.MigrationCmd != "" {
+		profile.MigrationCmd = req.MigrationCmd
+	}
+	if len(req.Workers) > 0 {
+		profile.Workers = req.Workers
+	}
+
+	// 2. Identify active slot and target candidate slot
+	baseServiceName := profile.BaseService
+	slotGreenName := fmt.Sprintf("kiwid-%s-%s-green", envName, baseServiceName)
+	slotBlueName := fmt.Sprintf("kiwid-%s-%s-blue", envName, baseServiceName)
+
 	o.mu.Lock()
 	currentSlot, exists := o.activeSlots[req.Service]
 	if !exists {
-		// Detect by container presence
-		if id, _ := o.runner.FindContainerIDByName(ctx, fmt.Sprintf("%s-green", req.Service)); id != "" {
+		// Detect by container presence on host
+		if id, _ := o.runner.FindContainerIDByName(ctx, slotGreenName); id != "" {
 			currentSlot = SlotGreen
+		} else if id, _ := o.runner.FindContainerIDByName(ctx, fmt.Sprintf("%s-green", req.Service)); id != "" {
+			currentSlot = SlotGreen
+		} else if id, _ := o.runner.FindContainerIDByName(ctx, slotBlueName); id != "" {
+			currentSlot = SlotBlue
 		} else {
 			currentSlot = SlotBlue
 		}
@@ -106,68 +147,70 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResp
 	o.mu.Unlock()
 
 	// Determine host ports for slots
-	portBlue := cmp.Or(req.HostPortBlue, req.ContainerPort+1)
-	portGreen := cmp.Or(req.HostPortGreen, req.ContainerPort+2)
+	portBlue := cmp.Or(req.HostPortBlue, profile.ContainerPort+1)
+	portGreen := cmp.Or(req.HostPortGreen, profile.ContainerPort+2)
 
 	candidatePort := portGreen
 	if candidateSlot == SlotBlue {
 		candidatePort = portBlue
 	}
 
-	candidateName := fmt.Sprintf("%s-%s", req.Service, candidateSlot)
-	prevName := fmt.Sprintf("%s-%s", req.Service, currentSlot)
-
-	// If Ephemeral PR Preview, allocate isolated preview port and container name
+	var candidateName, prevName string
 	if req.IsPreview {
 		previewPort := 9000 + (req.PRNumber % 900)
 		candidatePort = cmp.Or(req.HostPortGreen, previewPort)
 		candidateName = fmt.Sprintf("%s-pr-%d", req.Service, req.PRNumber)
+		prevName = candidateName
 		candidateSlot = Slot(fmt.Sprintf("pr-%d", req.PRNumber))
 		if req.Domain == "" {
 			req.Domain = fmt.Sprintf("pr-%d-%s.kiwid.io", req.PRNumber, req.Service)
+		}
+	} else {
+		// Check if host uses kiwid-env-service-slot naming
+		if _, err := o.runner.FindContainerIDByName(ctx, slotGreenName); err == nil || slotGreenName != "" {
+			candidateName = fmt.Sprintf("kiwid-%s-%s-%s", envName, baseServiceName, candidateSlot)
+			prevName = fmt.Sprintf("kiwid-%s-%s-%s", envName, baseServiceName, currentSlot)
+		} else {
+			candidateName = fmt.Sprintf("%s-%s", req.Service, candidateSlot)
+			prevName = fmt.Sprintf("%s-%s", req.Service, currentSlot)
 		}
 	}
 
 	o.emitProgress(req, "pulling", fmt.Sprintf("Pulling candidate image: %s", req.Image), 15)
 
-	// 2. Pull candidate container image
+	// 3. Pull candidate container image
 	if err := o.runner.PullImage(ctx, req.Image); err != nil {
 		o.logger.Error("Deploy failed during image pull", "error", err)
 		return o.failResponse(req, "Image pull failed: "+err.Error(), currentSlot, startTime)
 	}
 
-	o.emitProgress(req, "starting", fmt.Sprintf("Staging candidate container: %s on port %d", candidateName, candidatePort), 40)
-
-	// 3. Remove stale candidate container if one was lingering from previous failed run
-	if oldID, _ := o.runner.FindContainerIDByName(ctx, candidateName); oldID != "" {
-		_ = o.runner.RemoveContainer(ctx, oldID)
-	}
-
 	// 4. Inject secrets into container environment
-	// Priority 1: In-memory secrets passed from FlareLens Vault (zero disk write)
-	// Priority 2: Fallback to local .env file on host disk for unmigrated services
 	activeSecrets := req.Secrets
 	if len(activeSecrets) == 0 {
-		activeSecrets = loadFallbackEnv(req.Service)
+		activeSecrets = loadFallbackEnv(baseServiceName, envName, string(candidateSlot))
 	}
 
-	envList := make([]string, 0, len(activeSecrets)+3)
+	envList := make([]string, 0, len(activeSecrets)+4)
 	envList = append(envList,
-		fmt.Sprintf("DEPLOY_ENV=%s", cmp.Or(req.Env, "production")),
+		fmt.Sprintf("DEPLOY_ENV=%s", envName),
 		fmt.Sprintf("DEPLOY_SLOT=%s", candidateSlot),
-		fmt.Sprintf("SERVICE_NAME=%s", req.Service),
+		fmt.Sprintf("SERVICE_NAME=%s", baseServiceName),
+		fmt.Sprintf("APP_ENV=%s", envName),
 	)
 	for k, v := range activeSecrets {
 		envList = append(envList, fmt.Sprintf("%s=%s", k, v))
 	}
 
-	network := cmp.Or(req.Network, "kiwid-edge")
+	dbNetwork := fmt.Sprintf("kiwid-%s", envName)
+	if len(profile.Networks) > 1 {
+		dbNetwork = profile.Networks[1]
+	}
 
-	// 3b. Execute Database Schema Migrations (if requested)
-	if req.RunMigrations {
-		migrationCmd := cmp.Or(req.MigrationCmd, "migrate up")
-		o.emitProgress(req, "migrating", fmt.Sprintf("Executing database schema migration: %s", migrationCmd), 25)
-		migrationOutput, err := o.migrator.Run(ctx, req.Image, migrationCmd, envList, network)
+	// 5. Execute Database Schema Migrations (in throwaway ephemeral container)
+	if req.RunMigrations || profile.MigrationCmd != "" {
+		migCmd := cmp.Or(req.MigrationCmd, profile.MigrationCmd)
+		o.emitProgress(req, "migrating", fmt.Sprintf("Executing database schema migration: %s", migCmd), 25)
+		migrationOutput, err := o.migrator.Run(ctx, req.Image, migCmd, envList, dbNetwork)
 		if err != nil {
 			o.logger.Error("Database schema migration failed! Aborting deployment", "error", err, "output", migrationOutput)
 
@@ -187,19 +230,46 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResp
 		o.emitProgress(req, "migrated", "Database schema migration applied successfully", 30)
 	}
 
-	containerID, err := o.runner.CreateContainer(
-		ctx,
-		candidateName,
-		req.Image,
-		envList,
-		candidatePort,
-		req.ContainerPort,
-		network,
-		map[string]string{
-			"kiwid.service": req.Service,
+	o.emitProgress(req, "starting", fmt.Sprintf("Staging candidate container: %s", candidateName), 40)
+
+	// 6. Remove stale candidate container if one was lingering from previous failed run
+	if oldID, _ := o.runner.FindContainerIDByName(ctx, candidateName); oldID != "" {
+		_ = o.runner.RemoveContainer(ctx, oldID)
+	}
+
+	// Resolve volume binds (format slot-specific volume paths if present)
+	resolvedBinds := make([]string, 0, len(profile.Volumes))
+	for _, b := range profile.Volumes {
+		formattedBind := b
+		if strings.Contains(formattedBind, "%s") {
+			formattedBind = fmt.Sprintf(formattedBind, envName, candidateSlot)
+		}
+		// Verify source path exists on host before binding
+		parts := strings.Split(formattedBind, ":")
+		if len(parts) > 0 {
+			if _, statErr := os.Stat(parts[0]); statErr == nil {
+				resolvedBinds = append(resolvedBinds, formattedBind)
+			}
+		}
+	}
+
+	// 7. Create & Start Candidate Container with multi-network and secret volumes
+	containerID, err := o.runner.CreateContainerWithOptions(ctx, ContainerConfig{
+		Name:          candidateName,
+		Image:         req.Image,
+		EnvVars:       envList,
+		Cmd:           profile.Command,
+		Entrypoint:    profile.Entrypoint,
+		Binds:         resolvedBinds,
+		HostPort:      candidatePort,
+		ContainerPort: profile.ContainerPort,
+		Networks:      profile.Networks,
+		Labels: map[string]string{
+			"kiwid.service": baseServiceName,
 			"kiwid.slot":    string(candidateSlot),
+			"kiwid.env":     envName,
 		},
-	)
+	})
 	if err != nil {
 		o.logger.Error("Failed to create candidate container", "error", err)
 		return o.failResponse(req, "Container creation failed: "+err.Error(), currentSlot, startTime)
@@ -211,14 +281,17 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResp
 		return o.failResponse(req, "Container start failed: "+err.Error(), currentSlot, startTime)
 	}
 
-	// 5. Healthcheck Probe (Guardrail)
-	healthPath := cmp.Or(req.HealthPath, "/healthz")
-	probeURL := fmt.Sprintf("http://127.0.0.1:%d%s", candidatePort, healthPath)
+	// 8. Healthcheck Probe Guardrail
+	probeHost, _ := o.runner.InspectContainerIP(ctx, containerID)
+	if probeHost == "" || probeHost == "127.0.0.1" {
+		probeHost = candidateName
+	}
+	probeURL := fmt.Sprintf("http://%s:%d%s", probeHost, profile.ContainerPort, profile.HealthPath)
 	timeout := time.Duration(cmp.Or(req.TimeoutSeconds, 30)) * time.Second
 
 	o.emitProgress(req, "probing", fmt.Sprintf("Probing candidate health at %s (timeout: %s)", probeURL, timeout), 65)
 
-	if err := o.prober.Probe(ctx, probeURL, timeout, 1*time.Second); err != nil {
+	if err := o.prober.Probe(ctx, probeURL, timeout, 500*time.Millisecond); err != nil {
 		// ROLLBACK PATH: Candidate failed health checks!
 		o.logger.Warn("Candidate failed health checks! Triggering automatic rollback",
 			"candidate", candidateName,
@@ -245,7 +318,7 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResp
 
 	currentPort := o.portForSlot(currentSlot, portBlue, portGreen)
 
-	// If Ephemeral PR Preview, register dedicated route and do not touch/drain live production slots
+	// If Ephemeral PR Preview, register dedicated route
 	if req.IsPreview {
 		o.emitProgress(req, "preview_routing", fmt.Sprintf("Candidate healthy! Registering ephemeral preview route https://%s -> port %d", req.Domain, candidatePort), 90)
 		if err := o.traefik.FlipRoute(candidateName, req.Domain, candidatePort); err != nil {
@@ -267,10 +340,10 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResp
 		}
 	}
 
-	// 6a. Optional Canary Soak Phase (Traffic Splitting)
+	// 9. Optional Canary Soak Phase
 	if req.CanaryWeight > 0 && req.CanaryWeight < 100 && req.Domain != "" {
 		o.emitProgress(req, "canary", fmt.Sprintf("Candidate healthy! Starting canary soak: %d%% candidate, %d%% live", req.CanaryWeight, 100-req.CanaryWeight), 75)
-		if err := o.traefik.SetCanaryRoute(req.Service, req.Domain, currentPort, candidatePort, req.CanaryWeight); err != nil {
+		if err := o.traefik.SetCanaryRoute(baseServiceName, req.Domain, currentPort, candidatePort, req.CanaryWeight); err != nil {
 			o.logger.Error("Failed to configure canary route", "error", err)
 			_ = o.runner.StopContainer(ctx, containerID, 2)
 			_ = o.runner.RemoveContainer(ctx, containerID)
@@ -278,19 +351,16 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResp
 		}
 
 		soakDuration := time.Duration(cmp.Or(req.CanaryDuration, 5)) * time.Second
-		o.logger.Info("Holding canary traffic soak", "weight", req.CanaryWeight, "duration", soakDuration)
-
 		select {
 		case <-ctx.Done():
-			_ = o.traefik.FlipRoute(req.Service, req.Domain, currentPort)
+			_ = o.traefik.SwitchRoute(envName, baseServiceName, prevName, profile.ContainerPort, req.Domain)
 			_ = o.runner.StopContainer(ctx, containerID, 2)
 			_ = o.runner.RemoveContainer(ctx, containerID)
 			return o.failResponse(req, "Deployment cancelled during canary soak", currentSlot, startTime)
 		case <-time.After(soakDuration):
-			// Probe candidate again to ensure it remained healthy during soak
 			if err := o.prober.Probe(ctx, probeURL, 5*time.Second, 500*time.Millisecond); err != nil {
 				o.logger.Warn("Candidate failed during canary soak! Rolling back to 100% live", "error", err)
-				_ = o.traefik.FlipRoute(req.Service, req.Domain, currentPort)
+				_ = o.traefik.SwitchRoute(envName, baseServiceName, prevName, profile.ContainerPort, req.Domain)
 				_ = o.runner.StopContainer(ctx, containerID, 2)
 				_ = o.runner.RemoveContainer(ctx, containerID)
 				return DeployResponse{
@@ -307,40 +377,43 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResp
 		}
 	}
 
-	// 6b. Final Traffic Route Switch
-	o.emitProgress(req, "flipping", fmt.Sprintf("Candidate healthy! Atomically flipping route %s to %s (port %d)", req.Domain, candidateSlot, candidatePort), 85)
-
-	if req.Domain != "" {
-		if err := o.traefik.FlipRoute(req.Service, req.Domain, candidatePort); err != nil {
-			o.logger.Error("Failed to flip Traefik route", "error", err)
-			// Destroy candidate and rollback
-			_ = o.runner.StopContainer(ctx, containerID, 2)
-			_ = o.runner.RemoveContainer(ctx, containerID)
-			return o.failResponse(req, "Traefik route flip failed: "+err.Error(), currentSlot, startTime)
+	// 10. Zero-Downtime Traffic Switch in Traefik
+	o.emitProgress(req, "flipping", fmt.Sprintf("Candidate healthy! Atomically flipping live route to %s (%s)", candidateName, candidateSlot), 88)
+	if err := o.traefik.SwitchRoute(envName, baseServiceName, candidateName, profile.ContainerPort, req.Domain); err != nil {
+		o.logger.Warn("Traefik SwitchRoute warning, trying FlipRoute fallback", "error", err)
+		if req.Domain != "" {
+			_ = o.traefik.FlipRoute(candidateName, req.Domain, candidatePort)
 		}
 	}
 
-	// Update active slot
+	// Update active slot in memory
 	o.mu.Lock()
 	o.activeSlots[req.Service] = candidateSlot
 	o.mu.Unlock()
 
-	// 7. Drain and stop old slot
-	drainSec := cmp.Or(req.DrainSeconds, 15)
-	o.emitProgress(req, "draining", fmt.Sprintf("Draining previous slot %s for %d seconds...", currentSlot, drainSec), 90)
+	// 11. Companion Workers Rollout (Kamal-style)
+	for _, worker := range profile.Workers {
+		workerName := fmt.Sprintf("kiwid-%s-%s", envName, worker.Name)
+		o.emitProgress(req, "worker", fmt.Sprintf("Rolling out companion worker: %s", workerName), 92)
+		o.rolloutWorker(ctx, req.Image, workerName, worker, envList, profile.Networks)
+	}
 
-	go func(prevContainerName string, drainTime time.Duration) {
+	// 12. Drain and stop previous web slot
+	drainSec := cmp.Or(req.DrainSeconds, 15)
+	o.emitProgress(req, "draining", fmt.Sprintf("Draining previous slot %s for %d seconds...", currentSlot, drainSec), 95)
+
+	go func(oldContainerName string, drainTime time.Duration) {
 		time.Sleep(drainTime)
 		drainCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		if prevID, _ := o.runner.FindContainerIDByName(drainCtx, prevContainerName); prevID != "" {
+		if prevID, _ := o.runner.FindContainerIDByName(drainCtx, oldContainerName); prevID != "" {
 			_ = o.runner.StopContainer(drainCtx, prevID, 10)
-			o.logger.Info("Previous deployment slot stopped after drain period", "container", prevContainerName)
+			o.logger.Info("Previous deployment slot stopped after drain period", "container", oldContainerName)
 		}
 	}(prevName, time.Duration(drainSec)*time.Second)
 
-	o.emitProgress(req, "completed", fmt.Sprintf("Deployment succeeded! Active slot is now %s on port %d", candidateSlot, candidatePort), 100)
+	o.emitProgress(req, "completed", fmt.Sprintf("Deployment succeeded! Active slot is now %s (%s)", candidateSlot, candidateName), 100)
 
 	return DeployResponse{
 		DeploymentID: req.DeploymentID,
@@ -350,6 +423,147 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResp
 		ActivePort:   candidatePort,
 		Message:      fmt.Sprintf("Successfully deployed %s to slot %s", req.Service, candidateSlot),
 		DurationMS:   time.Since(startTime).Milliseconds(),
+	}
+}
+
+// rolloutWorker starts the new companion worker container and replaces the previous instance
+func (o *Orchestrator) rolloutWorker(
+	ctx context.Context,
+	image string,
+	containerName string,
+	worker WorkerSpec,
+	envVars []string,
+	networks []string,
+) {
+	// 1. Remove previous stopped container or prepare graceful swap
+	staleID, _ := o.runner.FindContainerIDByName(ctx, containerName)
+	if staleID != "" {
+		_ = o.runner.StopContainer(ctx, staleID, 10)
+		_ = o.runner.RemoveContainer(ctx, staleID)
+	}
+
+	workerNets := worker.Networks
+	if len(workerNets) == 0 {
+		workerNets = networks
+	}
+
+	resolvedWorkerBinds := make([]string, 0, len(worker.Volumes))
+	for _, b := range worker.Volumes {
+		parts := strings.Split(b, ":")
+		if len(parts) > 0 {
+			if _, statErr := os.Stat(parts[0]); statErr == nil {
+				resolvedWorkerBinds = append(resolvedWorkerBinds, b)
+			}
+		}
+	}
+
+	// 2. Create and start worker container
+	workerID, err := o.runner.CreateContainerWithOptions(ctx, ContainerConfig{
+		Name:       containerName,
+		Image:      image,
+		EnvVars:    envVars,
+		Cmd:        worker.Command,
+		Entrypoint: worker.Entrypoint,
+		Binds:      resolvedWorkerBinds,
+		Networks:   workerNets,
+		Labels: map[string]string{
+			"kiwid.worker": worker.Name,
+		},
+	})
+	if err != nil {
+		o.logger.Error("Failed to create companion worker", "worker", containerName, "error", err)
+		return
+	}
+
+	if err := o.runner.StartContainer(ctx, workerID); err != nil {
+		o.logger.Error("Failed to start companion worker", "worker", containerName, "error", err)
+		return
+	}
+
+	o.logger.Info("Companion worker rolled out successfully", "worker", containerName, "id", workerID)
+}
+
+// ServiceProfile defines declarative defaults for known microservices
+type ServiceProfile struct {
+	BaseService   string
+	ContainerPort int
+	HealthPath    string
+	Command       []string
+	Entrypoint    []string
+	MigrationCmd  string
+	Volumes       []string
+	Networks      []string
+	Workers       []WorkerSpec
+}
+
+func resolveServiceProfile(service, envName string) ServiceProfile {
+	s := strings.ToLower(service)
+
+	switch {
+	case strings.Contains(s, "bill") && !strings.Contains(s, "ui"):
+		return ServiceProfile{
+			BaseService:   "bill-api",
+			ContainerPort: 8081,
+			HealthPath:    "/health",
+			Command:       []string{"server", "start"},
+			MigrationCmd:  "/kiwid-bill migrate core-up",
+			Networks:      []string{"kiwid-edge", fmt.Sprintf("kiwid-%s", envName)},
+			Volumes: []string{
+				"/opt/kiwid/%s/services/bill-api-%s/secrets:/app/config:ro",
+			},
+			Workers: []WorkerSpec{
+				{
+					Name:     "bill-drainer",
+					Command:  []string{"drainer", "start"},
+					Networks: []string{"kiwid-edge", fmt.Sprintf("kiwid-%s", envName)},
+					Volumes: []string{
+						fmt.Sprintf("/opt/kiwid/%s/services/bill-drainer/secrets:/app/config:ro", envName),
+					},
+				},
+			},
+		}
+
+	case strings.Contains(s, "inferri") || strings.Contains(s, "workflow"):
+		return ServiceProfile{
+			BaseService:   "workflow-api",
+			ContainerPort: 8086,
+			HealthPath:    "/health",
+			Command:       []string{"--secret-resolver", "env"},
+			MigrationCmd:  "/inferri migrate up",
+			Networks:      []string{"kiwid-edge", fmt.Sprintf("kiwid-%s", envName)},
+			Workers: []WorkerSpec{
+				{
+					Name:       "workflow-worker",
+					Entrypoint: []string{"/inferri", "worker", "start"},
+					Command:    []string{"--secret-resolver", "env"},
+					Networks:   []string{"kiwid-edge", fmt.Sprintf("kiwid-%s", envName)},
+				},
+			},
+		}
+
+	case strings.Contains(s, "bill-ui"):
+		return ServiceProfile{
+			BaseService:   "bill-ui",
+			ContainerPort: 80,
+			HealthPath:    "/",
+			Networks:      []string{"kiwid-edge", fmt.Sprintf("kiwid-%s", envName)},
+		}
+
+	case strings.Contains(s, "portal"):
+		return ServiceProfile{
+			BaseService:   "portal-ui",
+			ContainerPort: 80,
+			HealthPath:    "/",
+			Networks:      []string{"kiwid-edge", fmt.Sprintf("kiwid-%s", envName)},
+		}
+
+	default:
+		return ServiceProfile{
+			BaseService:   service,
+			ContainerPort: 8080,
+			HealthPath:    "/healthz",
+			Networks:      []string{"kiwid-edge"},
+		}
 	}
 }
 
@@ -423,13 +637,23 @@ func (o *Orchestrator) emitProgress(req DeployRequest, stage, message string, pe
 	}
 }
 
-func loadFallbackEnv(service string) map[string]string {
-	candidates := []string{
+func loadFallbackEnv(service, envName string, slot ...string) map[string]string {
+	var candidates []string
+	if len(slot) > 0 && slot[0] != "" {
+		candidates = append(candidates,
+			fmt.Sprintf("/opt/kiwid/%s/services/%s-%s/.env", envName, service, slot[0]),
+		)
+	}
+	candidates = append(candidates,
+		fmt.Sprintf("/opt/kiwid/%s/services/%s/.env", envName, service),
+		fmt.Sprintf("/opt/kiwid/%s/services/%s-blue/.env", envName, service),
+		fmt.Sprintf("/opt/kiwid/%s/services/%s-green/.env", envName, service),
+		fmt.Sprintf("/opt/kiwid/%s/.env", envName),
+		fmt.Sprintf("/opt/kiwid/%s/%s.env", envName, service),
 		fmt.Sprintf("/opt/kiwid/prod/%s.env", service),
-		"/opt/kiwid/prod/.env",
 		fmt.Sprintf("%s.env", service),
 		".env",
-	}
+	)
 
 	for _, path := range candidates {
 		data, err := os.ReadFile(path)

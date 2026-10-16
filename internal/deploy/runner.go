@@ -3,12 +3,16 @@ package deploy
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -31,7 +35,7 @@ func NewDockerRunner(socketPath string) *DockerRunner {
 	return &DockerRunner{
 		client: &http.Client{
 			Transport: transport,
-			Timeout:   120 * time.Second, // Long timeout for large image pulls
+			Timeout:   180 * time.Second, // Long timeout for large image pulls
 		},
 		socket: cleanPath,
 	}
@@ -42,10 +46,25 @@ func (r *DockerRunner) PullImage(ctx context.Context, image string) error {
 	if strings.HasPrefix(r.socket, "mock") {
 		return nil
 	}
+
+	// 1. Try host docker CLI first if available (supports credentials seamlessly like Kamal)
+	if dockerBin, err := exec.LookPath("docker"); err == nil && dockerBin != "" {
+		cmd := exec.CommandContext(ctx, dockerBin, "pull", image)
+		if _, err := cmd.CombinedOutput(); err == nil {
+			return nil
+		}
+	}
+
+	// 2. Docker Engine API fallback with X-Registry-Auth
 	u := fmt.Sprintf("http://localhost/images/create?fromImage=%s", url.QueryEscape(image))
 	req, err := http.NewRequestWithContext(ctx, "POST", u, nil)
 	if err != nil {
 		return err
+	}
+
+	// Read Docker credentials from standard config paths if present
+	if authHeader := resolveRegistryAuth(image); authHeader != "" {
+		req.Header.Set("X-Registry-Auth", authHeader)
 	}
 
 	resp, err := r.client.Do(req)
@@ -64,8 +83,53 @@ func (r *DockerRunner) PullImage(ctx context.Context, image string) error {
 	return nil
 }
 
+func resolveRegistryAuth(image string) string {
+	homeDir, _ := os.UserHomeDir()
+	paths := []string{
+		filepath.Join(homeDir, ".docker", "config.json"),
+		"/root/.docker/config.json",
+		"/etc/docker/config.json",
+	}
+
+	var registry string
+	parts := strings.Split(image, "/")
+	if len(parts) > 1 && (strings.Contains(parts[0], ".") || strings.Contains(parts[0], ":")) {
+		registry = parts[0]
+	}
+
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		var cfg struct {
+			Auths map[string]struct {
+				Auth string `json:"auth"`
+			} `json:"auths"`
+		}
+		if err := json.Unmarshal(data, &cfg); err == nil && len(cfg.Auths) > 0 {
+			if registry != "" {
+				if entry, ok := cfg.Auths[registry]; ok && entry.Auth != "" {
+					return base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf(`{"auth":"%s","serveraddress":"%s"}`, entry.Auth, registry)))
+				}
+			}
+			for server, entry := range cfg.Auths {
+				if entry.Auth != "" {
+					return base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf(`{"auth":"%s","serveraddress":"%s"}`, entry.Auth, server)))
+				}
+			}
+		}
+	}
+	return ""
+}
+
 type containerCreateConfig struct {
 	Image        string                         `json:"Image"`
+	Cmd          []string                       `json:"Cmd,omitempty"`
+	Entrypoint   []string                       `json:"Entrypoint,omitempty"`
 	Env          []string                       `json:"Env"`
 	Labels       map[string]string              `json:"Labels,omitempty"`
 	ExposedPorts map[string]struct{}            `json:"ExposedPorts,omitempty"`
@@ -73,6 +137,7 @@ type containerCreateConfig struct {
 }
 
 type containerHostConfig struct {
+	Binds         []string                      `json:"Binds,omitempty"`
 	PortBindings  map[string][]portBindingEntry `json:"PortBindings,omitempty"`
 	NetworkMode   string                        `json:"NetworkMode,omitempty"`
 	OomScoreAdj   int                           `json:"OomScoreAdj"`
@@ -87,7 +152,7 @@ func determineOomScore(serviceName string) int {
 	if strings.Contains(lower, "redis") || strings.Contains(lower, "dragonfly") {
 		return -800
 	}
-	if strings.Contains(lower, "worker") || strings.Contains(lower, "cron") {
+	if strings.Contains(lower, "worker") || strings.Contains(lower, "cron") || strings.Contains(lower, "drainer") {
 		return 500
 	}
 	return 0
@@ -101,45 +166,97 @@ type restartPolicy struct {
 	Name string `json:"Name"`
 }
 
-// CreateContainer creates a container with in-memory secrets and port bindings
-func (r *DockerRunner) CreateContainer(
-	ctx context.Context,
-	name string,
-	image string,
-	envVars []string,
-	hostPort, containerPort int,
-	network string,
-	labels map[string]string,
-) (string, error) {
-	portKey := fmt.Sprintf("%d/tcp", containerPort)
+// ContainerConfig defines full parameters for running containerized roles
+type ContainerConfig struct {
+	Name          string
+	Image         string
+	EnvVars       []string
+	Cmd           []string
+	Entrypoint    []string
+	Binds         []string
+	HostPort      int
+	ContainerPort int
+	Networks      []string
+	Labels        map[string]string
+}
 
-	cfg := containerCreateConfig{
-		Image:  image,
-		Env:    envVars,
-		Labels: labels,
-		ExposedPorts: map[string]struct{}{
-			portKey: {},
-		},
+// ConnectNetwork attaches an existing container to a Docker network
+func (r *DockerRunner) ConnectNetwork(ctx context.Context, containerID string, networkName string) error {
+	if strings.HasPrefix(r.socket, "mock") || networkName == "" {
+		return nil
+	}
+	u := fmt.Sprintf("http://localhost/networks/%s/connect", url.PathEscape(networkName))
+	payload := map[string]string{
+		"Container": containerID,
+	}
+	bodyBytes, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", u, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("connect network %s: %w", networkName, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusResetContent && resp.StatusCode != http.StatusNotModified {
+		body, _ := io.ReadAll(resp.Body)
+		bodyStr := string(body)
+		if !strings.Contains(bodyStr, "already exists") && !strings.Contains(bodyStr, "already attached") {
+			return fmt.Errorf("connect network %s returned %d: %s", networkName, resp.StatusCode, bodyStr)
+		}
+	}
+	return nil
+}
+
+// CreateContainerWithOptions creates a container with multi-network, volumes, custom cmd, and entrypoint
+func (r *DockerRunner) CreateContainerWithOptions(ctx context.Context, cfg ContainerConfig) (string, error) {
+	primaryNetwork := "kiwid-edge"
+	if len(cfg.Networks) > 0 && cfg.Networks[0] != "" {
+		primaryNetwork = cfg.Networks[0]
+	}
+
+	createCfg := containerCreateConfig{
+		Image:      cfg.Image,
+		Cmd:        cfg.Cmd,
+		Entrypoint: cfg.Entrypoint,
+		Env:        cfg.EnvVars,
+		Labels:     cfg.Labels,
 		HostConfig: containerHostConfig{
-			PortBindings: map[string][]portBindingEntry{
-				portKey: {
-					{HostPort: fmt.Sprintf("%d", hostPort)},
-				},
-			},
-			NetworkMode: network,
-			OomScoreAdj: determineOomScore(name),
+			Binds:       cfg.Binds,
+			NetworkMode: primaryNetwork,
+			OomScoreAdj: determineOomScore(cfg.Name),
 			RestartPolicy: restartPolicy{
 				Name: "always",
 			},
 		},
 	}
 
-	bodyBytes, err := json.Marshal(cfg)
+	if cfg.ContainerPort > 0 {
+		portKey := fmt.Sprintf("%d/tcp", cfg.ContainerPort)
+		createCfg.ExposedPorts = map[string]struct{}{
+			portKey: {},
+		}
+		if cfg.HostPort > 0 {
+			createCfg.HostConfig.PortBindings = map[string][]portBindingEntry{
+				portKey: {
+					{HostPort: fmt.Sprintf("%d", cfg.HostPort)},
+				},
+			}
+		}
+	}
+
+	bodyBytes, err := json.Marshal(createCfg)
 	if err != nil {
 		return "", err
 	}
 
-	u := fmt.Sprintf("http://localhost/containers/create?name=%s", url.QueryEscape(name))
+	u := fmt.Sprintf("http://localhost/containers/create?name=%s", url.QueryEscape(cfg.Name))
 	req, err := http.NewRequestWithContext(ctx, "POST", u, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return "", err
@@ -164,7 +281,41 @@ func (r *DockerRunner) CreateContainer(
 		return "", err
 	}
 
+	// Connect to secondary networks (e.g. kiwid-uat or kiwid-prod)
+	if len(cfg.Networks) > 1 {
+		for _, netName := range cfg.Networks[1:] {
+			if netName != "" && netName != primaryNetwork {
+				_ = r.ConnectNetwork(ctx, result.ID, netName)
+			}
+		}
+	}
+
 	return result.ID, nil
+}
+
+// CreateContainer creates a container with in-memory secrets and port bindings (backwards-compatible wrapper)
+func (r *DockerRunner) CreateContainer(
+	ctx context.Context,
+	name string,
+	image string,
+	envVars []string,
+	hostPort, containerPort int,
+	network string,
+	labels map[string]string,
+) (string, error) {
+	networks := []string{}
+	if network != "" {
+		networks = append(networks, network)
+	}
+	return r.CreateContainerWithOptions(ctx, ContainerConfig{
+		Name:          name,
+		Image:         image,
+		EnvVars:       envVars,
+		HostPort:      hostPort,
+		ContainerPort: containerPort,
+		Networks:      networks,
+		Labels:        labels,
+	})
 }
 
 // StartContainer launches the created container
@@ -269,4 +420,51 @@ func (r *DockerRunner) FindContainerIDByName(ctx context.Context, name string) (
 	}
 
 	return data.ID, nil
+}
+
+// InspectContainerIP retrieves the container's IP address on the primary or edge bridge network
+func (r *DockerRunner) InspectContainerIP(ctx context.Context, containerID string) (string, error) {
+	if strings.HasPrefix(r.socket, "mock") {
+		return "127.0.0.1", nil
+	}
+	u := fmt.Sprintf("http://localhost/containers/%s/json", url.PathEscape(containerID))
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("inspect container status %d", resp.StatusCode)
+	}
+
+	var data struct {
+		NetworkSettings struct {
+			IPAddress string `json:"IPAddress"`
+			Networks  map[string]struct {
+				IPAddress string `json:"IPAddress"`
+			} `json:"Networks"`
+		} `json:"NetworkSettings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return "", err
+	}
+
+	if edgeNet, ok := data.NetworkSettings.Networks["kiwid-edge"]; ok && edgeNet.IPAddress != "" {
+		return edgeNet.IPAddress, nil
+	}
+	if data.NetworkSettings.IPAddress != "" {
+		return data.NetworkSettings.IPAddress, nil
+	}
+	for _, net := range data.NetworkSettings.Networks {
+		if net.IPAddress != "" {
+			return net.IPAddress, nil
+		}
+	}
+	return "", nil
 }

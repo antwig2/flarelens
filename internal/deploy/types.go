@@ -2,29 +2,43 @@ package deploy
 
 import "time"
 
+// WorkerSpec defines a companion background worker container (like Kamal workers)
+type WorkerSpec struct {
+	Name       string   `json:"name"`                 // e.g. "bill-drainer"
+	Command    []string `json:"command,omitempty"`    // e.g. ["drainer", "start"]
+	Entrypoint []string `json:"entrypoint,omitempty"` // e.g. ["/inferri", "worker", "start"]
+	Volumes    []string `json:"volumes,omitempty"`    // host:container bind mounts
+	Networks   []string `json:"networks,omitempty"`   // additional docker networks
+}
+
 // DeployRequest defines a declarative deployment trigger
 type DeployRequest struct {
-	DeploymentID   string            `json:"deployment_id"`
-	Service        string            `json:"service"`          // e.g. "bill-api"
-	Image          string            `json:"image"`            // e.g. "ghcr.io/kiwid/bill-api:v1.5.0"
-	Env            string            `json:"env"`              // "prod", "uat"
-	Domain         string            `json:"domain"`           // e.g. "bill.kiwid.io"
-	ContainerPort  int               `json:"container_port"`   // internal port, e.g. 8080
-	HostPortBlue   int               `json:"host_port_blue"`   // host port for blue slot, e.g. 8081
-	HostPortGreen  int               `json:"host_port_green"`  // host port for green slot, e.g. 8082
-	HealthPath     string            `json:"health_path"`      // e.g. "/healthz"
-	TimeoutSeconds int               `json:"timeout_seconds"`  // e.g. 30
-	DrainSeconds   int               `json:"drain_seconds"`    // e.g. 15
+	DeploymentID      string            `json:"deployment_id"`
+	Service           string            `json:"service"`          // e.g. "kiwid-bill"
+	Image             string            `json:"image"`            // e.g. "ghcr.io/kiwidsys/kiwid-bill:uat"
+	Env               string            `json:"env"`              // "prod", "uat"
+	Domain            string            `json:"domain"`           // e.g. "api-uat.kiwidbilling.com"
+	ContainerPort     int               `json:"container_port"`   // internal port, e.g. 8081
+	HostPortBlue      int               `json:"host_port_blue"`   // host port for blue slot
+	HostPortGreen     int               `json:"host_port_green"`  // host port for green slot
+	HealthPath        string            `json:"health_path"`      // e.g. "/health"
+	Command           []string          `json:"command,omitempty"`
+	Entrypoint        []string          `json:"entrypoint,omitempty"`
+	Volumes           []string          `json:"volumes,omitempty"`
+	Networks          []string          `json:"networks,omitempty"` // e.g. ["kiwid-edge", "kiwid-uat"]
+	Workers           []WorkerSpec      `json:"workers,omitempty"`  // companion background workers
+	TimeoutSeconds    int               `json:"timeout_seconds"`
+	DrainSeconds      int               `json:"drain_seconds"`
 	Secrets           map[string]string `json:"secrets"`          // in-memory env secrets (zero disk write)
-	Network           string            `json:"network"`          // docker network, e.g. "kiwid-edge"
+	Network           string            `json:"network"`          // primary network fallback
 	PreDeploySnapshot bool              `json:"pre_deploy_snapshot"`
-	NodeID            string            `json:"node_id"`          // target node or "all"
+	NodeID            string            `json:"node_id"`
 	RunMigrations     bool              `json:"run_migrations"`
-	MigrationCmd      string            `json:"migration_cmd"`    // e.g. "migrate up"
-	CanaryWeight      int               `json:"canary_weight"`    // percentage of traffic to candidate (e.g. 10 for 10%)
-	CanaryDuration    int               `json:"canary_duration"`  // seconds to hold canary before 100% promotion
-	IsPreview         bool              `json:"is_preview"`       // ephemeral PR preview environment
-	PRNumber          int               `json:"pr_number"`        // GitHub Pull Request number
+	MigrationCmd      string            `json:"migration_cmd"`
+	CanaryWeight      int               `json:"canary_weight"`
+	CanaryDuration    int               `json:"canary_duration"`
+	IsPreview         bool              `json:"is_preview"`
+	PRNumber          int               `json:"pr_number"`
 }
 
 // TeardownRequest defines parameters to tear down an ephemeral PR preview container and route

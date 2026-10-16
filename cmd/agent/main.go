@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/antwig2/flarelens/internal/backup"
@@ -123,7 +124,7 @@ func main() {
 	// 4. Initialize Blue/Green deployment engine
 	dockerRunner := deploy.NewDockerRunner(cfg.Docker.Socket)
 	healthProber := deploy.NewHealthProber()
-	traefikFlipper := deploy.NewTraefikRouteFlipper("/etc/traefik/dynamic")
+	traefikFlipper := deploy.NewTraefikRouteFlipper("")
 
 	// 5. Connect to NATS Event Fabric (Embedded or Client mode)
 	natsClient := transport.NewNATSClient(cfg.NATS.URL, cfg.NATS.AuthToken, logger)
@@ -626,6 +627,8 @@ func startCommandPoller(ctx context.Context, backupMgr *backup.Manager, orchestr
 	}
 }
 
+var inFlightCommands sync.Map
+
 func pollAndExecuteCommands(ctx context.Context, client *http.Client, backupMgr *backup.Manager, orchestrator *deploy.Orchestrator, cfg *config.Config, nodeID string, logger *slog.Logger) {
 	reqURL := fmt.Sprintf("%s/api/v1/control/commands?node_id=%s", strings.TrimRight(cfg.ControlPlane.Endpoint, "/"), url.QueryEscape(nodeID))
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
@@ -652,10 +655,18 @@ func pollAndExecuteCommands(ctx context.Context, client *http.Client, backupMgr 
 	}
 
 	for _, cmd := range cmdResp.Commands {
+		if _, loaded := inFlightCommands.LoadOrStore(cmd.ID, true); loaded {
+			continue // Already in-flight
+		}
+
+		// Acknowledge immediately so worker removes it from R2 / memory queue
+		ackCommand(cfg, client, cmd.ID, nodeID, logger)
+
 		logger.Info("Received queued command from FlareLens Control Plane", "id", cmd.ID, "type", cmd.Type, "tag", cmd.Tag)
 		switch cmd.Type {
 		case "deploy":
 			go func(c NodeCommand) {
+				defer inFlightCommands.Delete(c.ID)
 				startTime := time.Now()
 				logger.Info("Executing queued deploy command...", "service", c.Service, "image", c.Image, "id", c.ID)
 
@@ -673,21 +684,9 @@ func pollAndExecuteCommands(ctx context.Context, client *http.Client, backupMgr 
 				var deployStatus = "success"
 				var deployMsg = fmt.Sprintf("Deployed %s image %s", c.Service, c.Image)
 
-				// Check if host deployment script exists (e.g. /opt/kiwid/bin/deploy-kiwid-bill.sh or deploy-inferri.sh)
-				if _, err := os.Stat(deployScript); err == nil {
-					logger.Info("Executing host deploy script", "script", deployScript, "env", envName, "version", versionTag)
-					cmdExec := exec.CommandContext(context.Background(), deployScript, envName, versionTag)
-					out, err := cmdExec.CombinedOutput()
-					if err != nil {
-						logger.Error("Host deploy script failed", "error", err, "output", string(out))
-						deployStatus = "failed"
-						deployMsg = fmt.Sprintf("Deploy script error: %v (output: %s)", err, string(out))
-					} else {
-						logger.Info("Host deploy script completed successfully", "output", string(out))
-						deployMsg = fmt.Sprintf("Successfully deployed %s (%s) via %s", c.Service, versionTag, deployScript)
-					}
-				} else if orchestrator != nil {
-					// Fall back to native blue/green container orchestrator
+				// Prefer native Kamal-style container orchestrator (multi-network, companion workers, migrations, Traefik zero-downtime)
+				if orchestrator != nil && os.Getenv("FLARELENS_USE_HOST_SCRIPTS") != "true" {
+					logger.Info("Executing native container orchestration (zero-downtime)", "service", c.Service, "image", c.Image)
 					dReq := deploy.DeployRequest{
 						DeploymentID:      c.ID,
 						Service:           c.Service,
@@ -711,6 +710,21 @@ func pollAndExecuteCommands(ctx context.Context, client *http.Client, backupMgr 
 					resp := orchestrator.Deploy(context.Background(), dReq)
 					deployStatus = resp.Status
 					deployMsg = resp.Message
+				} else if _, err := os.Stat(deployScript); err == nil {
+					logger.Info("Executing host deploy script", "script", deployScript, "env", envName, "version", versionTag)
+					cmdExec := exec.CommandContext(context.Background(), deployScript, envName, versionTag)
+					out, err := cmdExec.CombinedOutput()
+					if err != nil {
+						logger.Error("Host deploy script failed", "error", err, "output", string(out))
+						deployStatus = "failed"
+						deployMsg = fmt.Sprintf("Deploy script error: %v (output: %s)", err, string(out))
+					} else {
+						logger.Info("Host deploy script completed successfully", "output", string(out))
+						deployMsg = fmt.Sprintf("Successfully deployed %s (%s) via %s", c.Service, versionTag, deployScript)
+					}
+				} else {
+					deployStatus = "failed"
+					deployMsg = fmt.Sprintf("Neither native container orchestrator nor host deploy script %s available", deployScript)
 				}
 
 				// Report deployment outcome to Cloudflare Worker Control Plane

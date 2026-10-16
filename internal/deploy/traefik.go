@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 )
 
 // TraefikRouteFlipper updates Traefik's dynamic file provider routing atomically
@@ -13,11 +14,60 @@ type TraefikRouteFlipper struct {
 
 func NewTraefikRouteFlipper(dynamicDir string) *TraefikRouteFlipper {
 	if dynamicDir == "" {
-		dynamicDir = "/etc/traefik/dynamic"
+		candidates := []string{
+			"/opt/kiwid/infrastructure/traefik/routes",
+			"/etc/traefik/dynamic/routes",
+			"/etc/traefik/dynamic",
+		}
+		for _, c := range candidates {
+			if _, err := os.Stat(c); err == nil {
+				dynamicDir = c
+				break
+			}
+		}
+		if dynamicDir == "" {
+			dynamicDir = "/etc/traefik/dynamic"
+		}
 	}
 	return &TraefikRouteFlipper{
 		dynamicDir: dynamicDir,
 	}
+}
+
+// SwitchRoute atomically points Traefik to the candidate container/port, updating existing route files or creating a new route
+func (t *TraefikRouteFlipper) SwitchRoute(stack, service, targetHost string, targetPort int, domain string) error {
+	if err := os.MkdirAll(t.dynamicDir, 0755); err != nil {
+		return fmt.Errorf("failed to create traefik dynamic config directory: %w", err)
+	}
+
+	targetURL := fmt.Sprintf("http://%s:%d", targetHost, targetPort)
+
+	// Check if existing route file exists (e.g. uat-bill-api.yml, prod-bill-api.yml, etc.)
+	candidates := []string{
+		filepath.Join(t.dynamicDir, fmt.Sprintf("%s-%s.yml", stack, service)),
+		filepath.Join(t.dynamicDir, fmt.Sprintf("%s-%s.yaml", stack, service)),
+		filepath.Join(t.dynamicDir, fmt.Sprintf("%s.yml", service)),
+		filepath.Join(t.dynamicDir, fmt.Sprintf("%s.yaml", service)),
+	}
+
+	for _, p := range candidates {
+		data, err := os.ReadFile(p)
+		if err == nil {
+			content := string(data)
+			re := regexp.MustCompile(`url:\s*["']?http://[^:\s'"]+:\d+["']?`)
+			if re.MatchString(content) {
+				updated := re.ReplaceAllString(content, fmt.Sprintf("url: %s", targetURL))
+				tmpPath := p + ".tmp"
+				if err := os.WriteFile(tmpPath, []byte(updated), 0644); err == nil {
+					_ = os.Rename(tmpPath, p)
+					return nil
+				}
+			}
+		}
+	}
+
+	// Fall back to generating clean Traefik router config
+	return t.FlipRoute(fmt.Sprintf("%s-%s", stack, service), domain, targetPort)
 }
 
 // FlipRoute atomically points Traefik domain traffic to the target port
