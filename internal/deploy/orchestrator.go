@@ -147,8 +147,8 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResp
 	o.mu.Unlock()
 
 	// Determine host ports for slots
-	portBlue := cmp.Or(req.HostPortBlue, profile.ContainerPort+1)
-	portGreen := cmp.Or(req.HostPortGreen, profile.ContainerPort+2)
+	portBlue := cmp.Or(req.HostPortBlue, profile.HostPortBlue, profile.ContainerPort+1)
+	portGreen := cmp.Or(req.HostPortGreen, profile.HostPortGreen, profile.ContainerPort+2)
 
 	candidatePort := portGreen
 	if candidateSlot == SlotBlue {
@@ -493,6 +493,8 @@ func (o *Orchestrator) rolloutWorker(
 type ServiceProfile struct {
 	BaseService   string
 	ContainerPort int
+	HostPortBlue  int
+	HostPortGreen int
 	HealthPath    string
 	Command       []string
 	Entrypoint    []string
@@ -510,6 +512,8 @@ func resolveServiceProfile(service, envName string) ServiceProfile {
 		return ServiceProfile{
 			BaseService:   "bill-api",
 			ContainerPort: 8081,
+			HostPortBlue:  8082,
+			HostPortGreen: 8083,
 			HealthPath:    "/health",
 			Command:       []string{"server", "start"},
 			MigrationCmd:  "/kiwid-bill migrate core-up",
@@ -533,6 +537,8 @@ func resolveServiceProfile(service, envName string) ServiceProfile {
 		return ServiceProfile{
 			BaseService:   "workflow-api",
 			ContainerPort: 8086,
+			HostPortBlue:  8087,
+			HostPortGreen: 8088,
 			HealthPath:    "/health",
 			Command:       []string{"--secret-resolver", "env"},
 			MigrationCmd:  "/inferri migrate up",
@@ -551,6 +557,8 @@ func resolveServiceProfile(service, envName string) ServiceProfile {
 		return ServiceProfile{
 			BaseService:   "bill-ui",
 			ContainerPort: 80,
+			HostPortBlue:  8084,
+			HostPortGreen: 8085,
 			HealthPath:    "/",
 			Networks:      []string{"kiwid-edge", fmt.Sprintf("kiwid-%s", envName)},
 		}
@@ -559,6 +567,8 @@ func resolveServiceProfile(service, envName string) ServiceProfile {
 		return ServiceProfile{
 			BaseService:   "portal-ui",
 			ContainerPort: 80,
+			HostPortBlue:  8091,
+			HostPortGreen: 8092,
 			HealthPath:    "/",
 			Networks:      []string{"kiwid-edge", fmt.Sprintf("kiwid-%s", envName)},
 		}
