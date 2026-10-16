@@ -240,7 +240,7 @@ func main() {
 		} else {
 			registerCommandListeners(natsClient, deployOrchestrator, backupMgr, flagStore, meshMgr, cfg, logger)
 		}
-	} else {
+	} else if cfg.NATS.Mode != "disabled" && cfg.NATS.Mode != "none" && cfg.NATS.Mode != "off" {
 		if err := natsClient.Connect(ctx); err != nil {
 			logger.Warn("Initial NATS connection failed; will retry in background",
 				"url", cfg.NATS.URL,
@@ -249,6 +249,8 @@ func main() {
 		} else {
 			registerCommandListeners(natsClient, deployOrchestrator, backupMgr, flagStore, meshMgr, cfg, logger)
 		}
+	} else {
+		logger.Info("NATS transport disabled; operating in HTTPS / Cloudflare Edge Control Plane mode")
 	}
 	defer natsClient.Close()
 
