@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -35,6 +36,40 @@ var (
 func main() {
 	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-version" || os.Args[1] == "-v") {
 		fmt.Printf("FlareLens Host Agent v%s (commit: %s, built at: %s, built by: %s)\n", Version, Commit, Date, BuiltBy)
+		os.Exit(0)
+	}
+
+	// Subcommand: backup (Runs on-demand streaming database backup directly to Cloudflare R2)
+	if len(os.Args) > 1 && os.Args[1] == "backup" {
+		cfg, err := config.Load(os.Args[2:])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(1)
+		}
+		logger := initLogger(cfg.Telemetry.LogLevel)
+		dumper := backup.NewPostgresDumper(
+			cfg.Database.Mode,
+			cfg.Database.ServiceName,
+			cfg.Database.Host,
+			cfg.Database.Port,
+			cmp.Or(cfg.Database.User, os.Getenv("PGUSER")),
+			cmp.Or(cfg.Database.Database, os.Getenv("PGDATABASE")),
+		)
+		r2Client := backup.NewR2Client(
+			cfg.Database.Backup.R2Endpoint,
+			cfg.Database.Backup.R2AccessKeyID,
+			cfg.Database.Backup.R2SecretAccessKey,
+		)
+		backupMgr := backup.NewManager(dumper, r2Client, nil, cfg, logger)
+		fmt.Printf("Starting zero-disk streaming backup of %s (%s) to Cloudflare R2 (%s)...\n",
+			cfg.Database.Database, cfg.Database.ServiceName, cfg.Database.Backup.R2Bucket)
+		meta, err := backupMgr.CreateBackup(context.Background(), "manual_cli")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "❌ Backup failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("✅ Backup successfully streamed to Cloudflare R2!\n• Key: %s\n• Bucket: %s\n• Timestamp: %s\n",
+			meta.Key, meta.Bucket, meta.Timestamp.Format(time.RFC3339))
 		os.Exit(0)
 	}
 
@@ -98,8 +133,8 @@ func main() {
 		cfg.Database.ServiceName,
 		cfg.Database.Host,
 		cfg.Database.Port,
-		os.Getenv("PGUSER"),
-		os.Getenv("PGDATABASE"),
+		cmp.Or(cfg.Database.User, os.Getenv("PGUSER")),
+		cmp.Or(cfg.Database.Database, os.Getenv("PGDATABASE")),
 	)
 	r2Client := backup.NewR2Client(
 		cfg.Database.Backup.R2Endpoint,

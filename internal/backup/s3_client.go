@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -54,14 +55,22 @@ func (c *R2Client) PutObject(ctx context.Context, bucket, key string, data io.Re
 	var body io.Reader = data
 	payloadHash := "UNSIGNED-PAYLOAD"
 
+	if size <= 0 {
+		buf, err := io.ReadAll(data)
+		if err != nil {
+			return fmt.Errorf("failed to read data stream: %w", err)
+		}
+		size = int64(len(buf))
+		body = bytes.NewReader(buf)
+		payloadHash = sha256Hex(buf)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "PUT", targetURL, body)
 	if err != nil {
 		return err
 	}
 
-	if size > 0 {
-		req.ContentLength = size
-	}
+	req.ContentLength = size
 	req.Header.Set("Content-Type", contentType)
 
 	c.signRequest(req, payloadHash)

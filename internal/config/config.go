@@ -75,6 +75,8 @@ type DatabaseConfig struct {
 	Mode        string       `yaml:"mode"` // "host_native", "container", "external", "disabled"
 	Host        string       `yaml:"host"`
 	Port        int          `yaml:"port"`
+	User        string       `yaml:"user"`
+	Database    string       `yaml:"database"`
 	SSLMode     string       `yaml:"ssl_mode"`
 	ServiceName string       `yaml:"service_name"`
 	Backup      BackupConfig `yaml:"backup"`
