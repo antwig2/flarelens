@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -263,8 +264,8 @@ func main() {
 	// 6. Launch background telemetry heartbeat loop (every 15s)
 	go reporter.StartHeartbeatLoop(ctx)
 
-	// 6b. Launch background command poller loop (polls control plane every 3s for UI snapshots & restores)
-	go startCommandPoller(ctx, backupMgr, cfg, logger)
+	// 6b. Launch background command poller loop (polls control plane every 3s for UI snapshots, restores & deployments)
+	go startCommandPoller(ctx, backupMgr, deployOrchestrator, cfg, logger)
 
 	// 7. Handle OS Signals (Graceful shutdown & SIGHUP hot reload on Unix)
 	waitForShutdown(cancel, logger, func() {
@@ -574,19 +575,37 @@ func reportHTTPStatus(url string, token string, payload any, logger *slog.Logger
 }
 
 type NodeCommand struct {
-	ID       string `json:"id"`
-	Type     string `json:"type"`
-	NodeID   string `json:"node_id"`
-	Tag      string `json:"tag"`
-	Key      string `json:"key"`
-	TargetDB string `json:"target_db"`
+	ID                string            `json:"id"`
+	Type              string            `json:"type"`
+	NodeID            string            `json:"node_id"`
+	Tag               string            `json:"tag"`
+	Key               string            `json:"key"`
+	TargetDB          string            `json:"target_db"`
+	DeploymentID      string            `json:"deployment_id"`
+	Service           string            `json:"service"`
+	Image             string            `json:"image"`
+	Env               string            `json:"env"`
+	ContainerPort     int               `json:"container_port"`
+	HostPortBlue      int               `json:"host_port_blue"`
+	HostPortGreen     int               `json:"host_port_green"`
+	Domain            string            `json:"domain"`
+	HealthPath        string            `json:"health_path"`
+	Secrets           map[string]string `json:"secrets"`
+	Network           string            `json:"network"`
+	CanaryWeight      int               `json:"canary_weight"`
+	CanaryDuration    int               `json:"canary_duration"`
+	PreDeploySnapshot bool              `json:"pre_deploy_snapshot"`
+	RunMigrations     bool              `json:"run_migrations"`
+	MigrationCmd      string            `json:"migration_cmd"`
+	IsPreview         bool              `json:"is_preview"`
+	PRNumber          int               `json:"pr_number"`
 }
 
 type CommandsResponse struct {
 	Commands []NodeCommand `json:"commands"`
 }
 
-func startCommandPoller(ctx context.Context, backupMgr *backup.Manager, cfg *config.Config, logger *slog.Logger) {
+func startCommandPoller(ctx context.Context, backupMgr *backup.Manager, orchestrator *deploy.Orchestrator, cfg *config.Config, logger *slog.Logger) {
 	if cfg.ControlPlane.Endpoint == "" {
 		return
 	}
@@ -602,12 +621,12 @@ func startCommandPoller(ctx context.Context, backupMgr *backup.Manager, cfg *con
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			pollAndExecuteCommands(ctx, client, backupMgr, cfg, nodeID, logger)
+			pollAndExecuteCommands(ctx, client, backupMgr, orchestrator, cfg, nodeID, logger)
 		}
 	}
 }
 
-func pollAndExecuteCommands(ctx context.Context, client *http.Client, backupMgr *backup.Manager, cfg *config.Config, nodeID string, logger *slog.Logger) {
+func pollAndExecuteCommands(ctx context.Context, client *http.Client, backupMgr *backup.Manager, orchestrator *deploy.Orchestrator, cfg *config.Config, nodeID string, logger *slog.Logger) {
 	reqURL := fmt.Sprintf("%s/api/v1/control/commands?node_id=%s", strings.TrimRight(cfg.ControlPlane.Endpoint, "/"), url.QueryEscape(nodeID))
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
@@ -635,6 +654,95 @@ func pollAndExecuteCommands(ctx context.Context, client *http.Client, backupMgr 
 	for _, cmd := range cmdResp.Commands {
 		logger.Info("Received queued command from FlareLens Control Plane", "id", cmd.ID, "type", cmd.Type, "tag", cmd.Tag)
 		switch cmd.Type {
+		case "deploy":
+			go func(c NodeCommand) {
+				startTime := time.Now()
+				logger.Info("Executing queued deploy command...", "service", c.Service, "image", c.Image, "id", c.ID)
+
+				deployScript := fmt.Sprintf("/opt/kiwid/bin/deploy-%s.sh", c.Service)
+				envName := c.Env
+				if envName == "" {
+					envName = "uat"
+				}
+
+				versionTag := c.Image
+				if idx := strings.LastIndex(versionTag, ":"); idx != -1 {
+					versionTag = versionTag[idx+1:]
+				}
+
+				var deployStatus = "success"
+				var deployMsg = fmt.Sprintf("Deployed %s image %s", c.Service, c.Image)
+
+				// Check if host deployment script exists (e.g. /opt/kiwid/bin/deploy-kiwid-bill.sh or deploy-inferri.sh)
+				if _, err := os.Stat(deployScript); err == nil {
+					logger.Info("Executing host deploy script", "script", deployScript, "env", envName, "version", versionTag)
+					cmdExec := exec.CommandContext(context.Background(), deployScript, envName, versionTag)
+					out, err := cmdExec.CombinedOutput()
+					if err != nil {
+						logger.Error("Host deploy script failed", "error", err, "output", string(out))
+						deployStatus = "failed"
+						deployMsg = fmt.Sprintf("Deploy script error: %v (output: %s)", err, string(out))
+					} else {
+						logger.Info("Host deploy script completed successfully", "output", string(out))
+						deployMsg = fmt.Sprintf("Successfully deployed %s (%s) via %s", c.Service, versionTag, deployScript)
+					}
+				} else if orchestrator != nil {
+					// Fall back to native blue/green container orchestrator
+					dReq := deploy.DeployRequest{
+						DeploymentID:      c.ID,
+						Service:           c.Service,
+						Image:             c.Image,
+						Env:               c.Env,
+						Domain:            c.Domain,
+						ContainerPort:     c.ContainerPort,
+						HostPortBlue:      c.HostPortBlue,
+						HostPortGreen:     c.HostPortGreen,
+						HealthPath:        c.HealthPath,
+						Secrets:           c.Secrets,
+						Network:           c.Network,
+						CanaryWeight:      c.CanaryWeight,
+						CanaryDuration:    c.CanaryDuration,
+						PreDeploySnapshot: c.PreDeploySnapshot,
+						RunMigrations:     c.RunMigrations,
+						MigrationCmd:      c.MigrationCmd,
+						IsPreview:         c.IsPreview,
+						PRNumber:          c.PRNumber,
+					}
+					resp := orchestrator.Deploy(context.Background(), dReq)
+					deployStatus = resp.Status
+					deployMsg = resp.Message
+				}
+
+				// Report deployment outcome to Cloudflare Worker Control Plane
+				if cfg.ControlPlane.Endpoint != "" {
+					reportHTTPStatus(
+						fmt.Sprintf("%s/api/v1/control/deploy/status", strings.TrimRight(cfg.ControlPlane.Endpoint, "/")),
+						cfg.ControlPlane.EnrollToken,
+						map[string]any{
+							"deployment_id": c.ID,
+							"service":       c.Service,
+							"status":        deployStatus,
+							"message":       deployMsg,
+							"duration_ms":   time.Since(startTime).Milliseconds(),
+						},
+						logger,
+					)
+				}
+				ackCommand(cfg, client, c.ID, nodeID, logger)
+			}(cmd)
+
+		case "preview_teardown":
+			go func(c NodeCommand) {
+				logger.Info("Executing queued preview teardown...", "service", c.Service, "pr_number", c.PRNumber, "command_id", c.ID)
+				if orchestrator != nil {
+					tdReq := deploy.TeardownRequest{
+						Service:  c.Service,
+						PRNumber: c.PRNumber,
+					}
+					_ = orchestrator.TeardownPreview(context.Background(), tdReq)
+				}
+				ackCommand(cfg, client, c.ID, nodeID, logger)
+			}(cmd)
 		case "backup":
 			go func(c NodeCommand) {
 				tag := c.Tag
