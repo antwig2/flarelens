@@ -21,6 +21,7 @@ type BackupMetadata struct {
 	Tag       string    `json:"tag"`
 	NodeID    string    `json:"node_id"`
 	Service   string    `json:"service"`
+	Database  string    `json:"database,omitempty"`
 }
 
 // BackupTriggerRequest represents on-demand backup trigger payload
@@ -63,8 +64,13 @@ func NewManager(
 	}
 }
 
-// CreateBackup streams a pg_dump to Cloudflare R2
-func (m *Manager) CreateBackup(ctx context.Context, tag string) (*BackupMetadata, error) {
+// CreateBackup streams a pg_dump to Cloudflare R2 using the default database
+func (m *Manager) CreateBackup(ctx context.Context, tag string, targetKey ...string) (*BackupMetadata, error) {
+	return m.CreateBackupForDB(ctx, tag, "", targetKey...)
+}
+
+// CreateBackupForDB streams a pg_dump to Cloudflare R2 for a specific target database
+func (m *Manager) CreateBackupForDB(ctx context.Context, tag, targetDB string, targetKey ...string) (*BackupMetadata, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -77,15 +83,23 @@ func (m *Manager) CreateBackup(ctx context.Context, tag string) (*BackupMetadata
 	now := time.Now().UTC()
 	safeTag := cmp.Or(tag, "scheduled")
 
+	if targetDB == "" {
+		targetDB = m.cfg.Database.Database
+	}
+
 	key := fmt.Sprintf("%s/%s_%s.sql.gz", prefix, now.Format("20060102-150405"), safeTag)
+	if len(targetKey) > 0 && targetKey[0] != "" {
+		key = targetKey[0]
+	}
 
 	m.logger.Info("Starting zero-disk streaming backup to Cloudflare R2",
 		"bucket", bucket,
 		"key", key,
 		"tag", safeTag,
+		"database", targetDB,
 	)
 
-	stream, err := m.dumper.StreamDump(ctx)
+	stream, err := m.dumper.StreamDumpDB(ctx, targetDB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initiate pg_dump stream: %w", err)
 	}
@@ -103,11 +117,13 @@ func (m *Manager) CreateBackup(ctx context.Context, tag string) (*BackupMetadata
 		Tag:       safeTag,
 		NodeID:    m.cfg.Identity.NodeID,
 		Service:   m.cfg.Database.ServiceName,
+		Database:  targetDB,
 	}
 
 	m.logger.Info("Database snapshot uploaded successfully to Cloudflare R2",
 		"key", key,
 		"bucket", bucket,
+		"database", targetDB,
 	)
 
 	// Broadcast backup completion event via NATS

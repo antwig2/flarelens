@@ -146,15 +146,31 @@ func main() {
 	)
 	backupMgr := backup.NewManager(dumper, r2Client, natsClient, cfg, logger)
 
+	// Helper to resolve target DB from service
+	resolveDBForService := func(service string) string {
+		s := strings.ToLower(service)
+		if strings.Contains(s, "inferri") || strings.Contains(s, "workflow") {
+			return "workflow_uat"
+		}
+		if strings.Contains(s, "bill") {
+			return "kiwid_uat"
+		}
+		return cmp.Or(cfg.Database.Database, os.Getenv("PGDATABASE"), "kiwid_uat")
+	}
+
 	// Hook pre-deploy database snapshot guardrail into deploy orchestrator
-	deployOrchestrator.SetPreDeployHook(func(hookCtx context.Context, tag string) error {
-		_, hookErr := backupMgr.CreateBackup(hookCtx, tag)
+	deployOrchestrator.SetPreDeployHook(func(hookCtx context.Context, service, tag string) error {
+		targetDB := resolveDBForService(service)
+		logger.Info("Executing pre-deploy database snapshot guardrail", "service", service, "database", targetDB, "tag", tag)
+		_, hookErr := backupMgr.CreateBackupForDB(hookCtx, tag, targetDB)
 		return hookErr
 	})
 
 	// Hook automated snapshot rollback in case of migration failure
-	deployOrchestrator.SetRollbackHook(func(hookCtx context.Context, tag string) error {
-		return backupMgr.RestoreLatestMatchingTag(hookCtx, tag, "")
+	deployOrchestrator.SetRollbackHook(func(hookCtx context.Context, service, tag string) error {
+		targetDB := resolveDBForService(service)
+		logger.Warn("Executing automated snapshot rollback following migration failure", "service", service, "database", targetDB, "tag", tag)
+		return backupMgr.RestoreLatestMatchingTag(hookCtx, tag, targetDB)
 	})
 
 	// Start automated cron scheduler for backups
@@ -773,8 +789,8 @@ func pollAndExecuteCommands(ctx context.Context, client *http.Client, backupMgr 
 				if tag == "" {
 					tag = "manual_ui"
 				}
-				logger.Info("Executing queued database backup...", "tag", tag, "command_id", c.ID)
-				meta, err := backupMgr.CreateBackup(context.Background(), tag)
+				logger.Info("Executing queued database backup...", "tag", tag, "key", c.Key, "command_id", c.ID)
+				meta, err := backupMgr.CreateBackup(context.Background(), tag, c.Key)
 				statusPayload := map[string]any{
 					"key":     c.Key,
 					"node_id": nodeID,

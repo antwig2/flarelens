@@ -92,8 +92,11 @@ func TestPreDeployHookAbortsOnFailure(t *testing.T) {
 	orch := NewOrchestrator(runner, prober, traefik, nil, "test-node", nil)
 
 	hookCalled := false
-	orch.SetPreDeployHook(func(ctx context.Context, tag string) error {
+	orch.SetPreDeployHook(func(ctx context.Context, service, tag string) error {
 		hookCalled = true
+		if service != "bill-api" {
+			t.Errorf("Expected service bill-api, got %s", service)
+		}
 		return context.DeadlineExceeded
 	})
 
@@ -143,14 +146,20 @@ func TestMigrationFailureTriggersRollback(t *testing.T) {
 	orch := NewOrchestrator(runner, prober, traefik, nil, "test-node", nil)
 
 	snapshotCalled := false
-	orch.SetPreDeployHook(func(ctx context.Context, tag string) error {
+	orch.SetPreDeployHook(func(ctx context.Context, service, tag string) error {
 		snapshotCalled = true
+		if service != "bill-api" {
+			t.Errorf("Expected service bill-api, got %s", service)
+		}
 		return nil
 	})
 
 	rollbackCalled := false
-	orch.SetRollbackHook(func(ctx context.Context, tag string) error {
+	orch.SetRollbackHook(func(ctx context.Context, service, tag string) error {
 		rollbackCalled = true
+		if service != "bill-api" {
+			t.Errorf("Expected service bill-api, got %s", service)
+		}
 		return nil
 	})
 
@@ -255,6 +264,40 @@ func TestTeardownPreview(t *testing.T) {
 	routeFile := filepath.Join(tmpDir, "bill-api-pr-42.yaml")
 	if _, err := os.Stat(routeFile); !os.IsNotExist(err) {
 		t.Errorf("Expected preview route file to be removed after teardown")
+	}
+}
+
+func TestSkipMigrationsWhenRunMigrationsIsFalse(t *testing.T) {
+	runner := NewDockerRunner("mock://socket")
+	prober := NewHealthProber()
+	traefik := NewTraefikRouteFlipper(t.TempDir())
+	orch := NewOrchestrator(runner, prober, traefik, nil, "test-node", nil)
+
+	snapshotCalled := false
+	orch.SetPreDeployHook(func(ctx context.Context, service, tag string) error {
+		snapshotCalled = true
+		return nil
+	})
+
+	// Run deploy with RunMigrations = false and PreDeploySnapshot = false
+	// Note: bill-api has a default MigrationCmd in profile, but because RunMigrations is false,
+	// no snapshot and no migration should be executed.
+	req := DeployRequest{
+		DeploymentID:      "dep-skip-mig",
+		Service:           "bill-api",
+		Image:             "nonexistent-image:invalid",
+		PreDeploySnapshot: false,
+		RunMigrations:     false,
+	}
+
+	// This will fail during PullImage because the image doesn't exist, which proves
+	// that it never tried to execute preDeployHook or migrations before step 3 (pull)!
+	resp := orch.Deploy(context.Background(), req)
+	if snapshotCalled {
+		t.Errorf("Expected pre-deploy snapshot NOT to be called when RunMigrations is false and PreDeploySnapshot is false")
+	}
+	if resp.Status != "failed" {
+		t.Errorf("Expected deploy to fail on mock socket, got status: %s", resp.Status)
 	}
 }
 

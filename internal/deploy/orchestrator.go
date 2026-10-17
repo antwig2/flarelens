@@ -14,10 +14,10 @@ import (
 )
 
 // PreDeploySnapshotHook defines a callback executed before candidate container staging
-type PreDeploySnapshotHook func(ctx context.Context, tag string) error
+type PreDeploySnapshotHook func(ctx context.Context, service, tag string) error
 
 // PreDeployRollbackHook defines a callback executed if candidate staging or migrations fail
-type PreDeployRollbackHook func(ctx context.Context, tag string) error
+type PreDeployRollbackHook func(ctx context.Context, service, tag string) error
 
 // Orchestrator executes zero-downtime Blue/Green deployments with automated rollback
 type Orchestrator struct {
@@ -72,19 +72,25 @@ func (o *Orchestrator) SetRollbackHook(hook PreDeployRollbackHook) {
 func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResponse {
 	startTime := time.Now()
 
+	// Guarantee pre-deploy snapshot whenever database migrations are requested
+	if req.RunMigrations {
+		req.PreDeploySnapshot = true
+	}
+
 	o.logger.Info("Starting Blue/Green deployment",
 		"service", req.Service,
 		"image", req.Image,
 		"env", req.Env,
 		"domain", req.Domain,
 		"pre_deploy_snapshot", req.PreDeploySnapshot,
+		"run_migrations", req.RunMigrations,
 	)
 
-	// 0. Pre-Deploy Guardrail: Database Snapshot (if requested)
+	// 0. Pre-Deploy Guardrail: Database Snapshot (if requested or migrations enabled)
 	if req.PreDeploySnapshot && o.preDeployHook != nil {
 		o.emitProgress(req, "backup", "Executing pre-deploy database snapshot guardrail...", 5)
 		snapshotTag := fmt.Sprintf("pre-deploy-%s", req.Service)
-		if err := o.preDeployHook(ctx, snapshotTag); err != nil {
+		if err := o.preDeployHook(ctx, req.Service, snapshotTag); err != nil {
 			o.logger.Error("Pre-deploy database snapshot failed! Aborting deployment", "error", err)
 			return o.failResponse(req, "Pre-deploy snapshot guardrail failed: "+err.Error(), SlotBlue, startTime)
 		}
@@ -212,28 +218,30 @@ func (o *Orchestrator) Deploy(ctx context.Context, req DeployRequest) DeployResp
 		dbNetwork = profile.Networks[1]
 	}
 
-	// 5. Execute Database Schema Migrations (in throwaway ephemeral container)
-	if req.RunMigrations || profile.MigrationCmd != "" {
+	// 5. Execute Database Schema Migrations (in throwaway ephemeral container only when requested)
+	if req.RunMigrations {
 		migCmd := cmp.Or(req.MigrationCmd, profile.MigrationCmd)
-		o.emitProgress(req, "migrating", fmt.Sprintf("Executing database schema migration: %s", migCmd), 25)
-		migrationOutput, err := o.migrator.Run(ctx, req.Image, migCmd, envList, dbNetwork)
-		if err != nil {
-			o.logger.Error("Database schema migration failed! Aborting deployment", "error", err, "output", migrationOutput)
+		if migCmd != "" {
+			o.emitProgress(req, "migrating", fmt.Sprintf("Executing database schema migration: %s", migCmd), 25)
+			migrationOutput, err := o.migrator.Run(ctx, req.Image, migCmd, envList, dbNetwork)
+			if err != nil {
+				o.logger.Error("Database schema migration failed! Aborting deployment", "error", err, "output", migrationOutput)
 
-			// Automated rollback to pre-deploy snapshot if guardrail was enabled
-			if req.PreDeploySnapshot && o.rollbackHook != nil {
-				o.emitProgress(req, "rollback", "Restoring database schema to pre-deploy snapshot...", 28)
-				snapshotTag := fmt.Sprintf("pre-deploy-%s", req.Service)
-				if rbErr := o.rollbackHook(ctx, snapshotTag); rbErr != nil {
-					o.logger.Error("Failed to restore pre-deploy snapshot after migration error", "error", rbErr)
-				} else {
-					o.logger.Info("Database schema successfully rolled back to pre-deploy snapshot")
+				// Automated rollback to pre-deploy snapshot if guardrail was enabled
+				if req.PreDeploySnapshot && o.rollbackHook != nil {
+					o.emitProgress(req, "rollback", "Restoring database schema to pre-deploy snapshot...", 28)
+					snapshotTag := fmt.Sprintf("pre-deploy-%s", req.Service)
+					if rbErr := o.rollbackHook(ctx, req.Service, snapshotTag); rbErr != nil {
+						o.logger.Error("Failed to restore pre-deploy snapshot after migration error", "error", rbErr)
+					} else {
+						o.logger.Info("Database schema successfully rolled back to pre-deploy snapshot")
+					}
 				}
-			}
 
-			return o.failResponse(req, "Database migration failed: "+err.Error(), currentSlot, startTime)
+				return o.failResponse(req, "Database migration failed: "+err.Error(), currentSlot, startTime)
+			}
+			o.emitProgress(req, "migrated", "Database schema migration applied successfully", 30)
 		}
-		o.emitProgress(req, "migrated", "Database schema migration applied successfully", 30)
 	}
 
 	o.emitProgress(req, "starting", fmt.Sprintf("Staging candidate container: %s", candidateName), 40)

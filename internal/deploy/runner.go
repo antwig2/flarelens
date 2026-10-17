@@ -113,12 +113,12 @@ func resolveRegistryAuth(image string) string {
 		if err := json.Unmarshal(data, &cfg); err == nil && len(cfg.Auths) > 0 {
 			if registry != "" {
 				if entry, ok := cfg.Auths[registry]; ok && entry.Auth != "" {
-					return base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf(`{"auth":"%s","serveraddress":"%s"}`, entry.Auth, registry)))
+					return base64.StdEncoding.EncodeToString(fmt.Appendf(nil, `{"auth":"%s","serveraddress":"%s"}`, entry.Auth, registry))
 				}
 			}
 			for server, entry := range cfg.Auths {
 				if entry.Auth != "" {
-					return base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf(`{"auth":"%s","serveraddress":"%s"}`, entry.Auth, server)))
+					return base64.StdEncoding.EncodeToString(fmt.Appendf(nil, `{"auth":"%s","serveraddress":"%s"}`, entry.Auth, server))
 				}
 			}
 		}

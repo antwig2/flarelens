@@ -41,12 +41,20 @@ func NewPostgresDumper(mode, serviceName, host string, port int, user, database 
 
 // StreamDump launches pg_dump and streams gzipped bytes through an io.PipeReader
 func (d *PostgresDumper) StreamDump(ctx context.Context) (io.ReadCloser, error) {
+	return d.StreamDumpDB(ctx, d.database)
+}
+
+// StreamDumpDB launches pg_dump for a target database and streams gzipped bytes through an io.PipeReader
+func (d *PostgresDumper) StreamDumpDB(ctx context.Context, targetDB string) (io.ReadCloser, error) {
+	if targetDB == "" {
+		targetDB = d.database
+	}
 	var cmd *exec.Cmd
 
 	if d.mode == "container" {
-		cmd = exec.CommandContext(ctx, "docker", "exec", "-i", d.serviceName, "pg_dump", "-U", d.user, d.database)
+		cmd = exec.CommandContext(ctx, "docker", "exec", "-i", d.serviceName, "pg_dump", "-U", d.user, targetDB)
 	} else {
-		cmd = exec.CommandContext(ctx, "pg_dump", "-h", d.host, "-p", strconv.Itoa(d.port), "-U", d.user, d.database)
+		cmd = exec.CommandContext(ctx, "pg_dump", "-h", d.host, "-p", strconv.Itoa(d.port), "-U", d.user, targetDB)
 	}
 
 	stdout, err := cmd.StdoutPipe()
