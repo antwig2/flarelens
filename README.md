@@ -1,202 +1,273 @@
 # FlareLens
 
-**The Sovereign Control Plane for Your Organisation's Infrastructure.**
+> **Your infrastructure. One control plane.**
 
-[FlareLens](https://flarelens.dev) unifies server fleet management, zero-trust private networking, GitOps rollouts, and telemetry into a single, high-polish platform. Instead of managing a complex Kubernetes cluster or paying thousands of dollars for fragmented SaaS tools (Datadog + Tailscale + Doppler + PagerDuty), FlareLens delivers a unified serverless control plane powered by Cloudflare Workers and a lean Go host daemon.
+FlareLens is an open-source infrastructure operations and security platform that brings server management, private networking, automated deployments, secrets, access control, and observability into one unified experience.
 
-[![Runtime](https://img.shields.io/badge/Runtime-Cloudflare_Workers-F38020?style=flat&logo=cloudflare)](https://workers.cloudflare.com)
-[![TypeScript](https://img.shields.io/badge/Language-TypeScript_5.6-3178C6?style=flat&logo=typescript)](https://www.typescriptlang.org/)
-[![Host Daemon](https://img.shields.io/badge/Daemon-flarelensd_(Go)-00ADD8?style=flat&logo=go)](https://github.com/antwig2/flarelensd)
-[![Protocol](https://img.shields.io/badge/Network-WireGuard_P2P-red.svg)](https://www.wireguard.com)
-[![Storage](https://img.shields.io/badge/Storage-Cloudflare_R2_Parquet-teal.svg)](https://www.cloudflare.com/developer-platform/r2/)
-[![Egress](https://img.shields.io/badge/Egress_Fees-$0_Zero_Egress-success)](#)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+Built on Cloudflare Workers and a lightweight Go host agent, FlareLens helps engineering teams manage infrastructure across public clouds, private data centers, bare-metal servers, and hybrid environments without introducing unnecessary operational complexity.
+
+*Manage what you own. Secure what you connect. See everything that matters.*
+
+[![Website](https://img.shields.io/badge/Website-flarelens.dev-blue)](https://flarelens.dev/)
+[![GitHub](https://img.shields.io/badge/GitHub-antwig2%2Fflarelens-181717?logo=github)](https://github.com/antwig2/flarelens)
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/antwig2/flarelens)
+[![Host Daemon](https://img.shields.io/badge/Daemon-flarelensd_(Go)-00ADD8?style=flat&logo=go)](https://github.com/antwig2/flarelensd)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
+[Website](https://flarelens.dev/) · [GitHub](https://github.com/antwig2/flarelens) · [Host Agent (`flarelensd`)](https://github.com/antwig2/flarelensd) · [Deploy to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/antwig2/flarelens)
 
 ---
 
-## What is FlareLens?
+## Infrastructure operations, simplified.
 
-Every growing organisation needs a central brain to coordinate its infrastructure. Traditionally, teams are forced to choose between two painful extremes:
-1. **The Overkill Path (Kubernetes)**: Managing `etcd`, CNI plugins, ingress controllers, and YAML manifests just to run a few dozen containers across VMs.
-2. **The Fragmented SaaS Path**: Cobbling together 5–6 different SaaS subscriptions (Tailscale for VPN, Datadog for APM, Doppler for secrets, BetterStack for logs, and PagerDuty for alerts) — racking up \$1,500+/mo in subscription and data egress bills.
+Modern infrastructure is distributed across cloud providers, virtual machines, private networks, containers, and developer environments.
 
-FlareLens is the **sovereign middle path**: an edge control plane that acts as the thermostat for your infrastructure.
+Managing it often means combining several independent tools for provisioning, networking, deployment, security, monitoring, and incident response. Each tool introduces another dashboard, configuration model, integration, and operational dependency.
+
+**FlareLens brings these capabilities together.**
+
+Instead of assembling and maintaining a fragmented infrastructure management stack, engineering teams can operate their environments through one coordinated control plane.
+
+FlareLens is designed around three principles:
+
+1. **Unified operations**: Manage infrastructure, connectivity, deployments, and telemetry in one place.
+2. **Infrastructure ownership**: Keep applications and workloads running in environments you control.
+3. **Operational simplicity**: Reduce the number of components required to operate reliable infrastructure.
+
+---
+
+## Everything you need to operate your infrastructure.
+
+### 🖥️ Fleet Management
+*Know what is running, where it is running, and how it is performing.*
+* Discover, register, and manage servers across your organisation.
+* Maintain an inventory of connected hosts, operating systems, hardware resources, services, and operational status from a central dashboard.
+* Monitor resource utilisation, track configuration changes, and coordinate desired-state reconciliation across managed nodes.
+
+### 🌐 Private Networking
+*Connect your infrastructure securely, wherever it runs.*
+* Build encrypted private networks between servers, developer workstations, databases, and internal services using WireGuard.
+* FlareLens coordinates peer discovery, network identities, and private service resolution without requiring a traditional central VPN concentrator for direct peer connections.
+* Connect infrastructure across multiple cloud providers and private environments while keeping internal services off the public internet.
+
+### 🚀 Deployment Automation
+*Ship changes with confidence.*
+* Coordinate application deployments across managed hosts using Git-driven workflows.
+* Manage container workloads, deployment configurations, release health checks, and traffic routing through a central interface.
+* Support blue/green deployment strategies, controlled releases, and automated rollback when application health checks fail.
+
+### 🔐 Secrets Management
+*Protect sensitive configuration throughout its lifecycle.*
+* Manage application credentials, API keys, certificates, and runtime configuration from a central secrets interface.
+* Use encrypted storage, controlled distribution, and role-based access to reduce dependence on manually maintained configuration files.
+* Integrate secrets delivery into deployment workflows while minimising unnecessary exposure to operators and applications.
+
+### 📊 Observability
+*Understand what is happening across your infrastructure.*
+* Collect and explore infrastructure metrics, application logs, container events, and operational signals through a unified monitoring experience.
+* FlareLens uses a storage-oriented telemetry architecture built around Cloudflare R2, Apache Parquet, and DuckDB to support cost-conscious historical analysis.
+* Move from fleet overview to individual host diagnostics without switching between multiple monitoring platforms.
+
+### 🛡️ Identity & Access
+*Give the right people the right access.*
+* Centralise administrative authentication, infrastructure permissions, and operational audit trails.
+* Integrate identity providers through SSO and OIDC, manage role-based permissions, and support identity-aware access to infrastructure services.
+* Keep infrastructure operations accountable and traceable.
+
+---
+
+## Designed for the infrastructure you already have.
+
+FlareLens works around your existing infrastructure rather than requiring you to migrate workloads to a new hosting environment.
+
+| Environment | Examples |
+| :--- | :--- |
+| **Public cloud** | AWS, Azure, Google Cloud |
+| **Cloud VPS** | Hetzner, DigitalOcean, other VPS providers |
+| **Private infrastructure** | Bare-metal servers, on-premises data centers |
+| **Container workloads** | Docker-based applications and services |
+| **Developer environments** | Linux, macOS, and Windows workstations |
+| **Distributed systems** | Database hosts, internal services, edge gateways |
+
+*Your infrastructure remains yours. FlareLens provides a coordinated operational layer above it.*
+
+---
+
+## Architecture: A lightweight control plane. A direct data plane.
+
+FlareLens separates infrastructure coordination from application execution and network traffic. This separation is central to its architecture.
+
+### Control Plane — Cloudflare Workers
+The control plane manages the shared operational state of your organisation's infrastructure. Its responsibilities include:
+* Fleet inventory and desired-state configuration
+* WireGuard peer discovery and coordination
+* Authentication and access policies
+* Encrypted secrets management
+* Deployment orchestration and signalling
+* Telemetry ingestion and operational metadata
+
+The control plane is built using TypeScript and Cloudflare's serverless platform, reducing the need to operate dedicated management servers.
+
+### Host Agent — `flarelensd`
+The data-plane agent is a lightweight Go service installed on managed infrastructure. It is responsible for local execution and coordination, including:
+* Reporting host health and operational state
+* Managing local network configuration
+* Monitoring containers and services
+* Executing authorised deployment operations
+* Collecting and forwarding telemetry
+* Reconciling local configuration with desired state
+
+The host agent is designed to preserve running workloads when control-plane connectivity is interrupted.
+
+### Private Data Plane — WireGuard
+Where direct peer-to-peer connectivity is available, WireGuard carries encrypted infrastructure traffic between participating nodes.
+
+Cloudflare Workers coordinate control-plane operations rather than serving as the default application-traffic router. This allows infrastructure traffic to remain separate from control-plane signalling.
+
+### Architectural Overview
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│             FLARELENS: ORGANISATIONAL CONTROL PLANE                    │
+│                   FLARELENS INFRASTRUCTURE CONTROL PLANE               │
+│                            Cloudflare Workers                          │
 │                                                                        │
-│   [ Fleet Management ]      [ Zero-Trust Mesh ]      [ GitOps Engine ] │
-│   Inventory, OS, hardware,  WireGuard P2P, MagicDNS, Zero-downtime     │
-│   state reconciliation      keyless SSH via SSO      atomic rollouts   │
-│                                                                        │
-│   [ Secrets Vault ]         [ Observability Lake ]   [ Access Gate ]   │
-│   AES-256 in-RAM injection, Zero-egress Parquet logs, Google/OIDC SSO, │
-│   zero plaintext on disk    DuckDB analytics         role-based audit  │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │ Desired State & Signaling (TLS)
-                                    ▼
+│   ┌──────────────────────────────┬─────────────────────────────────┐   │
+│   │     Fleet & Ops              │   Security & Mesh               │   │
+│   │     Observability Lakehouse  │   Secrets Vault & Access Gate   │   │
+│   └──────────────────────────────┴─────────────────────────────────┘   │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │ Secure Control Channel (TLS)
+                                   ▼
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        YOUR ORGANISATION'S INFRA                       │
+│                        flarelensd Host Agents                          │
 │                                                                        │
-│    Cloud VPSs (Hetzner, DO)  •  Bare Metal  •  On-Prem Data Centers   │
-│    Developer Laptops  •  Database Clusters  •  Edge Gateways          │
+│        [ Cloud VMs ]        [ Bare Metal ]        [ On-Prem ]          │
+│              ▲                     ▲                   ▲               │
+│              └═════════════════════╬═══════════════════┘               │
+│                                    ▼                                   │
+│                        WireGuard Encrypted Mesh                        │
+│                         (Direct P2P UDP Line-Speed)                    │
+│                                                                        │
+│                         Applications & Services                        │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-* **Control Plane (This Repository)**: Runs serverless across 330+ Cloudflare edge locations. It stores desired state, coordinates WireGuard peer discovery, manages encrypted secrets, and aggregates telemetry into columnar Apache Parquet.
-* **Data Plane ([`flarelensd`](https://github.com/antwig2/flarelensd))**: A lightweight Go daemon (<25MB RAM) running on your Linux, macOS, and Windows nodes. It configures in-kernel WireGuard interfaces (`wg0`), monitors local Docker containers, and executes atomic Traefik routing swaps.
+---
 
-> [!IMPORTANT]
-> **Static Stability & Line-Speed Data Plane**: Application and network traffic flows **directly peer-to-peer over UDP** at full wire speed (10Gbps+). Application data **never** transits Cloudflare data centers. If the control plane is temporarily unreachable, your servers, tunnels, and containers continue running without interruption.
+## Built for reliability and operational independence.
+
+Infrastructure should not stop functioning simply because a management dashboard becomes unavailable.
+
+FlareLens is designed to separate the availability of the control plane from the availability of the workloads it manages. Running containers, existing network interfaces, and established service routes can continue operating independently of temporary control-plane interruptions.
+
+The platform also aims to minimise infrastructure overhead by using managed serverless services for coordination and lightweight agents for local execution.
 
 ---
 
-## Quick Start
+## Technology Stack
 
-### Option A: 1-Click Deploy to Cloudflare
+| Layer | Technology |
+| :--- | :--- |
+| **Control plane** | TypeScript, Cloudflare Workers |
+| **Host agent** | Go (`flarelensd`) |
+| **Private networking** | WireGuard |
+| **Identity** | Cloudflare Access, OIDC |
+| **Metadata and state** | Cloudflare Workers KV |
+| **Object storage** | Cloudflare R2 |
+| **Telemetry formats** | Apache Parquet |
+| **Analytics** | DuckDB |
+| **Application runtime** | Docker |
+| **Ingress management** | Traefik |
+| **Deployment integration** | GitHub Actions |
 
-Deploy the FlareLens control plane directly into your Cloudflare account with a single click:
+---
+
+## Getting Started
+
+### 1. Deploy the Control Plane
+
+FlareLens is designed to be deployed to your own Cloudflare account.
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/antwig2/flarelens)
 
-This automatically forks the repository to your GitHub account and provisions continuous deployment via Cloudflare Workers.
+Alternatively, deploy manually using Wrangler.
 
----
-
-### Option B: Manual CLI Deploy
-
-> **Prerequisites**: Node.js v18+ and the [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/).
-
-#### 1. Deploy Your Control Plane (Cloudflare Worker)
+> **Prerequisites**: Node.js, npm, Wrangler CLI, and a Cloudflare account.
 
 ```bash
 git clone https://github.com/antwig2/flarelens.git
 cd flarelens
 npm install
 
-# Create free KV namespace and R2 storage bucket
+# Create required KV namespace and R2 bucket
 npx wrangler kv namespace create FLEET_KV
 npx wrangler r2 bucket create flarelens-logs
 
-# Configure and deploy
+# Configure bindings and deploy
 cp wrangler.toml.example wrangler.toml
-# (Add your KV ID in wrangler.toml)
+# (Configure the required bindings in wrangler.toml)
 npm run deploy
 ```
 
-Your control plane and dashboard UI will immediately be live at `https://flarelens.<your-subdomain>.workers.dev`.
+### 2. Enroll a Managed Server
 
-#### 2. Enroll Your First Host Node
-
-On any Ubuntu, Debian, RHEL, or Alpine server, run the 30-second bootstrap installer:
+After deploying the control plane, generate an enrollment token and install the host agent on a supported machine:
 
 ```bash
-curl -fsSL https://<your-worker-url>/install.sh | sudo bash -s -- \
+curl -fsSL https://<your-worker-url>/install.sh \
+  | sudo bash -s -- \
   --control "https://<your-worker-url>" \
   --token "<YOUR_ENROLL_TOKEN>"
 ```
 
-#### 3. Connect from Your Laptop (Browser SSO)
+*For production environments, review and verify installer scripts before executing them with elevated privileges.*
 
-Join your developer workstation to your organisation's private WireGuard mesh using RFC 8628 Device Flow SSO:
+### 3. Connect a Developer Workstation
+
+Use the host agent to initiate identity-based authentication and join an authorised infrastructure network:
 
 ```bash
-sudo flarelensd login --control=https://<your-worker-url>
+sudo flarelensd login \
+  --control=https://<your-worker-url>
 ```
 
-A browser window will open for authentication via Cloudflare Access Zero Trust or Google Workspace, assigning your workstation a static `100.64.0.x` mesh IP with instant MagicDNS resolution (`node-1.mesh`, `db.mesh`).
+Consult the [host-agent documentation](https://github.com/antwig2/flarelensd) for platform-specific installation and networking requirements.
 
 ---
 
-## Key Capabilities
+## Cost-conscious by design
 
-* **🌐 Sovereign WireGuard Mesh Coordinator**: Replaces centralized VPN concentrator VMs with serverless peer exchange directly on Cloudflare Workers. Direct P2P ChaCha20-Poly1305 encryption with sub-0.1ms kernel latency.
-* **⚡ In-Memory MagicDNS (`*.mesh`)**: Automatically resolves `node-1.mesh`, `api.mesh`, and `postgres.mesh` across all registered servers and developer laptops without exposing public DNS records.
-* **🔑 Sovereign Keyless SSH**: Cryptographically authorized terminal access using dynamic OpenSSH `AuthorizedKeysCommand` hooks verified by the edge coordinator against active SSO sessions.
-* **📊 Zero-Egress Parquet Lakehouse**: Telemetry is buffered on the host, compacted into columnar Apache Parquet in Cloudflare R2 every 60 seconds, and queried directly in your browser using **DuckDB-WASM** with **\$0 bandwidth egress fees**.
-* **⏱️ Sub-5ms Live Tail**: Streams container and host stdout/stderr logs in real time over Server-Sent Events (SSE).
-* **🔄 GitOps Blue/Green Deployments**: Atomic inotify Traefik routing swaps in under 1 millisecond with automated schema migrations and instant health check rollback.
-* **🔐 Zero-Plaintext Secrets Vault**: Encrypted with AES-256-GCM at the edge and injected directly into container process RAM during deployment. Zero `.env` files stored on disk.
-* **🩺 Global Synthetic Monitoring**: Automated cron health probes executed from 300+ Anycast cities with instant alerts to Telegram and WhatsApp.
+FlareLens is designed to minimise the recurring infrastructure costs associated with operating a central management platform.
 
----
+Its architecture takes advantage of Cloudflare Workers, KV, R2, and related managed services while using host agents for workload-local operations.
 
-## Architecture: Control Plane vs. Data Plane
+* **Small installations** may fit within available free-tier allowances, depending on usage, workload characteristics, and current Cloudflare limits.
+* **Production costs** depend on fleet size, telemetry volume, request frequency, storage utilisation, and the Cloudflare services enabled.
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                   CONTROL PLANE (Cloudflare Edge)                      │
-│                  "The Orchestrator, Not the Router"                    │
-│                                                                        │
-│   • Coordinates WireGuard peer discovery (Public Keys & Endpoints in KV)│
-│   • Enforces Zero-Trust Admin Identity (Cloudflare Access SSO / OTP)  │
-│   • Stores Cold Parquet Logs & DB Backups (Cloudflare R2 - $0 Egress)  │
-│   • Runs Serverless across 330+ cities (Zero master servers to patch) │
-└──────────────────────────────────┬─────────────────────────────────────┘
-                                   │ Metadata & Signaling Only (TLS / WS)
-                                   ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                      DATA PLANE (WireGuard Mesh)                       │
-│                        "Direct, Private, P2P"                          │
-│                                                                        │
-│    [ Node 1 (VPS) ] ◄══════════ Direct Encrypted ═════════► [ Node 2 ] │
-│                       UDP P2P (100.64.0.0/10)                          │
-│                                                                        │
-│    ❌ NEVER touches Cloudflare data centers.                            │
-│    ✅ Full LAN line-speed (10Gbps+ direct WireGuard overlay).          │
-│    ✅ End-to-end encrypted with local Curve25519 keys (RFC 7748).      │
-└────────────────────────────────────────────────────────────────────────┘
-```
+The goal is to make infrastructure operations more accessible without requiring a large dedicated management stack.
 
 ---
 
-## 💰 Pricing & Free Tier Compatibility
+## Open source and extensible
 
-FlareLens is explicitly engineered to run **100% free** on Cloudflare's standard Free tier, while automatically unlocking enterprise primitives on a Workers Paid plan (\$5/mo).
+FlareLens is developed as an open-source platform for teams that want greater visibility and control over how their infrastructure is operated.
 
-| Resource | Cloudflare Free Tier ($0/mo) | Workers Paid ($5/mo) | Built-In FlareLens Guardrail |
-| :--- | :--- | :--- | :--- |
-| **Cloudflare Queues** | ❌ Not available | ✅ Unlimited background queues | **Automatic In-Process Fallback**: If `DEPLOY_QUEUE` is unbound, rollouts execute directly via async sub-requests. |
-| **Workers KV Writes** | ⚠️ 1,000 writes/day | ✅ 1,000,000 writes/mo included | **State-Transition Filtering & `safeKvPut`**: Node heartbeats update in-memory maps and only touch KV on health state changes (`Healthy` → `Warning`). Daily quotas are caught without throwing exceptions. |
-| **Cloudflare R2** | ✅ 10 GB storage, $0 egress | ✅ 10 GB storage, $0 egress | **Columnar Parquet Compaction**: Batches telemetry to minimize R2 Class A write operations. |
-| **Zero Trust Access** | ✅ Up to 50 users free | ✅ Up to 50 users free | **Native SSO Integration**: Dashboard authentication relies on Cloudflare Access without open internet exposure. |
-| **Worker CPU Time** | ⚠️ 10ms CPU / request | ✅ 50ms CPU / request | **Zero-Dependency Code**: Uses lightweight native Web Crypto and streaming parsers to stay well below 10ms limits. |
+Its modular architecture creates opportunities to extend capabilities for different infrastructure environments, deployment strategies, and organisational policies.
 
----
+Contributions, bug reports, and feature requests are welcome.
 
-## Developers & Codebase Map
-
-* **[Dashboard UI & Static Assets](./public)** — Web application for logs, telemetry, fleet, backups, and mesh topology.
-* **[Edge Mesh Coordinator](./src/control/mesh.ts)** — Zero-trust WireGuard coordinator and MagicDNS engine.
-* **[Ingress Topology Visualizer](./src/control/ingress.ts)** — Route mapping and live health probers.
-* **[Secrets Vault Engine](./src/control/vault.ts)** — AES-256-GCM zero-plaintext secrets manager.
-* **[GitOps Webhook Runner](./src/control/webhook.ts)** — GitHub Actions M2M cryptographic OIDC verifier and deployment trigger.
-* **[Host Daemon (`flarelensd`)](https://github.com/antwig2/flarelensd)** — Standalone Go binary running on servers and workstations.
-
----
-
-## Community and Support
-
-* **[GitHub Issues](https://github.com/antwig2/flarelens/issues)** to report bugs 🐛 or request features.
-* **[Discussions](https://github.com/antwig2/flarelens/discussions)** to ask questions, share feedback, and celebrate your deployments 💕.
-* **[Twitter / X](https://x.com/flarelens)** to say "hi" and follow the latest updates.
-
----
-
-## Contributing
-
-We welcome contributions to FlareLens! If you would like to help improve the control plane, dashboard, or documentation:
-
-1. Fork the repository.
-2. Create your feature branch (`git checkout -b feature/amazing-feature`).
-3. Commit your changes (`git commit -m 'Add amazing feature'`).
-4. Push to the branch (`git push origin feature/amazing-feature`).
-5. Open a Pull Request.
+* [Source repository](https://github.com/antwig2/flarelens)
+* [Host agent (`flarelensd`)](https://github.com/antwig2/flarelensd)
+* [Issues](https://github.com/antwig2/flarelens/issues)
+* [Discussions](https://github.com/antwig2/flarelens/discussions)
 
 ---
 
 ## License
 
-FlareLens is open-source software licensed under the [Apache License, Version 2.0](LICENSE).
+FlareLens is licensed under the [Apache License, Version 2.0](LICENSE).
+
+---
+
+**FlareLens**  
+*Your infrastructure. Your control. One platform.*
