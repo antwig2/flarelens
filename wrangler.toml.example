@@ -1,0 +1,50 @@
+name = "flarelens"
+main = "src/index.ts"
+compatibility_date = "2024-10-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# Specify your Cloudflare Account ID (Optional if logged in via wrangler login)
+# account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
+
+# Custom Domain (e.g. control.yourdomain.com)
+# routes = [
+#   { pattern = "control.yourdomain.com", custom_domain = true }
+# ]
+
+# Cloudflare R2 Bucket Binding for Apache Parquet Lakehouse
+[[r2_buckets]]
+binding = "LOGS_BUCKET"
+bucket_name = "flarelens-logs"
+
+# Optional Cloudflare R2 Bucket Binding for Database Backups
+[[r2_buckets]]
+binding = "BACKUP_BUCKET"
+bucket_name = "flarelens-backups"
+
+# Cloudflare KV Binding for Fleet, Mesh & Device Registry
+[[kv_namespaces]]
+binding = "FLEET_KV"
+id = "YOUR_KV_NAMESPACE_ID"
+
+# Optional: Cloudflare Queues for GitOps Asynchronous Deployments
+# [[queues.producers]]
+# queue = "flarelens-deploy-queue"
+# binding = "DEPLOY_QUEUE"
+
+# [[queues.consumers]]
+# queue = "flarelens-deploy-queue"
+# max_batch_size = 10
+# max_batch_timeout = 5
+# max_retries = 3
+
+# Static Assets for the Web UI Dashboard
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Environment Variables
+[vars]
+ENVIRONMENT = "production"
+DASHBOARD_TITLE = "FlareLens"
+ALERT_COOLDOWN_SECONDS = "300"

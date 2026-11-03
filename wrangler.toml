@@ -1,0 +1,31 @@
+name = "flarelens"
+main = "src/index.ts"
+compatibility_date = "2024-10-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# Cloudflare R2 Bucket Binding for Apache Parquet Lakehouse
+[[r2_buckets]]
+binding = "LOGS_BUCKET"
+bucket_name = "flarelens-logs"
+
+# Optional Cloudflare R2 Bucket Binding for Database Backups
+[[r2_buckets]]
+binding = "BACKUP_BUCKET"
+bucket_name = "flarelens-backups"
+
+# Cloudflare KV Binding for Fleet, Mesh & Device Registry
+[[kv_namespaces]]
+binding = "FLEET_KV"
+id = "YOUR_KV_NAMESPACE_ID"
+
+# Static Assets for the Web UI Dashboard
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Environment Variables
+[vars]
+ENVIRONMENT = "production"
+DASHBOARD_TITLE = "FlareLens"
+ALERT_COOLDOWN_SECONDS = "300"
