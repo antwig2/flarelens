@@ -48,9 +48,7 @@ npm run deploy
 Install the FlareLens agent on a Linux server:
 
 ```sh
-curl -fsSL https://<your-worker-url>/install.sh | sudo bash -s -- \
-  --control "https://<your-worker-url>" \
-  --token "<YOUR_ENROLL_TOKEN>"
+curl -fsSL "https://<your-worker-url>/install.sh?token=<YOUR_ENROLL_TOKEN>" | sudo bash
 ```
 
 ### 3. Connect a workstation

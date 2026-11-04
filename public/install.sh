@@ -14,7 +14,7 @@ CONFIG_DIR="/etc/flarelens"
 SERVICE_NAME="flarelens-agent"
 MODE="client"
 
-# Parse CLI flags if provided
+# Parse CLI flags or positional token
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --server|--node)
@@ -38,11 +38,36 @@ while [[ $# -gt 0 ]]; do
       INSTALL_DIR="$2"
       shift 2
       ;;
+    fl_*|token_*|node_*)
+      ENROLL_TOKEN="$1"
+      MODE="server"
+      shift
+      ;;
     *)
+      if [[ -z "$ENROLL_TOKEN" && "$1" != -* ]]; then
+        ENROLL_TOKEN="$1"
+        MODE="server"
+      fi
       shift
       ;;
   esac
 done
+
+# Auto-decode self-contained FlareLens token (fl_<base64json>)
+if [[ "$ENROLL_TOKEN" =~ ^fl_[A-Za-z0-9_-]+ ]]; then
+  PAYLOAD="${ENROLL_TOKEN#fl_}"
+  DECODED=$(echo "$PAYLOAD" | tr '_-' '/+' | base64 -d 2>/dev/null || true)
+  if [[ -n "$DECODED" ]]; then
+    PARSED_URL=$(echo "$DECODED" | grep -o '"c":"[^"]*"' | cut -d'"' -f4 || true)
+    PARSED_KEY=$(echo "$DECODED" | grep -o '"k":"[^"]*"' | cut -d'"' -f4 || true)
+    if [[ -n "$PARSED_URL" ]]; then CONTROL_URL="$PARSED_URL"; fi
+    if [[ -n "$PARSED_KEY" ]]; then ENROLL_TOKEN="$PARSED_KEY"; fi
+  fi
+fi
+
+if [[ -n "$ENROLL_TOKEN" ]]; then
+  MODE="server"
+fi
 
 echo "================================================================"
 echo "  FlareLens Unified Host Agent & Mesh - Linux Bootstrap Installer"
@@ -85,7 +110,8 @@ if curl -fsSL "$BINARY_URL" -o "$AGENT_PATH.tmp"; then
   mv "$AGENT_PATH.tmp" "$AGENT_PATH"
   chmod +x "$AGENT_PATH"
   ln -sf "$AGENT_PATH" /usr/local/bin/flarelens-agent
-  echo "[+] Binary installed to $AGENT_PATH and symlinked to /usr/local/bin/flarelens-agent"
+  ln -sf "$AGENT_PATH" /usr/local/bin/flarelensd
+  echo "[+] Binary installed to $AGENT_PATH and symlinked to /usr/local/bin/flarelensd"
 else
   echo "[!] Live binary download failed. Using local binary if present."
   if [[ -f "/tmp/flarelens-agent" ]]; then

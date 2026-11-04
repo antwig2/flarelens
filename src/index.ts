@@ -685,14 +685,18 @@ function validateDashboardAuth(request: Request, env: Env): Response | null {
     return null; // Authenticated via Cloudflare Zero Trust!
   }
 
-  // 1b. Support Bearer token / x-api-key authentication (matches INGEST_SECRET or ENROLL_TOKEN)
+  // 1b. Support Bearer token / x-api-key authentication for Dashboard API
   const authHeader = request.headers.get('Authorization') || '';
   const apiKeyHeader = request.headers.get('x-api-key') || '';
   const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.substring(7).trim() : '';
   const providedToken = bearerToken || apiKeyHeader;
   if (providedToken) {
-    if ((env.INGEST_SECRET && providedToken === env.INGEST_SECRET) ||
-        (env.ENROLL_TOKEN && providedToken === env.ENROLL_TOKEN)) {
+    // Least-privilege: Only allow DASHBOARD_PASSWORD or dedicated ADMIN_API_KEY.
+    // Node ENROLL_TOKEN and telemetry INGEST_SECRET must never grant dashboard admin access.
+    if ((env as any).ADMIN_API_KEY && providedToken === (env as any).ADMIN_API_KEY) {
+      return null;
+    }
+    if (env.DASHBOARD_PASSWORD && providedToken === env.DASHBOARD_PASSWORD) {
       return null;
     }
   }
@@ -714,7 +718,7 @@ function validateDashboardAuth(request: Request, env: Env): Response | null {
 
     const expectedUser = env.DASHBOARD_USERNAME || 'admin';
     const expectedPass = env.DASHBOARD_PASSWORD;
-    if (username === expectedUser && (password === expectedPass || (env.INGEST_SECRET && password === env.INGEST_SECRET) || (env.ENROLL_TOKEN && password === env.ENROLL_TOKEN))) {
+    if (username === expectedUser && expectedPass && password === expectedPass) {
       return null; // Authorized!
     }
   } catch (e) {}
@@ -1774,7 +1778,7 @@ async function handleDeployWebhook(request: Request, env: Env, ctx: ExecutionCon
     const providedToken = bearerToken || apiKeyHeader || customHeader || queryToken;
 
     const webhookSecret = env.WEBHOOK_SECRET || '';
-    const validTokens = [webhookSecret, env.INGEST_SECRET, env.DASHBOARD_PASSWORD, env.ENROLL_TOKEN].filter(Boolean);
+    const validTokens = [webhookSecret, env.DASHBOARD_PASSWORD].filter(Boolean);
 
     // 0. GitHub Actions M2M Workload Identity (OIDC Token)
     let authenticatedOidcClaims: any = null;
@@ -3449,21 +3453,41 @@ async function loadAllMeshPeers(env: Env): Promise<MeshPeerRecord[]> {
  */
 async function handleInstallScript(request: Request, env: Env, type: 'sh' | 'ps1'): Promise<Response> {
   const contentType = type === 'sh' ? 'text/x-shellscript; charset=utf-8' : 'text/plain; charset=utf-8';
+  const url = new URL(request.url);
+  const origin = url.origin;
+  const token = url.searchParams.get('token') || '';
+
   if (env.ASSETS) {
     const assetResp = await env.ASSETS.fetch(request);
     if (assetResp.status === 200) {
+      let scriptContent = await assetResp.text();
+
+      // Dynamically bake the worker's own origin and optional token into the installer
+      scriptContent = scriptContent.replace(
+        'CONTROL_URL="https://control.flarelens.dev"',
+        `CONTROL_URL="${origin}"`
+      );
+      scriptContent = scriptContent.replace(
+        '[string]$ControlUrl = "https://control.flarelens.dev"',
+        `[string]$ControlUrl = "${origin}"`
+      );
+      if (token) {
+        scriptContent = scriptContent.replace('ENROLL_TOKEN=""', `ENROLL_TOKEN="${token}"`);
+        scriptContent = scriptContent.replace('[string]$EnrollToken = ""', `[string]$EnrollToken = "${token}"`);
+      }
+
       const headers = new Headers(assetResp.headers);
       headers.set('Content-Type', contentType);
       headers.set('Access-Control-Allow-Origin', '*');
-      return new Response(assetResp.body, { status: 200, headers });
+      headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      return new Response(scriptContent, { status: 200, headers });
     }
   }
 
   // Fallback: minimal bootstrap script
-  const origin = new URL(request.url).origin;
   if (type === 'sh') {
     return new Response(
-      `#!/usr/bin/env bash\nset -euo pipefail\necho "[*] Fetching FlareLens from ${origin}..."\nmkdir -p /opt/flarelens/bin\ncurl -fsSL "${origin}/api/v1/agent/binary/linux-amd64" -o /opt/flarelens/bin/flarelens-agent\nchmod +x /opt/flarelens/bin/flarelens-agent\necho "[+] Installed /opt/flarelens/bin/flarelens-agent"`,
+      `#!/usr/bin/env bash\nset -euo pipefail\necho "[*] Fetching FlareLens from ${origin}..."\nmkdir -p /opt/flarelens/bin\ncurl -fsSL "${origin}/api/v1/agent/binary/linux-amd64" -o /opt/flarelens/bin/flarelensd\nchmod +x /opt/flarelens/bin/flarelensd\nln -sf /opt/flarelens/bin/flarelensd /usr/local/bin/flarelensd\necho "[+] Installed /usr/local/bin/flarelensd"`,
       { status: 200, headers: { 'Content-Type': contentType, 'Access-Control-Allow-Origin': '*' } }
     );
   } else {
