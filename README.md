@@ -1,27 +1,18 @@
-<p align="center">
-  <h1 align="center">FlareLens</h1>
-  <b>Open-source Infrastructure Operations & Security Platform</b><br>
-  Manage servers, deploy applications, secure private networks, and monitor your infrastructure from one serverless control plane.
-</p>
+# FlareLens
 
-<p align="center">
-  <a href="https://flarelens.dev/">Website</a> ·
-  <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/antwig2/flarelens">Deploy to Cloudflare</a> ·
-  <a href="https://github.com/antwig2/flarelensd">Host Agent</a> ·
-  <a href="https://github.com/antwig2/flarelens/releases">Releases</a>
-</p>
+### Open-source Infrastructure Operations & Security Platform
 
-<p align="center">
-  <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/antwig2/flarelens"><img alt="Deploy to Cloudflare Workers" src="https://deploy.workers.cloudflare.com/button"></a>
-  <a href="https://github.com/antwig2/flarelens/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/antwig2/flarelens?label=release&color=f38020"></a>
-  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-555"></a>
-</p>
+Manage servers, deploy applications, secure private networks, and monitor your infrastructure from one serverless control plane.
+
+[Website](https://flarelens.dev/) · [Deploy to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/antwig2/flarelens) · [Host Agent](https://github.com/antwig2/flarelensd) · [Releases](https://github.com/antwig2/flarelens/releases)
+
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/antwig2/flarelens)
+[![Latest release](https://img.shields.io/github/v/release/antwig2/flarelens?label=release&color=f38020)](https://github.com/antwig2/flarelens/releases/latest)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-555)](LICENSE)
+
+FlareLens is an open-source platform for managing infrastructure across cloud, on-premises, and hybrid environments. Built with Cloudflare Workers and a lightweight Go host agent (`flarelensd`), it brings infrastructure management, secure networking, application deployments, secrets management, and observability into one platform.
 
 ---
-
-FlareLens is an open-source platform for managing infrastructure across cloud, on-premises, and hybrid environments.
-
-Built with Cloudflare Workers and a lightweight Go host agent (`flarelensd`), it brings infrastructure management, secure networking, application deployments, secrets management, and observability into one platform.
 
 ## Features
 
