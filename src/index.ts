@@ -1571,11 +1571,16 @@ async function selectBestNodeForService(
     const eligibleNodes = nodes.filter((n) => {
       if (n.status === 'dead' || n.status === 'Unhealthy') return false;
       const lastHbMs = n.last_heartbeat ? (n.last_heartbeat < 10_000_000_000 ? n.last_heartbeat * 1000 : n.last_heartbeat) : 0;
-      if (lastHbMs > 0 && (now - lastHbMs > 120_000)) return false;
+      const enrolledMs = n.enrolled_at ? Date.parse(n.enrolled_at) : 0;
+      const effectiveLastSeen = lastHbMs > 0 ? lastHbMs : (Number.isFinite(enrolledMs) ? enrolledMs : 0);
+      if (effectiveLastSeen === 0 || now - effectiveLastSeen > 120_000) return false;
       return true;
     });
 
-    const candidates = eligibleNodes.length > 0 ? eligibleNodes : nodes;
+    const nonTestEligible = eligibleNodes.filter(
+      (n) => !n.node_id.toLowerCase().includes('wsl') && !n.node_id.toLowerCase().includes('test')
+    );
+    const candidates = nonTestEligible.length > 0 ? nonTestEligible : (eligibleNodes.length > 0 ? eligibleNodes : nodes);
     if (candidates.length === 1) {
       return candidates[0].node_id;
     }
@@ -2300,18 +2305,33 @@ async function handleUpdateDeployStatus(request: Request, env: Env, ctx: Executi
       }
     }
 
-    if (record) {
+    if (!record) {
+      record = {
+        deployment_id: update.deployment_id,
+        service: update.service || 'singleton',
+        image: '',
+        node_id: '',
+        env: update.deployment_id.startsWith('sing_') ? 'infra' : 'uat',
+        status: update.status,
+        active_slot: update.active_slot,
+        active_port: update.active_port,
+        message: update.message,
+        duration_ms: update.duration_ms,
+        created_at: nowIso,
+        updated_at: nowIso,
+      };
+    } else {
       record.status = update.status;
       record.active_slot = update.active_slot || record.active_slot;
       record.active_port = update.active_port || record.active_port;
       record.message = update.message || record.message;
       record.duration_ms = update.duration_ms || record.duration_ms;
       record.updated_at = nowIso;
-      fleetDeployments.set(update.deployment_id, record);
+    }
+    fleetDeployments.set(update.deployment_id, record);
 
-      if (env.FLEET_KV) {
-        ctx.waitUntil(safeKvPut(env.FLEET_KV, `deployment:${update.deployment_id}`, JSON.stringify(record)));
-      }
+    if (env.FLEET_KV) {
+      ctx.waitUntil(safeKvPut(env.FLEET_KV, `deployment:${update.deployment_id}`, JSON.stringify(record)));
     }
 
     // Broadcast status change
