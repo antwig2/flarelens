@@ -286,6 +286,141 @@ async function runTests() {
   assert.strictEqual(backupBucket.listCalls, 0);
   console.log('   ✅ Passed: Command ACK cleared D1 row and flag toggle rotated flags_version.\n');
 
+  console.log('4️⃣  Testing Declarative Fleet GitOps (adopt_only + Suspended) & Agent OTA Rollouts...');
+  // Report a running edge-proxy container on node-alpha
+  await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/ingest', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-ingest-secret',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        node_id: 'node-alpha',
+        timestamp: new Date().toISOString(),
+        status: 'Healthy',
+        docker_healthy: true,
+        metrics: { cpu_usage_pct: 5.0, ram_used_bytes: 1e9, ram_usage_pct: 20.0, disk_usage_pct: 20.0 },
+        containers: [
+          {
+            id: 'ctr-proxy',
+            names: ['/edge-proxy'],
+            image: 'traefik:v3.2',
+            state: 'running',
+            status: 'Up 10m',
+            created: 1,
+          },
+        ],
+      }),
+    }),
+    env,
+    ctx
+  );
+  await Promise.all(pendingWaitTasks.splice(0));
+
+  const syncRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/fleet/sync', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-ingest-secret',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        commit_sha: 'abc1234',
+        reconcile: true,
+        manifests: [
+          {
+            service: 'edge-proxy',
+            env: 'infra',
+            node_id: 'node-alpha',
+            image: 'traefik:v3.2',
+            container_name: 'edge-proxy',
+            adopt_only: true,
+          },
+          {
+            service: 'billing-api',
+            env: 'prod',
+            enabled: false,
+            node_id: 'node-alpha',
+            image: 'ghcr.io/my-org/billing-api:prod',
+            container_port: 8080,
+            host_port_blue: 9080,
+            host_port_green: 9081,
+          },
+        ],
+      }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(syncRes.status, 200);
+  const syncBody = await syncRes.json();
+  assert.strictEqual(syncBody.synced_count, 2);
+  assert.strictEqual(syncBody.skipped_count, 1);
+  assert.deepStrictEqual(syncBody.reconciled[0].adopted_nodes, ['node-alpha']);
+
+  const whSuspRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/deploy/webhook', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        service: 'billing-api',
+        image: 'ghcr.io/my-org/billing-api:2.1.0',
+        env: 'production',
+        node_id: 'node-alpha',
+      }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(whSuspRes.status, 202);
+  const whSuspBody = await whSuspRes.json();
+  assert.strictEqual(whSuspBody.status, 'suspended');
+
+  const fleetStRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/fleet/status', {
+      headers: { Authorization: 'Bearer test-admin-password' },
+    }),
+    env,
+    ctx
+  );
+  const fleetStBody = await fleetStRes.json();
+  assert.strictEqual(fleetStBody.summary.synced, 1);
+  assert.strictEqual(fleetStBody.summary.suspended, 1);
+
+  const fakeBin = new Uint8Array(2048).fill(7);
+  const pubOtaRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/agent/releases?version=0.5.0&target=linux-amd64', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer test-ingest-secret' },
+      body: fakeBin,
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(pubOtaRes.status, 201);
+
+  const trigOtaRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/agent/update', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ node_id: 'node-alpha', target: 'linux-amd64' }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(trigOtaRes.status, 202);
+  const trigOtaBody = await trigOtaRes.json();
+  assert.strictEqual(trigOtaBody.version, '0.5.0');
+  assert.strictEqual(trigOtaBody.commands_queued, 1);
+  console.log('   ✅ Passed: Fleet GitOps adopt_only + Suspended guard + Agent OTA verified.\n');
+
   console.log('🎉 ALL FLARELENS OPEN-SOURCE D1 CONTROL PLANE TESTS PASSED!');
 }
 

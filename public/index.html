@@ -761,6 +761,235 @@
       backdrop-filter: blur(4px);
     }
 
+    /* ========================================================
+       FLEET GITOPS & AGENT OTA (Container-Responsive Table + Native Dialog)
+       ======================================================== */
+    .sr-only {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .fleet-gitops-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+      gap: 0.9rem;
+    }
+    .fleet-gitops-kpi {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.9rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .fleet-gitops-kpi .kpi-label {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+    }
+    .fleet-gitops-kpi .kpi-value {
+      font-size: 1.45rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: #fff;
+    }
+    .fleet-gitops-kpi .kpi-sub {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+    .env-pill-group {
+      display: inline-flex;
+      background: #080c15;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 0.2rem;
+      gap: 0.2rem;
+    }
+    .env-pill {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.3rem 0.7rem;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .env-pill:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .env-pill.active {
+      background: rgba(99, 102, 241, 0.2);
+      border-color: rgba(99, 102, 241, 0.45);
+      color: #fff;
+    }
+    .gitops-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.18rem 0.55rem;
+      border-radius: 999px;
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+    }
+    .gitops-badge.synced, .gitops-badge.healthy {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: #34d399;
+    }
+    .gitops-badge.outofsync, .gitops-badge.degraded {
+      background: rgba(251, 191, 36, 0.15);
+      border: 1px solid rgba(251, 191, 36, 0.35);
+      color: #fbbf24;
+    }
+    .gitops-badge.missing {
+      background: rgba(244, 63, 94, 0.15);
+      border: 1px solid rgba(244, 63, 94, 0.35);
+      color: #fb7185;
+    }
+    .gitops-badge.suspended {
+      background: rgba(148, 163, 184, 0.14);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      color: #cbd5e1;
+    }
+    .fleet-gitops-table-wrap {
+      container-type: inline-size;
+      overflow: auto;
+      max-block-size: 62vh;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #070b14;
+    }
+    .fleet-gitops-table-wrap:focus-visible {
+      outline: 2px solid var(--border-focus);
+      outline-offset: 2px;
+    }
+    .fleet-gitops-table {
+      inline-size: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 0.8rem;
+      --label-1: "Env";
+      --label-2: "Sync";
+      --label-3: "Health";
+      --label-4: "Desired Image";
+      --label-5: "Live State";
+      --label-6: "Commit";
+      --label-7: "Actions";
+    }
+    .fleet-gitops-table th,
+    .fleet-gitops-table td {
+      padding: 0.7rem 0.85rem;
+      text-align: start;
+      border-block-end: 1px solid rgba(255, 255, 255, 0.05);
+      vertical-align: middle;
+    }
+    .fleet-gitops-table thead {
+      position: sticky;
+      inset-block-start: 0;
+      z-index: 2;
+      background: #0b101d;
+    }
+    .fleet-gitops-table thead th {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      border-block-end: 1px solid var(--border);
+      background: #0b101d;
+    }
+    .fleet-gitops-table tbody th[scope="row"] {
+      position: sticky;
+      inset-inline-start: 0;
+      z-index: 1;
+      background: #090e1a;
+      font-weight: 600;
+      color: #fff;
+      border-inline-end: 1px solid rgba(255, 255, 255, 0.04);
+    }
+    .fleet-gitops-table thead th:first-child {
+      position: sticky;
+      inset-inline-start: 0;
+      z-index: 3;
+    }
+    .fleet-gitops-table tbody tr:hover td,
+    .fleet-gitops-table tbody tr:hover th[scope="row"] {
+      background-color: var(--bg-card-hover);
+    }
+    @container (width < 680px) {
+      .fleet-gitops-table thead {
+        display: none;
+      }
+      .fleet-gitops-table tbody tr {
+        display: grid;
+        gap: 0.35rem;
+        padding: 0.85rem;
+        border-block-end: 2px solid var(--border);
+      }
+      .fleet-gitops-table tbody th[scope="row"] {
+        position: static;
+        background: transparent;
+        border: none;
+        padding: 0 0 0.25rem 0;
+        font-size: 0.92rem;
+      }
+      .fleet-gitops-table tbody td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
+        border: none;
+        padding: 0.15rem 0;
+      }
+      .fleet-gitops-table tbody td:nth-of-type(1)::before { content: var(--label-1) ": "; font-weight: 600; color: var(--text-dim); }
+      .fleet-gitops-table tbody td:nth-of-type(2)::before { content: var(--label-2) ": "; font-weight: 600; color: var(--text-dim); }
+      .fleet-gitops-table tbody td:nth-of-type(3)::before { content: var(--label-3) ": "; font-weight: 600; color: var(--text-dim); }
+      .fleet-gitops-table tbody td:nth-of-type(4)::before { content: var(--label-4) ": "; font-weight: 600; color: var(--text-dim); }
+      .fleet-gitops-table tbody td:nth-of-type(5)::before { content: var(--label-5) ": "; font-weight: 600; color: var(--text-dim); }
+      .fleet-gitops-table tbody td:nth-of-type(6)::before { content: var(--label-6) ": "; font-weight: 600; color: var(--text-dim); }
+      .fleet-gitops-table tbody td:nth-of-type(7)::before { content: var(--label-7) ": "; font-weight: 600; color: var(--text-dim); }
+    }
+
+    dialog.ota-dialog {
+      margin: auto;
+      background: var(--bg-sidebar);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      color: var(--text);
+      max-width: 520px;
+      width: 92vw;
+      box-shadow: 0 14px 44px rgba(0, 0, 0, 0.82);
+    }
+    dialog.ota-dialog[open] {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    dialog.ota-dialog:modal {
+      overscroll-behavior: contain;
+    }
+    dialog.ota-dialog::backdrop {
+      background: rgba(0, 0, 0, 0.72);
+      backdrop-filter: blur(4px);
+      overflow: hidden;
+      overscroll-behavior: contain;
+    }
+
     /* Live Toast Container */
     #toastContainer {
       position: fixed;
@@ -796,7 +1025,919 @@
 </head>
 <body>
 
-  
+  <!-- ========================================================
+       DATADOG-STYLE NAVIGATION SIDEBAR
+       ======================================================== -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="brand-group">
+        <div class="brand-logo">F</div>
+        <div>
+          <div class="brand-name">FlareLens</div>
+        </div>
+      </div>
+      <span class="brand-badge">Control</span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div>
+        <div class="nav-section-title">Telemetry & APM</div>
+        <ul class="nav-items">
+          <li class="nav-item active" data-view="logs" id="navLogs">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            <span>Logs Explorer</span>
+            <span class="nav-badge live-dot" id="sidebarLogCount">Live</span>
+          </li>
+          <li class="nav-item" data-view="issues" id="navIssues">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            <span>Issues & Errors</span>
+            <span class="nav-badge" id="sidebarIssueCount">0</span>
+          </li>
+          <li class="nav-item" data-view="lakehouse" id="navLakehouse">
+            <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+            <span>Parquet Lakehouse</span>
+            <span class="nav-badge" style="color:#10b981; background:rgba(16,185,129,0.15)">SQL</span>
+          </li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="nav-section-title">Infrastructure & GitOps</div>
+        <ul class="nav-items">
+          <li class="nav-item" data-view="fleet" id="navFleet">
+            <svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+            <span>Fleet Nodes</span>
+            <span class="nav-badge" id="sidebarNodeCount">1 Active</span>
+          </li>
+          <li class="nav-item" data-view="deployments" id="navDeployments">
+            <svg viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+            <span>Services & Deployments</span>
+            <span class="nav-badge" style="color:#10b981; background:rgba(16,185,129,0.15)">Live</span>
+          </li>
+          <li class="nav-item" data-view="gitops" id="navGitops">
+            <svg viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><path d="M13 6h3a2 2 0 0 1 2 2v7"></path><line x1="6" y1="9" x2="6" y2="21"></line></svg>
+            <span>Fleet GitOps & OTA</span>
+            <span class="nav-badge" id="sidebarGitopsBadge" style="color:#38bdf8; background:rgba(56,189,248,0.15)">Sync</span>
+          </li>
+          <li class="nav-item" data-view="backups" id="navBackups">
+            <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+            <span>R2 Backups</span>
+          </li>
+          <li class="nav-item" data-view="mesh" id="navMesh">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+            <span>Zero-Trust Mesh</span>
+            <span class="nav-badge" id="sidebarMeshCount" style="color:#10b981; background:rgba(16,185,129,0.15)">Mesh</span>
+          </li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="nav-section-title">Control & Edge</div>
+        <ul class="nav-items">
+          <li class="nav-item" data-view="synthetics" id="navSynthetics">
+            <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+            <span>Synthetics & Uptime</span>
+          </li>
+          <li class="nav-item" data-view="flags" id="navFlags">
+            <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            <span>Feature Flags</span>
+          </li>
+        </ul>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="node-pulse">
+        <span class="pulse-orb"></span>
+        <span id="footerStatusText">NATS Bridge Active</span>
+      </div>
+      <div style="color: var(--text-dim); font-size: 0.7rem; font-family: var(--font-mono);">
+        v2.1 · Production (lon1)
+      </div>
+    </div>
+  </aside>
+
+  <!-- ========================================================
+       MAIN RIGHT CONTENT CONTAINER
+       ======================================================== -->
+  <main class="main-viewport">
+    <!-- Top Action & Breadcrumb Bar -->
+    <header class="topbar">
+      <div class="breadcrumb-title">
+        <span>FlareLens</span> / <strong id="activeViewTitle">Logs Explorer</strong>
+      </div>
+
+      <div class="topbar-actions">
+        <div id="userBadge" class="user-badge" style="display:inline-flex; align-items:center; gap:6px; background:rgba(30, 41, 59, 0.7); padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid #334155; color:#94a3b8;" title="Checking authentication identity...">
+          <span id="userBadgeIcon">🛡️</span>
+          <span id="userBadgeEmail">Loading...</span>
+        </div>
+        <button id="soundBtn" class="btn" title="Toggle audio alert chime">
+          🔔 Sound
+        </button>
+        <button id="refreshBtn" class="btn" title="Refresh current view">
+          🔄 Refresh
+        </button>
+        <button id="liveBtn" class="btn btn-live active">
+          <span class="indicator"></span>
+          Live Stream
+        </button>
+      </div>
+    </header>
+
+    <!-- ========================================================
+         VIEW 1: LOGS EXPLORER (The default live tail stream)
+         ======================================================== -->
+    <section class="view-panel active" id="view-logs">
+      <div class="logs-filter-bar">
+        <input type="text" id="searchInput" class="search-box" placeholder="Search logs or traces (e.g. error, web-api, trace_id)...">
+        <select id="envSelect" class="filter-select">
+          <option value="">All Environments</option>
+          <option value="production">production</option>
+          <option value="prod">prod</option>
+          <option value="uat">uat</option>
+          <option value="infra">infra</option>
+        </select>
+        <select id="serviceSelect" class="filter-select">
+          <option value="">All Services</option>
+          <option value="web-api">web-api</option>
+          <option value="web-ui">web-ui</option>
+          <option value="flarelens-gateway">flarelens-gateway</option>
+          <option value="workflow-worker">workflow-worker</option>
+          <option value="flarelens-agent">flarelens-agent</option>
+          <option value="traefik">traefik</option>
+          <option value="postgres">postgres</option>
+        </select>
+        <select id="levelSelect" class="filter-select">
+          <option value="">All Levels</option>
+          <option value="error">ERROR</option>
+          <option value="warn">WARN</option>
+          <option value="info">INFO</option>
+        </select>
+        <button id="exportJsonBtn" class="btn">Export JSON</button>
+        <button id="sqlBtn" class="btn" style="background:#1e1b4b; border-color:#4338ca; color:#a5b4fc;">SQL Mode</button>
+      </div>
+
+      <!-- Histogram Timeline -->
+      <div class="timeline-bar">
+        <canvas id="metricsChart" class="timeline-canvas"></canvas>
+        <div class="timeline-stats">
+          <span>Volume: <strong id="statVolume" style="color:#fff;">0</strong></span>
+          <span>p95 Latency: <strong id="statP95" style="color:#38bdf8;">0ms</strong></span>
+          <span>Error Rate: <strong id="statErrRate" style="color:#f43f5e;">0%</strong></span>
+        </div>
+      </div>
+
+      <div id="sqlBar" style="display:none; background:#0b0f19; padding:0.5rem 1.25rem; border-bottom:1px solid var(--border); display:flex; gap:0.5rem;">
+        <input type="text" id="sqlInput" class="search-box" style="flex:1;" value="SELECT * FROM logs WHERE level = 'error'">
+        <button id="runSqlBtn" class="btn btn-primary">Run Query</button>
+      </div>
+
+      <div class="log-container" id="logContainer"></div>
+    </section>
+
+    <!-- ========================================================
+         VIEW 2: SENTRY-STYLE ISSUES & CLUSTERS
+         ======================================================== -->
+    <section class="view-panel" id="view-issues">
+      <div class="panel-content" id="issuesContainer">
+        <!-- Rendered dynamically -->
+      </div>
+    </section>
+
+    <!-- ========================================================
+         VIEW: PARQUET LAKEHOUSE & IN-BROWSER SQL (hyparquet + squirreling)
+         ======================================================== -->
+    <section class="view-panel" id="view-lakehouse">
+      <div class="panel-content">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h2 style="font-size:1.15rem; font-weight:700;">Apache Parquet Lakehouse (In-Browser SQL)</h2>
+            <p style="color:var(--text-muted); font-size:0.8rem; margin-top:0.25rem;">
+              Columnar query engine using <strong>hyparquet</strong> & <strong>squirreling</strong> over HTTP Range requests. Zero-egress ($0 egress fees), zero full downloads.
+            </p>
+          </div>
+          <div style="display:flex; gap:0.6rem;">
+            <button class="btn" id="btnRefreshLakehouseFiles">🔄 Refresh Files</button>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 2fr; gap:1rem; margin-top:1rem;">
+          <div class="card" style="padding:1rem;">
+            <div class="card-title" style="margin-bottom:0.75rem;">1. Select Parquet Archive (Cloudflare R2)</div>
+            <select id="lakehouseFileSelect" class="form-input" style="width:100%; margin-bottom:0.75rem; font-family:var(--font-mono); font-size:0.75rem;">
+              <option value="">Loading files...</option>
+            </select>
+            <div id="lakehouseFileMeta" style="font-size:0.75rem; color:var(--text-muted); margin-bottom:1rem;">
+              Select an R2 Parquet file to inspect schema and query.
+            </div>
+
+            <div class="card-title" style="margin-bottom:0.5rem;">Sample Queries</div>
+            <div style="display:flex; flex-direction:column; gap:0.4rem;">
+              <button class="btn" style="font-size:0.72rem; text-align:left;" onclick="setSampleQuery('SELECT service, level, status, message FROM logs LIMIT 20')">
+                📄 Preview first 20 records
+              </button>
+              <button class="btn" style="font-size:0.72rem; text-align:left;" onclick="setSampleQuery('SELECT service, status, duration_ms, message FROM logs WHERE status >= 400')">
+                🚨 Errors & 4xx/5xx requests
+              </button>
+              <button class="btn" style="font-size:0.72rem; text-align:left;" onclick="setSampleQuery('SELECT service, COUNT(*) as count, AVG(duration_ms) as avg_latency FROM logs GROUP BY service')">
+                📊 Service latency aggregation
+              </button>
+            </div>
+          </div>
+
+          <div class="card" style="padding:1rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+              <div class="card-title">2. SQL Query Editor (squirreling)</div>
+              <button class="btn btn-primary" id="btnRunLakehouseQuery">⚡ Run In-Browser SQL</button>
+            </div>
+            <textarea id="lakehouseSqlInput" class="form-input" style="width:100%; height:90px; font-family:var(--font-mono); font-size:0.8rem; line-height:1.4; resize:vertical; background:var(--bg);" placeholder="SELECT service, level, duration_ms, message FROM logs WHERE duration_ms > 10">SELECT service, level, status, duration_ms, message FROM logs WHERE status >= 400</textarea>
+            <div id="lakehouseQueryStatus" style="font-size:0.75rem; color:var(--text-muted); margin-top:0.5rem; display:flex; justify-content:space-between;">
+              <span>Ready. Byte-range reads will stream directly from Cloudflare R2.</span>
+              <span id="lakehouseExecTime" style="font-family:var(--font-mono); color:#10b981;"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:1rem; overflow-x:auto;">
+          <div class="card-header" style="display:flex; justify-content:space-between;">
+            <div class="card-title">Query Results</div>
+            <span id="lakehouseResultCount" style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">0 rows</span>
+          </div>
+          <table class="data-table" id="lakehouseResultsTable">
+            <thead>
+              <tr id="lakehouseResultsHeader">
+                <th>Columns</th>
+              </tr>
+            </thead>
+            <tbody id="lakehouseResultsBody">
+              <tr><td style="text-align:center; color:var(--text-muted); padding:2rem;">Run a query above to execute SQL against R2 Parquet files via hyparquet and squirreling.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         VIEW 3: FLEET & HOST NODES
+         ======================================================== -->
+    <section class="view-panel" id="view-fleet">
+      <div class="panel-content">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h2 style="font-size:1.1rem; font-weight:700;">Enrolled Fleet Nodes</h2>
+            <p style="color:var(--text-muted); font-size:0.8rem; margin-top:0.2rem;">Real-time host metrics sampled every 15s by flarelens-agent</p>
+          </div>
+          <button class="btn btn-primary" id="btnRefreshFleet">Refresh Fleet</button>
+        </div>
+
+        <div class="node-grid" id="fleetNodeGrid">
+          <!-- Loaded dynamically from /api/v1/control/nodes -->
+          <div class="card" style="text-align:center; padding:3.5rem 1.5rem; color:var(--text-muted); grid-column:1/-1;">
+            <div style="font-size:2.5rem; margin-bottom:0.75rem;">📡</div>
+            <h3 style="color:#fff; margin-bottom:0.5rem; font-size:1.15rem;">No Nodes Connected Yet</h3>
+            <p style="max-width:480px; margin:0 auto 1.25rem; font-size:0.85rem; line-height:1.5;">
+              Run the 30-second bootstrap installer on your host to register your first node with real-time CPU, RAM, Docker, and Zero-Trust Sovereign Mesh (<code>100.64.0.0/10</code>) telemetry.
+            </p>
+            <code style="background:var(--bg); padding:0.55rem 1rem; border-radius:6px; font-size:0.8rem; border:1px solid var(--border); font-family:var(--font-mono); color:#10b981; display:inline-block; max-width:100%; word-break:break-all;">
+              curl -fsSL https://control.flarelens.dev/install.sh | sudo bash
+            </code>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         VIEW 4: GITOPS & BLUE/GREEN DEPLOYMENTS
+         ======================================================== -->
+    <section class="view-panel" id="view-deployments">
+      <div class="panel-content">
+        <div class="gitops-hero">
+          <div>
+            <h2 style="font-size:1.15rem; font-weight:700;">Fleet Services & Zero-Downtime Blue/Green Deployments</h2>
+            <p style="color:var(--text-muted); font-size:0.8rem; margin-top:0.25rem;">
+              Real-time container health, active slot routing, and ArgoCD-style restart counters across the fleet.
+            </p>
+          </div>
+          <div style="display:flex; gap:0.5rem;">
+            <button class="btn" id="btnRefreshServices">↻ Refresh Services</button>
+            <button class="btn" id="btnOpenWebhookModal">🔗 Webhook CI/CD</button>
+            <button class="btn btn-primary" id="btnOpenDeployModal">+ Deploy Candidate Version</button>
+          </div>
+        </div>
+
+        <!-- ACTIVE FLEET SERVICES & CONTAINERS TABLE -->
+        <div class="card" style="margin-bottom:1.5rem;">
+          <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div class="card-title" style="display:flex; align-items:center; gap:0.5rem;">
+                <span>Active Fleet Services & Containers</span>
+                <span class="status-badge healthy" id="activeServicesCountBadge">...</span>
+              </div>
+              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
+                Microservices, background workers, and datastore containers running on fleet nodes.
+              </div>
+            </div>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Service Name</th>
+                <th>Env</th>
+                <th>Active Slot</th>
+                <th>Status</th>
+                <th>Restarts</th>
+                <th>Image / Version</th>
+                <th>Node</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="servicesTableBody">
+              <tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:1.5rem;">Loading fleet services...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Live Service Routing Slots</div>
+            <span class="status-badge healthy">Traffic 100% Routed</span>
+          </div>
+
+          <div class="slot-flipper-visual">
+            <div class="slot-pill active" id="slotBlueCard">
+              <span style="font-size:0.7rem; font-weight:700; color:#10b981; text-transform:uppercase;">Slot Blue (Live)</span>
+              <strong style="font-size:0.95rem; font-family:var(--font-mono);" id="slotBluePort">Port 8081</strong>
+              <span style="font-size:0.72rem; color:var(--text-muted);">Serving live production traffic</span>
+            </div>
+
+            <div style="font-size:1.2rem; color:var(--text-dim);">⇄</div>
+
+            <div class="slot-pill candidate" id="slotGreenCard">
+              <span style="font-size:0.7rem; font-weight:700; color:#a5b4fc; text-transform:uppercase;">Slot Green (Staging)</span>
+              <strong style="font-size:0.95rem; font-family:var(--font-mono);" id="slotGreenPort">Port 8082</strong>
+              <span style="font-size:0.72rem; color:var(--text-muted);">Candidate pre-flight inspection</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- EPHEMERAL PR PREVIEWS TABLE -->
+        <div class="card" id="previewEnvironmentsCard" style="margin-bottom:1.5rem;">
+          <div class="card-header">
+            <div>
+              <div class="card-title" style="display:flex; align-items:center; gap:0.5rem;">
+                <span>Active Ephemeral PR Preview Environments</span>
+                <span class="status-badge healthy" id="previewCountBadge" style="font-size:0.68rem;">0 Active</span>
+              </div>
+              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
+                Isolated dynamic preview containers and Traefik dynamic routes spawned per GitHub Pull Request
+              </div>
+            </div>
+            <button class="btn" id="btnRefreshPreviews">Refresh Previews</button>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>PR #</th>
+                <th>Service</th>
+                <th>Preview URL</th>
+                <th>Port</th>
+                <th>Node</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="previewsTableBody">
+              <tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:1rem;">No active PR preview environments</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Deployment Rollout History</div>
+            <button class="btn" id="btnRefreshDeployments">Refresh</button>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Deployment ID</th>
+                <th>Service</th>
+                <th>Image Tag</th>
+                <th>Target Node</th>
+                <th>Status</th>
+                <th>Active Slot</th>
+                <th>Duration</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="deploymentsTableBody">
+              <!-- Dynamically populated from /api/v1/control/deployments -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         VIEW 4B: DECLARATIVE FLEET GITOPS & HOST AGENT OTA
+         ======================================================== -->
+    <section class="view-panel" id="view-gitops">
+      <div class="panel-content">
+        <div class="gitops-hero" style="flex-wrap:wrap; gap:1rem;">
+          <div>
+            <h2 style="font-size:1.15rem; font-weight:700;">Declarative Fleet GitOps &amp; Host Agent OTA</h2>
+            <p style="color:var(--text-muted); font-size:0.8rem; margin-top:0.25rem;">
+              ArgoCD-style drift reconciliation across <code>fleet/infra</code>, <code>fleet/uat</code>, and <code>fleet/prod</code> manifests plus zero-SSH <code>flarelensd</code> over-the-air binary rollouts.
+            </p>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.65rem; flex-wrap:wrap;">
+            <div class="env-pill-group" role="group" aria-label="Filter manifests by environment" id="gitopsEnvFilterGroup">
+              <button type="button" class="env-pill active" data-gitops-env="">All</button>
+              <button type="button" class="env-pill" data-gitops-env="infra">infra</button>
+              <button type="button" class="env-pill" data-gitops-env="uat">uat</button>
+              <button type="button" class="env-pill" data-gitops-env="prod">prod</button>
+            </div>
+            <button type="button" class="btn" id="btnRefreshGitops">↻ Refresh Drift &amp; OTA</button>
+          </div>
+        </div>
+
+        <!-- Summary KPI Cards -->
+        <div class="fleet-gitops-kpi-grid">
+          <div class="fleet-gitops-kpi">
+            <span class="kpi-label">Declared Manifests</span>
+            <span class="kpi-value" id="gitopsKpiTotal">0</span>
+            <span class="kpi-sub" id="gitopsKpiHealthySub">0 healthy</span>
+          </div>
+          <div class="fleet-gitops-kpi">
+            <span class="kpi-label">Synced</span>
+            <span class="kpi-value" style="color:#34d399;" id="gitopsKpiSynced">0</span>
+            <span class="kpi-sub">Matches desired Git state</span>
+          </div>
+          <div class="fleet-gitops-kpi">
+            <span class="kpi-label">OutOfSync</span>
+            <span class="kpi-value" style="color:#fbbf24;" id="gitopsKpiOutOfSync">0</span>
+            <span class="kpi-sub" id="gitopsKpiDegradedSub">0 degraded / missing</span>
+          </div>
+          <div class="fleet-gitops-kpi">
+            <span class="kpi-label">Suspended</span>
+            <span class="kpi-value" style="color:#cbd5e1;" id="gitopsKpiSuspended">0</span>
+            <span class="kpi-sub">Gated via enabled: false</span>
+          </div>
+          <div class="fleet-gitops-kpi">
+            <span class="kpi-label">Published Agent (amd64)</span>
+            <span class="kpi-value" style="color:#38bdf8; font-size:1.15rem;" id="gitopsKpiAgentVersion">—</span>
+            <span class="kpi-sub" id="gitopsKpiAgentSha">Awaiting release publish</span>
+          </div>
+        </div>
+
+        <!-- Declarative Fleet Manifests Table -->
+        <div class="card">
+          <div class="card-header" style="flex-wrap:wrap; gap:0.5rem;">
+            <div>
+              <div class="card-title">
+                <span>Declarative Fleet Manifests (GitOps Desired vs. Live Telemetry)</span>
+              </div>
+              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
+                Live CI image SHA overrides are preserved across topology syncs; <code>adopt_only</code> guards stateful singletons and <code>enabled: false</code> gates staged environments.
+              </div>
+            </div>
+            <span id="gitopsLastSyncedLabel" style="font-size:0.74rem; color:var(--text-dim); font-family:var(--font-mono);"></span>
+          </div>
+
+          <div tabindex="0" role="region" aria-labelledby="fleetGitopsTableCaption" class="fleet-gitops-table-wrap">
+            <table class="fleet-gitops-table">
+              <caption id="fleetGitopsTableCaption" class="sr-only">Declarative Fleet Manifests Drift Status</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Service</th>
+                  <th scope="col">Env</th>
+                  <th scope="col">Sync Status</th>
+                  <th scope="col">Health</th>
+                  <th scope="col">Desired Image</th>
+                  <th scope="col">Live State</th>
+                  <th scope="col">Commit</th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="fleetGitopsTableBody">
+                <tr>
+                  <td colspan="8" style="text-align:center; color:var(--text-muted); padding:1.75rem;">Loading declarative fleet manifests...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Zero-SSH Host Agent OTA Rollouts -->
+        <div class="card">
+          <div class="card-header" style="flex-wrap:wrap; gap:0.65rem;">
+            <div>
+              <div class="card-title">
+                <span>Zero-SSH Host Agent OTA Rollouts (<code>flarelensd</code>)</span>
+              </div>
+              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
+                Cryptographic SHA-256 verified binary upgrades streamed from Cloudflare R2 via the 15s node heartbeat channel.
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+              <button type="button" class="btn btn-primary" id="btnOtaUpgradeAll">⚡ Upgrade All Nodes (OTA)</button>
+            </div>
+          </div>
+
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th scope="col">Node ID</th>
+                <th scope="col">Hostname</th>
+                <th scope="col">Arch</th>
+                <th scope="col">Running Agent</th>
+                <th scope="col">Published Target</th>
+                <th scope="col">Last OTA Status</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="agentOtaNodesBody">
+              <tr>
+                <td colspan="7" style="text-align:center; color:var(--text-muted); padding:1.5rem;">Loading enrolled host agents...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         VIEW 5: CLOUDFLARE R2 DATABASE BACKUPS
+         ======================================================== -->
+    <section class="view-panel" id="view-backups">
+      <div class="panel-content">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h2 style="font-size:1.15rem; font-weight:700;">Cloudflare R2 Database Backups</h2>
+            <p style="color:var(--text-muted); font-size:0.8rem; margin-top:0.25rem;">
+              Zero-disk streaming pg_dump snapshots with pre-deploy guardrails and AWS SigV4 edge storage.
+            </p>
+          </div>
+          <div style="display:flex; gap:0.6rem;">
+            <button class="btn" id="btnRefreshBackups">Refresh</button>
+            <button class="btn btn-primary" id="btnTriggerBackupNow">📸 Trigger Snapshot Now</button>
+          </div>
+        </div>
+
+        <div class="backup-summary-bar">
+          <div class="summary-stat-box">
+            <div class="label">R2 Storage Bucket</div>
+            <div class="num" style="font-size:1.1rem; color:#38bdf8;">flarelens-backups</div>
+          </div>
+          <div class="summary-stat-box">
+            <div class="label">Total Snapshots</div>
+            <div class="num" id="backupCountStat">0</div>
+          </div>
+          <div class="summary-stat-box">
+            <div class="label">Daily Cron Schedule</div>
+            <div class="num" style="font-size:1.1rem; color:#10b981;">02:00 UTC (Daily)</div>
+          </div>
+          <div class="summary-stat-box">
+            <div class="label">Pre-Deploy Guardrail</div>
+            <div class="num" style="font-size:1.1rem; color:#a855f7;">Enforced (Phase 4)</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Stored Database Snapshots</div>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Snapshot Key</th>
+                <th>Size</th>
+                <th>Tag</th>
+                <th>Node ID</th>
+                <th>Last Modified</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="backupsTableBody">
+              <!-- Dynamically populated from /api/v1/control/backups -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         VIEW: ZERO-TRUST SOVEREIGN WIREGUARD MESH
+         ======================================================== -->
+    <section class="view-panel" id="view-mesh">
+      <div class="panel-content">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h2 style="font-size:1.15rem; font-weight:700;">Zero-Trust Sovereign WireGuard Mesh</h2>
+            <p style="color:var(--text-muted); font-size:0.8rem; margin-top:0.25rem;">
+              Kernel WireGuard mesh (<code>100.64.0.0/10</code>) coordinated serverlessly by Cloudflare Edge (<code>control.example.com</code>) with RFC 8628 Device Flow browser SSO.
+            </p>
+          </div>
+          <div style="display:flex; gap:0.6rem;">
+            <button class="btn" id="btnRefreshMesh">↻ Refresh Mesh</button>
+            <button class="btn btn-primary" id="btnOpenClientModal">⚡ Connect Device (SSO Login)</button>
+          </div>
+        </div>
+
+        <div class="backup-summary-bar">
+          <div class="summary-stat-box">
+            <div class="label">Overlay Subnet</div>
+            <div class="num" style="font-size:1.1rem; color:#38bdf8;">100.64.0.0/10</div>
+          </div>
+          <div class="summary-stat-box">
+            <div class="label">Total Mesh Devices</div>
+            <div class="num" id="meshTotalPeersStat">0</div>
+          </div>
+          <div class="summary-stat-box">
+            <div class="label">Mesh Coordinator</div>
+            <div class="num" style="font-size:1.1rem; color:#10b981;">control.example.com</div>
+          </div>
+          <div class="summary-stat-box">
+            <div class="label">Data Plane</div>
+            <div class="num" style="font-size:1.1rem; color:#a855f7;">Direct Kernel UDP (flarelens0)</div>
+          </div>
+        </div>
+
+        <!-- Mesh Access Control & OIDC Policy Card -->
+        <div class="card" style="margin-bottom:1.5rem; border:1px solid #1f2937; background:linear-gradient(180deg, #111827 0%, #0d131f 100%);">
+          <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+            <div>
+              <div class="card-title" style="display:flex; align-items:center; gap:0.5rem; font-size:0.95rem;">
+                <span>🛡️</span> Mesh Access Control & SSO Policy
+              </div>
+              <p style="color:var(--text-muted); font-size:0.75rem; margin-top:0.2rem;">
+                Specify authorized corporate email domains (e.g. <code>my-orgtems.com</code>, <code>example.com</code>) and individual accounts permitted to authenticate via browser SSO (<code>flarelens-agent login</code>).
+              </p>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+              <span class="status-badge healthy" id="meshPolicyStatusBadge" style="font-size:0.7rem;">Active: 2 Domains</span>
+            </div>
+          </div>
+
+          <form id="meshAccessPolicyForm" style="margin-top:1rem;">
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:1rem; margin-bottom:1rem;">
+              <div>
+                <label style="display:block; font-size:0.78rem; font-weight:600; color:var(--text); margin-bottom:0.35rem;">
+                  🏢 Allowed Corporate Email Domains
+                </label>
+                <div style="font-size:0.72rem; color:var(--text-muted); margin-bottom:0.4rem;">
+                  One domain per line or comma-separated (e.g. <code>my-orgtems.com</code>, <code>example.com</code>). Users authenticating with these domains will be permitted.
+                </div>
+                <textarea id="policyAllowedDomainsInput" rows="3" placeholder="my-orgtems.com&#10;example.com" style="width:100%; padding:0.6rem; background:#070a12; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-mono); font-size:0.8rem; outline:none; resize:vertical;"></textarea>
+              </div>
+
+              <div>
+                <label style="display:block; font-size:0.78rem; font-weight:600; color:var(--text); margin-bottom:0.35rem;">
+                  👤 Allowed Specific Emails (Contractors / Partners)
+                </label>
+                <div style="font-size:0.72rem; color:var(--text-muted); margin-bottom:0.4rem;">
+                  One email per line or comma-separated for external users outside the corporate domain.
+                </div>
+                <textarea id="policyAllowedEmailsInput" rows="3" placeholder="contractor@partner.com&#10;devops@external.io" style="width:100%; padding:0.6rem; background:#070a12; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-mono); font-size:0.8rem; outline:none; resize:vertical;"></textarea>
+              </div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; padding-top:0.75rem; border-top:1px solid rgba(255,255,255,0.06);">
+              <div style="display:flex; align-items:center; gap:0.5rem;">
+                <input type="checkbox" id="policyAutoApproveCheckbox" checked style="accent-color:#0284c7; cursor:pointer;" />
+                <label for="policyAutoApproveCheckbox" style="font-size:0.78rem; color:var(--text-muted); cursor:pointer;">
+                  Auto-enroll verified domain users when authorized via SSO
+                </label>
+              </div>
+
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span id="policySaveStatus" style="font-size:0.75rem; color:#10b981; display:none;">✓ Policy saved</span>
+                <button type="submit" class="btn btn-primary" id="btnSaveMeshPolicy" style="padding:0.45rem 1rem; font-size:0.8rem;">
+                  💾 Save Policy to Edge KV
+                </button>
+              </div>
+            </div>
+          </form>
+
+          <div style="margin-top:1.1rem; padding:0.75rem 1rem; background:rgba(2,132,199,0.08); border:1px solid rgba(2,132,199,0.2); border-radius:6px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
+            <div style="font-size:0.75rem; color:var(--text-muted);">
+              <strong style="color:#38bdf8;">How Team Members Connect:</strong> Run <code style="color:#fff; background:rgba(0,0,0,0.4); padding:2px 6px; border-radius:4px;">flarelens-agent login</code> on any Mac, Linux, or Windows laptop. The browser will open SSO for instant zero-configuration peer enrollment.
+            </div>
+            <button type="button" class="btn btn-sm" id="btnCopyLoginCmd" style="font-size:0.72rem; padding:3px 8px; border-color:#0284c7; color:#38bdf8;">
+              📋 Copy Command
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+            <div class="card-title">Enrolled Sovereign Mesh Nodes & Devices</div>
+            <span class="status-badge healthy" id="meshStatusBadge">Coordinator Online</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Device & MagicDNS</th>
+                <th>Role / Type</th>
+                <th>Overlay Mesh IP</th>
+                <th>Connection Path</th>
+                <th>OS & Client</th>
+                <th>Last Handshake</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="meshTableBody">
+              <!-- Dynamically populated from /api/v1/control/mesh/peers -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Edge Ingress & Cloudflare Tunnel Route Mapping -->
+        <div class="card" style="margin-top:1.5rem; border:1px solid #1f2937; background:linear-gradient(180deg, #111827 0%, #0b0f19 100%);">
+          <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
+            <div>
+              <div class="card-title" style="display:flex; align-items:center; gap:0.5rem; font-size:1rem;">
+                <span>🌐</span> Edge Ingress & Cloudflare Tunnel Route Topology
+                <span class="status-badge healthy" id="ingressActiveRoutesBadge" style="font-size:0.7rem;">10 Routes Active</span>
+              </div>
+              <p style="color:var(--text-muted); font-size:0.75rem; margin-top:0.2rem;">
+                Visual mapping of public customer domains (via <code>cloudflared</code> tunnel) & private operator endpoints routed to internal mesh nodes and container slots.
+              </p>
+            </div>
+            <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+              <div class="tab-pill-group" style="display:flex; background:#070a12; border:1px solid var(--border); border-radius:6px; padding:2px; gap:2px;">
+                <button type="button" class="btn btn-sm btn-ingress-filter active" data-filter="all" style="font-size:0.72rem; padding:3px 8px; border:none; background:rgba(2,132,199,0.2); color:#38bdf8; border-radius:4px;">All (10)</button>
+                <button type="button" class="btn btn-sm btn-ingress-filter" data-filter="public_edge" style="font-size:0.72rem; padding:3px 8px; border:none; background:transparent; color:var(--text-muted); border-radius:4px;">Public Web (5)</button>
+                <button type="button" class="btn btn-sm btn-ingress-filter" data-filter="sovereign_mesh" style="font-size:0.72rem; padding:3px 8px; border:none; background:transparent; color:var(--text-muted); border-radius:4px;">Private Mesh (4)</button>
+              </div>
+              <button class="btn btn-sm" id="btnRefreshIngressRoutes" style="font-size:0.75rem; padding:4px 10px;">↻ Refresh Routes</button>
+            </div>
+          </div>
+
+          <!-- Dual Pipeline Architecture Diagram -->
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:0.75rem; margin:1rem 0; font-size:0.75rem;">
+            <div style="background:rgba(2,132,199,0.06); border:1px solid rgba(2,132,199,0.2); border-radius:6px; padding:0.75rem;">
+              <div style="display:flex; align-items:center; gap:0.4rem; font-weight:600; color:#38bdf8; margin-bottom:0.35rem;">
+                <span>🌍</span> Public Customer Ingress Flow (Zero Inbound Ports)
+              </div>
+              <div style="color:var(--text-muted); font-size:0.72rem; font-family:var(--font-mono); line-height:1.4;">
+                Public Web ➔ Cloudflare WAF/Edge ➔ <span style="color:#38bdf8;">cloudflared Tunnel</span> ➔ node-1 (Traefik:8080) ➔ <span style="color:#10b981;">Active Container Slot</span>
+              </div>
+            </div>
+            <div style="background:rgba(168,85,247,0.06); border:1px solid rgba(168,85,247,0.2); border-radius:6px; padding:0.75rem;">
+              <div style="display:flex; align-items:center; gap:0.4rem; font-weight:600; color:#c084fc; margin-bottom:0.35rem;">
+                <span>🛡️</span> Private Operator Mesh Flow (Zero Cloudflare Hops)
+              </div>
+              <div style="color:var(--text-muted); font-size:0.72rem; font-family:var(--font-mono); line-height:1.4;">
+                Developer Laptop ➔ <span style="color:#c084fc;">WireGuard P2P (100.64.0.0/10)</span> ➔ node-1 (100.64.0.1) ➔ <span style="color:#a855f7;">Postgres / Redis / SSH</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Ingress Routes Table -->
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Domain / Hostname</th>
+                <th>Ingress Layer & Tunnel</th>
+                <th>Destination Node & IP</th>
+                <th>Internal Target & Route</th>
+                <th>Env</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="ingressRoutesTableBody">
+              <!-- Dynamically populated from /api/v1/control/ingress/routes -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         VIEW 6: SYNTHETICS & UPTIME
+         ======================================================== -->
+    <section class="view-panel" id="view-synthetics">
+      <div class="panel-content">
+        <h2 style="font-size:1.1rem; font-weight:700;">Synthetic Monitors & Endpoints</h2>
+        <p style="color:var(--text-muted); font-size:0.8rem;">Automated 1-minute HTTP probes with Telegram & WhatsApp emergency alerts</p>
+
+        <div class="card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Target Endpoint</th>
+                <th>Type</th>
+                <th>Interval</th>
+                <th>Status</th>
+                <th>Alert Channels</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>https://api.example.com/healthz</strong></td>
+                <td>API Ingress</td>
+                <td>60s</td>
+                <td><span class="status-badge healthy">Passing (200 OK)</span></td>
+                <td>Telegram + WhatsApp</td>
+              </tr>
+              <tr>
+                <td><strong>https://control.flarelens.dev/api/v1/ingest</strong></td>
+                <td>Edge Ingest</td>
+                <td>60s</td>
+                <td><span class="status-badge healthy">Passing (200 OK)</span></td>
+                <td>Telegram + WhatsApp</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         VIEW 7: FEATURE FLAGS & SECRETS VAULT
+         ======================================================== -->
+    <section class="view-panel" id="view-flags">
+      <div class="panel-content">
+        <!-- Feature Flags Card -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.5rem;">
+          <div>
+            <h2 style="font-size:1.1rem; font-weight:700;">Edge Feature Flags</h2>
+            <p style="color:var(--text-muted); font-size:0.8rem;">Real-time sync to edge KV, host daemon & container volumes</p>
+          </div>
+          <div style="display:flex; gap:0.5rem;">
+            <button class="btn" id="btnRefreshFlags" style="font-size:0.8rem; padding:0.4rem 0.75rem;">
+              🔄 Refresh Flags
+            </button>
+            <button class="btn btn-primary" id="btnOpenCreateFlagModal" style="font-size:0.8rem; padding:0.4rem 0.75rem;">
+              + Create Feature Flag
+            </button>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 2rem;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Flag Key</th>
+                <th>Description</th>
+                <th>Environments</th>
+                <th>Rollout %</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="flagsTableBody">
+              <tr>
+                <td colspan="6" style="text-align:center; color:var(--text-muted); padding:2rem;">
+                  Loading feature flags from edge KV...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Encrypted Secrets Vault Card -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.5rem;">
+          <div>
+            <h2 style="font-size:1.1rem; font-weight:700;">Encrypted Secrets Vault (AES-256-GCM)</h2>
+            <p style="color:var(--text-muted); font-size:0.8rem;">Decrypted only in edge RAM during blue/green deploy & injected directly into container RAM</p>
+          </div>
+          <div style="display:flex; gap:0.5rem;">
+            <button class="btn" id="btnRefreshVault" style="font-size:0.8rem; padding:0.4rem 0.75rem;">
+              🔄 Refresh Vault
+            </button>
+            <button class="btn btn-primary" id="btnOpenImportEnvModal" style="font-size:0.8rem; padding:0.4rem 0.75rem;">
+              📥 Import .env File
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Service Name</th>
+                <th>Environment</th>
+                <th>Keys Stored</th>
+                <th>Last Updated</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="vaultTableBody">
+              <tr>
+                <td colspan="5" style="text-align:center; color:var(--text-muted); padding:2rem;">
+                  Loading encrypted secrets registry...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- ========================================================
@@ -941,7 +2082,7 @@
       </p>
       <div class="card" style="background:var(--bg-card); padding:0.85rem; border:1px solid var(--border);">
         <strong style="color:#a5b4fc; display:block; margin-bottom:0.35rem;">Webhook URL</strong>
-        <code id="webhookUrlDisplay" style="word-break:break-all;">https://control.example.com/api/v1/control/deploy/webhook</code>
+        <code id="webhookUrlDisplay" style="word-break:break-all;">https://control.flarelens.dev/api/v1/control/deploy/webhook</code>
         <div style="margin-top:0.5rem; display:flex; gap:1.5rem; font-size:0.75rem; color:var(--text-muted);">
           <span>Content type: <strong>application/json</strong></span>
           <span>Secret: <strong>WEBHOOK_SECRET</strong></span>
@@ -952,7 +2093,7 @@
         <strong style="display:block; margin-bottom:0.35rem; color:#10b981;">GitHub Actions Workflow Snippet</strong>
         <pre id="webhookSnippetDisplay" style="background:var(--bg); padding:0.75rem; border-radius:6px; font-size:0.72rem; overflow-x:auto;">- name: Trigger FlareLens GitOps Blue/Green Deploy
   run: |
-    curl -X POST https://control.example.com/api/v1/control/deploy/webhook \
+    curl -X POST https://control.flarelens.dev/api/v1/control/deploy/webhook \
       -H "Content-Type: application/json" \
       -d '{
         "service": "web-api",
@@ -1067,7 +2208,7 @@
       <button type="button" class="btn btn-sm" id="btnCancelMeshClientModal" style="padding:2px 8px; font-size:0.8rem;">✕</button>
     </div>
     <p style="color:var(--text-muted); font-size:0.8rem; margin-bottom:1.2rem; line-height:1.4;">
-      Enrolls a client device directly into the Sovereign Mesh (<code>https://control.example.com</code>). Allocates a Carrier-Grade NAT (<code>100.64.0.x</code>) IP with MagicDNS (<code>.mesh</code>), direct WireGuard P2P encryption, and zero third-party dependencies.
+      Enrolls a client device directly into the Sovereign Mesh (<code>https://control.flarelens.dev</code>). Allocates a Carrier-Grade NAT (<code>100.64.0.x</code>) IP with MagicDNS (<code>.flarelens.mesh</code>), direct WireGuard P2P encryption, and zero third-party dependencies.
     </p>
     <form id="meshClientForm">
       <div style="display:grid; grid-template-columns: 2fr 1fr; gap:0.75rem; margin-bottom:1rem;">
@@ -1095,7 +2236,7 @@
         <div style="color:#10b981; font-weight:600; font-size:0.85rem; margin-bottom:0.3rem;">✓ Device Enrolled & Mesh Profile Generated!</div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; font-size:0.78rem; color:var(--text-muted); margin-bottom:0.75rem;">
           <div>Assigned CGNAT IP: <strong id="meshAllocatedIP" style="color:#fff; font-family:var(--font-mono);">100.64.0.100</strong></div>
-          <div>MagicDNS: <strong id="meshMagicDnsPreview" style="color:#38bdf8; font-family:var(--font-mono);">device.mesh</strong></div>
+          <div>MagicDNS: <strong id="meshMagicDnsPreview" style="color:#38bdf8; font-family:var(--font-mono);">device.flarelens.mesh</strong></div>
         </div>
 
         <div style="margin-bottom:0.6rem;">
@@ -1124,7 +2265,95 @@
   </dialog>
 
   <!-- MODAL: CREATE / EDIT FEATURE FLAG -->
-  
+  <dialog class="modal" id="flagModal" style="max-width: 540px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+      <h3 style="font-size:1.1rem; font-weight:700;" id="flagModalTitle">Create Feature Flag</h3>
+      <button type="button" class="btn btn-sm" id="btnCloseFlagModal" style="padding:2px 8px; font-size:0.8rem;">✕</button>
+    </div>
+    <form id="flagForm">
+      <div style="margin-bottom:0.9rem;">
+        <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Flag Key *</label>
+        <input type="text" id="flagKeyInput" placeholder="e.g. checkout_v2 or new_invoicing_flow" required style="width:100%; padding:0.55rem; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-mono); font-size:0.82rem; outline:none;" />
+        <small style="color:var(--text-muted); font-size:0.72rem; display:block; margin-top:0.25rem;">Unique key evaluated by apps, SDKs & containers</small>
+      </div>
+
+      <div style="margin-bottom:0.9rem;">
+        <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Description</label>
+        <input type="text" id="flagDescInput" placeholder="Purpose or context of this feature flag" style="width:100%; padding:0.55rem; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-sans); font-size:0.82rem; outline:none;" />
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:0.9rem;">
+        <div>
+          <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Rollout Percentage</label>
+          <div style="display:flex; align-items:center; gap:0.4rem;">
+            <input type="number" id="flagRolloutInput" min="0" max="100" value="100" style="width:100%; padding:0.55rem; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-sans); font-size:0.82rem; outline:none;" />
+            <span style="color:var(--text-muted); font-size:0.85rem;">%</span>
+          </div>
+        </div>
+
+        <div>
+          <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Active Status</label>
+          <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem;">
+            <input type="checkbox" id="flagEnabledInput" checked style="width:1.2rem; height:1.2rem; cursor:pointer;" />
+            <label for="flagEnabledInput" style="margin:0; cursor:pointer; font-size:0.85rem; font-weight:600; color:#fff;">Enabled (Active)</label>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:1.2rem;">
+        <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Target Environments</label>
+        <input type="text" id="flagEnvsInput" placeholder="production, uat, staging (leave blank for all)" style="width:100%; padding:0.55rem; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-sans); font-size:0.82rem; outline:none;" />
+        <small style="color:var(--text-muted); font-size:0.72rem; display:block; margin-top:0.25rem;">Comma-separated environments (e.g. production, uat)</small>
+      </div>
+
+      <div id="flagModalMsg" style="display:none; margin-bottom:0.8rem; font-size:0.8rem;"></div>
+
+      <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
+        <button type="button" class="btn" id="btnCancelFlagModal">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btnSaveFlag">Save Feature Flag</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- MODAL: CONFIRM ZERO-SSH HOST AGENT OTA UPGRADE -->
+  <dialog id="otaConfirmDialog" class="ota-dialog" aria-labelledby="otaConfirmTitle" closedby="any">
+    <div>
+      <h3 id="otaConfirmTitle" style="font-size:1.05rem; font-weight:700;">Confirm Zero-SSH Agent OTA Upgrade</h3>
+      <p style="font-size:0.8rem; color:var(--text-muted); margin-top:0.35rem; line-height:1.45;">
+        Dispatches a signed <code>self_update</code> command over the 15s heartbeat channel. The host daemon verifies the SHA-256 digest before atomic binary swap and service restart.
+      </p>
+    </div>
+    <form method="dialog" id="otaConfirmForm" style="display:flex; flex-direction:column; gap:0.85rem;">
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.65rem;">
+        <div>
+          <label for="otaTargetNodeInput" style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:0.25rem;">Target Node</label>
+          <input type="text" id="otaTargetNodeInput" class="search-box" value="all" readonly style="width:100%;">
+        </div>
+        <div>
+          <label for="otaTargetArchSelect" style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:0.25rem;">Platform Target</label>
+          <select id="otaTargetArchSelect" class="filter-select" style="width:100%;">
+            <option value="linux-amd64" selected>linux-amd64</option>
+            <option value="linux-arm64">linux-arm64</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label for="otaTargetVersionInput" style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:0.25rem;">Target Release Version (blank uses latest in R2)</label>
+        <input type="text" id="otaTargetVersionInput" class="search-box" placeholder="e.g. 0.4.0" style="width:100%;">
+      </div>
+      <div id="otaReleaseSummaryBox" style="background:#070b14; border:1px solid var(--border); border-radius:6px; padding:0.65rem 0.8rem; font-size:0.74rem; font-family:var(--font-mono); color:var(--text-muted); word-break:break-all;">
+        Checking published R2 agent release metadata...
+      </div>
+      <div style="display:flex; align-items:center; gap:0.5rem;">
+        <input type="checkbox" id="otaForceCheckbox" style="width:1rem; height:1rem; cursor:pointer;">
+        <label for="otaForceCheckbox" style="font-size:0.78rem; color:var(--text); cursor:pointer;">Force reinstall even if node already reports this version</label>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.35rem;">
+        <button value="cancel" autofocus class="btn">Cancel</button>
+        <button value="confirm" class="btn btn-primary" id="btnConfirmOtaSubmit">⚡ Queue OTA Upgrade</button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- Enhanced OTel Trace & Error Review Drawer -->
   <div class="drawer" id="traceDrawer">
@@ -1262,12 +2491,12 @@
         // Fetch view-specific data when activated
         if (viewId === 'fleet') fetchFleetNodes();
         if (viewId === 'deployments') { fetchServices(); fetchDeployments(); }
+        if (viewId === 'gitops') fetchFleetGitopsAndOta();
         if (viewId === 'backups') fetchBackups();
         if (viewId === 'mesh') { fetchMeshPeers(); fetchMeshAccessPolicy(); fetchIngressRoutes(); }
         if (viewId === 'issues') renderIssues();
         if (viewId === 'lakehouse') fetchLakehouseFiles();
-        if (viewId === 'vault') { fetchVaultSecrets(); fetchVaultSecrets(); }
-        if (viewId === 'gateway') fetchGatewayStatus();
+        if (viewId === 'flags') { fetchFeatureFlags(); fetchVaultSecrets(); }
       });
     });
 
@@ -1475,7 +2704,7 @@
                 Run the 30-second bootstrap installer on your host to register your first node with real-time CPU, RAM, Docker, and Zero-Trust Sovereign Mesh (<code>100.64.0.0/10</code>) telemetry.
               </p>
               <code style="background:var(--bg); padding:0.55rem 1rem; border-radius:6px; font-size:0.8rem; border:1px solid var(--border); font-family:var(--font-mono); color:#10b981; display:inline-block; max-width:100%; word-break:break-all;">
-                curl -fsSL ${window.location.origin}/install.sh | sudo bash
+                curl -fsSL https://control.flarelens.dev/install.sh | sudo bash
               </code>
             </div>
           `;
@@ -1498,7 +2727,7 @@
           // Zero-Trust Sovereign Mesh metadata
           const mesh = node.mesh || {};
           const meshIp = mesh.tailscale_ip || '100.64.0.1';
-          const magicDns = mesh.magic_dns || `${node.node_id.toLowerCase()}.mesh`;
+          const magicDns = mesh.magic_dns || `${node.node_id.toLowerCase()}.flarelens.mesh`;
           const connType = mesh.connection_type === 'derp_relay' ? 'DERP Relay' : 'Direct P2P';
           const connBadgeClass = mesh.connection_type === 'derp_relay' ? 'warning' : 'healthy';
 
@@ -2752,6 +3981,144 @@
     });
 
     // Feature Flags Modal Elements
+    const flagModal = document.getElementById('flagModal');
+    const flagForm = document.getElementById('flagForm');
+    const flagModalTitle = document.getElementById('flagModalTitle');
+    const flagKeyInput = document.getElementById('flagKeyInput');
+    const flagDescInput = document.getElementById('flagDescInput');
+    const flagRolloutInput = document.getElementById('flagRolloutInput');
+    const flagEnabledInput = document.getElementById('flagEnabledInput');
+    const flagEnvsInput = document.getElementById('flagEnvsInput');
+    const flagModalMsg = document.getElementById('flagModalMsg');
+    const btnOpenCreateFlagModal = document.getElementById('btnOpenCreateFlagModal');
+    const btnCloseFlagModal = document.getElementById('btnCloseFlagModal');
+    const btnCancelFlagModal = document.getElementById('btnCancelFlagModal');
+
+    btnOpenCreateFlagModal?.addEventListener('click', () => {
+      flagModalTitle.textContent = 'Create Feature Flag';
+      flagKeyInput.value = '';
+      flagKeyInput.readOnly = false;
+      flagDescInput.value = '';
+      flagRolloutInput.value = '100';
+      flagEnabledInput.checked = true;
+      flagEnvsInput.value = '';
+      flagModalMsg.style.display = 'none';
+      flagModal.showModal();
+    });
+
+    btnCloseFlagModal?.addEventListener('click', () => flagModal.close());
+    btnCancelFlagModal?.addEventListener('click', () => flagModal.close());
+
+    flagForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      flagModalMsg.style.display = 'block';
+      flagModalMsg.style.color = 'var(--text-muted)';
+      flagModalMsg.textContent = 'Saving feature flag to edge KV...';
+
+      const envs = flagEnvsInput.value.split(',').map(s => s.trim()).filter(Boolean);
+      const payload = {
+        key: flagKeyInput.value.trim(),
+        description: flagDescInput.value.trim(),
+        enabled: flagEnabledInput.checked,
+        rollout_pct: parseInt(flagRolloutInput.value || '100', 10),
+        environments: envs.length > 0 ? envs : ['production', 'uat'],
+      };
+
+      try {
+        const resp = await fetch('/api/v1/control/flags', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+          const errData = await resp.json();
+          flagModalMsg.style.color = '#f43f5e';
+          flagModalMsg.textContent = `Error: ${errData.error || 'Failed to save flag'}`;
+          return;
+        }
+        flagModal.close();
+        fetchFeatureFlags();
+      } catch (err) {
+        flagModalMsg.style.color = '#f43f5e';
+        flagModalMsg.textContent = `Error: ${err.message}`;
+      }
+    });
+
+    async function fetchFeatureFlags() {
+      try {
+        const resp = await fetch('/api/v1/control/flags');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const flags = data.flags || [];
+
+        flagsTableBody.innerHTML = '';
+        if (flags.length === 0) {
+          flagsTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:2rem;">No feature flags found. Click "+ Create Feature Flag" to add one.</td></tr>';
+          return;
+        }
+
+        flags.forEach(f => {
+          const tr = document.createElement('tr');
+          const isEnabled = f.enabled;
+          const envs = f.environments && f.environments.length > 0 
+            ? f.environments.map(e => `<span class="badge" style="background:#1e293b; color:#94a3b8; font-size:0.7rem; padding:2px 6px; border-radius:4px; margin-right:4px;">${escapeHtml(e)}</span>`).join('')
+            : '<span style="color:var(--text-muted); font-size:0.75rem;">All</span>';
+
+          tr.innerHTML = `
+            <td><code>${escapeHtml(f.key)}</code></td>
+            <td>${escapeHtml(f.description || '')}</td>
+            <td>${envs}</td>
+            <td><strong>${f.rollout_pct ?? 100}%</strong></td>
+            <td><span class="status-badge ${isEnabled ? 'healthy' : 'failed'}">${isEnabled ? 'Enabled' : 'Disabled'}</span></td>
+            <td>
+              <div style="display:flex; gap:0.4rem; align-items:center;">
+                <button class="btn btn-toggle-flag" data-key="${escapeHtml(f.key)}" style="font-size:0.75rem; font-weight:600; padding:0.3rem 0.6rem; cursor:pointer; background:rgba(0,0,0,0.3); color:${isEnabled ? '#f43f5e' : '#10b981'}; border:1px solid ${isEnabled ? '#f43f5e' : '#10b981'}; border-radius:4px;">
+                  ${isEnabled ? 'Kill Switch' : 'Enable'}
+                </button>
+                <button class="btn btn-edit-flag" style="font-size:0.75rem; font-weight:600; padding:0.3rem 0.6rem; cursor:pointer; background:#1e293b; color:#f8fafc; border:1px solid #475569; border-radius:4px;">
+                  ✏️ Edit
+                </button>
+                <button class="btn btn-delete-flag" title="Delete Flag" style="font-size:0.75rem; padding:0.3rem 0.5rem; cursor:pointer; background:rgba(244,63,94,0.1); color:#f43f5e; border:1px solid rgba(244,63,94,0.4); border-radius:4px;">
+                  🗑️
+                </button>
+              </div>
+            </td>
+          `;
+
+          // Toggle action
+          tr.querySelector('.btn-toggle-flag').addEventListener('click', async () => {
+            await fetch(`/api/v1/control/flags/${encodeURIComponent(f.key)}/toggle`, { method: 'POST' });
+            fetchFeatureFlags();
+          });
+
+          // Edit action
+          tr.querySelector('.btn-edit-flag').addEventListener('click', () => {
+            flagModalTitle.textContent = `Edit Feature Flag: ${f.key}`;
+            flagKeyInput.value = f.key;
+            flagKeyInput.readOnly = true;
+            flagDescInput.value = f.description || '';
+            flagRolloutInput.value = f.rollout_pct ?? 100;
+            flagEnabledInput.checked = Boolean(f.enabled);
+            flagEnvsInput.value = (f.environments || []).join(', ');
+            flagModalMsg.style.display = 'none';
+            flagModal.showModal();
+          });
+
+          // Delete action
+          tr.querySelector('.btn-delete-flag').addEventListener('click', async () => {
+            if (confirm(`Are you sure you want to delete feature flag "${f.key}"? This will disable it across all containers.`)) {
+              await fetch(`/api/v1/control/flags/${encodeURIComponent(f.key)}`, { method: 'DELETE' });
+              fetchFeatureFlags();
+            }
+          });
+
+          flagsTableBody.appendChild(tr);
+        });
+      } catch (e) {
+        flagsTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#f43f5e; padding:1.5rem;">Failed to load feature flags: ${e.message}</td></tr>`;
+      }
+    }
+
     async function fetchVaultSecrets() {
       try {
         const resp = await fetch('/api/v1/control/secrets');
@@ -3001,7 +4368,7 @@
           if (isGateway) roleBadge = `<span class="status-badge" style="background:rgba(99,102,241,0.15); color:#818cf8; border-color:rgba(99,102,241,0.3); font-size:0.68rem;">Edge Gateway</span>`;
 
           const meshIp = peer.tailscale_ip || peer.overlay_ip || '100.64.0.1';
-          const magicDns = peer.magic_dns || (peer.hostname ? `${peer.hostname}.mesh` : `${peer.name || peer.id}.mesh`);
+          const magicDns = peer.magic_dns || (peer.hostname ? `${peer.hostname}.flarelens.mesh` : `${peer.name || peer.id}.flarelens.mesh`);
           const isDerp = peer.connection_type === 'derp_relay';
           const pathBadge = isDerp
             ? `<span class="status-badge warning" style="font-size:0.68rem;">DERP Relay:3478</span>`
@@ -3271,7 +4638,7 @@
     document.getElementById('btnShowAgentCli')?.addEventListener('click', () => {
       if (!currentClientEnrollData) return;
       meshTailscaleCmdInput.value = currentClientEnrollData.agent_command || currentClientEnrollData.connect_command;
-      meshConfPreview.textContent = `# Run in your terminal on Mac, Linux, or Windows:\n${meshTailscaleCmdInput.value}\n\n# Or to export a .conf file:\n${meshTailscaleCmdInput.value} --export-conf > mesh.conf`;
+      meshConfPreview.textContent = `# Run in your terminal on Mac, Linux, or Windows:\n${meshTailscaleCmdInput.value}\n\n# Or to export a .conf file:\n${meshTailscaleCmdInput.value} --export-conf > flarelens.conf`;
       meshConfPreview.style.display = 'block';
     });
 
@@ -3453,10 +4820,505 @@
       if (currentView === 'logs') { syncRecentLogs(); renderLogs(); }
       if (currentView === 'fleet') fetchFleetNodes();
       if (currentView === 'deployments') { fetchServices(); fetchDeployments(); }
+      if (currentView === 'gitops') fetchFleetGitopsAndOta();
       if (currentView === 'backups') fetchBackups();
       if (currentView === 'mesh') { fetchMeshPeers(); fetchMeshAccessPolicy(); fetchIngressRoutes(); }
-      if (currentView === 'flags') { fetchVaultSecrets(); fetchVaultSecrets(); }
+      if (currentView === 'flags') { fetchFeatureFlags(); fetchVaultSecrets(); }
     });
+
+    // ----------------------------------------------------
+    // Declarative Fleet GitOps & Host Agent OTA Controller
+    // ----------------------------------------------------
+    let activeGitopsEnvFilter = '';
+    let latestAgentReleaseCache = null;
+
+    const gitopsEnvFilterGroup = document.getElementById('gitopsEnvFilterGroup');
+    const btnRefreshGitops = document.getElementById('btnRefreshGitops');
+    const fleetGitopsTableBody = document.getElementById('fleetGitopsTableBody');
+    const agentOtaNodesBody = document.getElementById('agentOtaNodesBody');
+    const otaConfirmDialog = document.getElementById('otaConfirmDialog');
+    const otaTargetNodeInput = document.getElementById('otaTargetNodeInput');
+    const otaTargetArchSelect = document.getElementById('otaTargetArchSelect');
+    const otaTargetVersionInput = document.getElementById('otaTargetVersionInput');
+    const otaReleaseSummaryBox = document.getElementById('otaReleaseSummaryBox');
+    const otaForceCheckbox = document.getElementById('otaForceCheckbox');
+    const btnOtaUpgradeAll = document.getElementById('btnOtaUpgradeAll');
+
+    function createGitopsBadge(label, variant) {
+      const span = document.createElement('span');
+      span.className = `gitops-badge ${variant}`;
+      span.textContent = label;
+      return span;
+    }
+
+    function shortContainerImage(img) {
+      if (!img) return '—';
+      const last = String(img).split('/').pop() || img;
+      return last.length > 42 ? last.slice(0, 39) + '…' : last;
+    }
+
+    function renderEmptyRow(tbody, colSpan, message) {
+      if (!tbody) return;
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = colSpan;
+      td.style.textAlign = 'center';
+      td.style.color = 'var(--text-muted)';
+      td.style.padding = '1.75rem';
+      td.textContent = message;
+      tr.appendChild(td);
+      tbody.replaceChildren(tr);
+    }
+
+    function renderFleetGitopsTable(services) {
+      if (!fleetGitopsTableBody) return;
+      if (!Array.isArray(services) || services.length === 0) {
+        renderEmptyRow(fleetGitopsTableBody, 8, 'No declarative fleet manifests found for this environment filter.');
+        return;
+      }
+
+      const envOrder = { infra: 0, uat: 1, prod: 2 };
+      const sorted = [...services].sort((a, b) => {
+        const ea = envOrder[a.env] ?? 9;
+        const eb = envOrder[b.env] ?? 9;
+        if (ea !== eb) return ea - eb;
+        return String(a.service || '').localeCompare(String(b.service || ''));
+      });
+
+      const fragment = document.createDocumentFragment();
+
+      for (const s of sorted) {
+        const tr = document.createElement('tr');
+
+        // 1. Row Header: Service + Mode
+        const th = document.createElement('th');
+        th.scope = 'row';
+        const svcTitle = document.createElement('div');
+        svcTitle.style.fontWeight = '700';
+        svcTitle.style.fontSize = '0.86rem';
+        svcTitle.textContent = s.service || 'unknown';
+        const svcMeta = document.createElement('div');
+        svcMeta.style.fontSize = '0.7rem';
+        svcMeta.style.color = 'var(--text-dim)';
+        svcMeta.style.fontFamily = 'var(--font-mono)';
+        const modeParts = [s.mode === 'singleton' ? 'singleton' : 'blue/green'];
+        if (s.adopt_only) modeParts.push('adopt_only');
+        if (s.target_node) modeParts.push(s.target_node);
+        svcMeta.textContent = modeParts.join(' · ');
+        th.append(svcTitle, svcMeta);
+
+        // 2. Env
+        const tdEnv = document.createElement('td');
+        const envCode = document.createElement('span');
+        envCode.style.fontFamily = 'var(--font-mono)';
+        envCode.style.fontSize = '0.72rem';
+        envCode.style.fontWeight = '700';
+        envCode.style.textTransform = 'uppercase';
+        envCode.style.padding = '0.15rem 0.45rem';
+        envCode.style.borderRadius = '4px';
+        envCode.style.background = s.env === 'prod'
+          ? 'rgba(99, 102, 241, 0.16)'
+          : (s.env === 'infra' ? 'rgba(56, 189, 248, 0.14)' : 'rgba(16, 185, 129, 0.14)');
+        envCode.style.color = s.env === 'prod' ? '#a5b4fc' : (s.env === 'infra' ? '#38bdf8' : '#34d399');
+        envCode.textContent = s.env || 'uat';
+        tdEnv.appendChild(envCode);
+
+        // 3. Sync Status
+        const tdSync = document.createElement('td');
+        const syncNorm = s.sync_status === 'Synced'
+          ? 'synced'
+          : (s.sync_status === 'Suspended' ? 'suspended' : 'outofsync');
+        const syncBadge = createGitopsBadge(s.sync_status || 'Unknown', syncNorm);
+        if (Array.isArray(s.drift_reasons) && s.drift_reasons.length > 0) {
+          syncBadge.title = s.drift_reasons.join('\n');
+        }
+        tdSync.appendChild(syncBadge);
+
+        // 4. Health Status
+        const tdHealth = document.createElement('td');
+        const healthNorm = s.health_status === 'Healthy'
+          ? 'healthy'
+          : (s.health_status === 'Suspended'
+              ? 'suspended'
+              : (s.health_status === 'Missing' ? 'missing' : 'degraded'));
+        tdHealth.appendChild(createGitopsBadge(s.health_status || 'Unknown', healthNorm));
+
+        // 5. Desired Image
+        const tdDesired = document.createElement('td');
+        const desiredCode = document.createElement('code');
+        desiredCode.style.fontFamily = 'var(--font-mono)';
+        desiredCode.style.fontSize = '0.73rem';
+        desiredCode.style.color = '#e2e8f0';
+        desiredCode.textContent = shortContainerImage(s.desired_image);
+        desiredCode.title = s.desired_image || '';
+        tdDesired.appendChild(desiredCode);
+
+        // 6. Live State / Containers
+        const tdLive = document.createElement('td');
+        if (Array.isArray(s.active_containers) && s.active_containers.length > 0) {
+          const ctrsLine = document.createElement('div');
+          ctrsLine.style.fontFamily = 'var(--font-mono)';
+          ctrsLine.style.fontSize = '0.73rem';
+          ctrsLine.style.color = '#38bdf8';
+          ctrsLine.textContent = s.active_containers.join(', ');
+          tdLive.appendChild(ctrsLine);
+          if (s.live_image) {
+            const liveSub = document.createElement('div');
+            liveSub.style.fontFamily = 'var(--font-mono)';
+            liveSub.style.fontSize = '0.68rem';
+            liveSub.style.color = 'var(--text-dim)';
+            liveSub.textContent = shortContainerImage(s.live_image);
+            liveSub.title = s.live_image;
+            tdLive.appendChild(liveSub);
+          }
+        } else {
+          const reasonSpan = document.createElement('span');
+          reasonSpan.style.fontSize = '0.73rem';
+          reasonSpan.style.color = 'var(--text-dim)';
+          reasonSpan.textContent = s.enabled === false
+            ? 'Staged (enabled: false)'
+            : ((s.drift_reasons && s.drift_reasons[0]) || 'No active container');
+          tdLive.appendChild(reasonSpan);
+        }
+
+        // 7. Git Commit
+        const tdCommit = document.createElement('td');
+        const commitCode = document.createElement('code');
+        commitCode.style.fontFamily = 'var(--font-mono)';
+        commitCode.style.fontSize = '0.72rem';
+        commitCode.style.color = 'var(--text-muted)';
+        commitCode.textContent = s.synced_commit ? String(s.synced_commit).slice(0, 7) : '—';
+        if (s.updated_at) commitCode.title = `Synced at ${s.updated_at}`;
+        tdCommit.appendChild(commitCode);
+
+        // 8. Actions
+        const tdActions = document.createElement('td');
+        const recBtn = document.createElement('button');
+        recBtn.type = 'button';
+        recBtn.className = 'btn';
+        recBtn.style.fontSize = '0.72rem';
+        recBtn.style.padding = '0.28rem 0.6rem';
+
+        if (s.enabled === false) {
+          recBtn.disabled = true;
+          recBtn.style.opacity = '0.45';
+          recBtn.style.cursor = 'not-allowed';
+          recBtn.textContent = '⏸ Suspended';
+          recBtn.title = 'Set enabled: true in infra-repo/fleet/prod/*.yml to activate this service';
+        } else {
+          recBtn.textContent = '↻ Reconcile';
+          recBtn.title = `Reconcile ${s.env}/${s.service} on ${s.target_node || 'fleet'}`;
+          recBtn.addEventListener('click', async () => {
+            recBtn.disabled = true;
+            const prevLabel = recBtn.textContent;
+            recBtn.textContent = '⏳ Queueing...';
+            try {
+              const resp = await fetch('/api/v1/control/fleet/reconcile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ env: s.env, service: s.service }),
+              });
+              const resJson = await resp.json().catch(() => ({}));
+              if (!resp.ok) {
+                showToast(`Reconcile failed: ${resJson.error || resp.statusText}`, true);
+              } else {
+                const recItem = (resJson.reconciled || [])[0];
+                if (recItem?.adopted_nodes?.length) {
+                  showToast(`${s.env}/${s.service} already running on ${recItem.adopted_nodes.join(', ')} (adopt_only protected).`);
+                } else {
+                  showToast(`Queued reconciliation for ${s.env}/${s.service}.`);
+                }
+                fetchFleetGitopsAndOta();
+              }
+            } catch (err) {
+              showToast(`Reconcile network error: ${err.message}`, true);
+            } finally {
+              recBtn.disabled = false;
+              recBtn.textContent = prevLabel;
+            }
+          });
+        }
+        tdActions.appendChild(recBtn);
+
+        tr.append(th, tdEnv, tdSync, tdHealth, tdDesired, tdLive, tdCommit, tdActions);
+        fragment.appendChild(tr);
+      }
+
+      fleetGitopsTableBody.replaceChildren(fragment);
+    }
+
+    function openOtaDialogForNode(nodeId, archHint) {
+      if (!otaConfirmDialog || typeof otaConfirmDialog.showModal !== 'function') return;
+      if (otaTargetNodeInput) otaTargetNodeInput.value = nodeId || 'all';
+      if (otaTargetArchSelect && (archHint === 'linux-amd64' || archHint === 'linux-arm64')) {
+        otaTargetArchSelect.value = archHint;
+      }
+      if (otaTargetVersionInput) {
+        otaTargetVersionInput.value = latestAgentReleaseCache?.version || '';
+      }
+      if (otaForceCheckbox) otaForceCheckbox.checked = false;
+      updateOtaReleaseSummaryBox();
+      otaConfirmDialog.returnValue = '';
+      otaConfirmDialog.showModal();
+    }
+
+    function updateOtaReleaseSummaryBox() {
+      if (!otaReleaseSummaryBox) return;
+      if (latestAgentReleaseCache && latestAgentReleaseCache.version) {
+        const shaShort = String(latestAgentReleaseCache.sha256 || '').slice(0, 16);
+        const sizeMb = latestAgentReleaseCache.size_bytes
+          ? `${(latestAgentReleaseCache.size_bytes / (1024 * 1024)).toFixed(2)} MB`
+          : 'R2 stream';
+        otaReleaseSummaryBox.textContent =
+          `Published R2 artifact: v${latestAgentReleaseCache.version} (${sizeMb}) · sha256:${shaShort}…`;
+        otaReleaseSummaryBox.style.color = '#34d399';
+      } else {
+        otaReleaseSummaryBox.textContent =
+          'No published flarelensd binary metadata in R2 yet. Push a v* tag or run Release Agent workflow in flarelens-agent first.';
+        otaReleaseSummaryBox.style.color = '#fbbf24';
+      }
+    }
+
+    function renderAgentOtaTable(nodes, release) {
+      if (!agentOtaNodesBody) return;
+      if (!Array.isArray(nodes) || nodes.length === 0) {
+        renderEmptyRow(agentOtaNodesBody, 7, 'No enrolled host nodes reported yet.');
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      for (const n of nodes) {
+        const tr = document.createElement('tr');
+
+        const tdId = document.createElement('td');
+        const idStrong = document.createElement('strong');
+        idStrong.style.fontFamily = 'var(--font-mono)';
+        idStrong.style.color = '#fff';
+        idStrong.textContent = n.node_id || 'unknown';
+        tdId.appendChild(idStrong);
+
+        const tdHost = document.createElement('td');
+        tdHost.textContent = n.hostname || '—';
+
+        const tdArch = document.createElement('td');
+        const archCode = document.createElement('code');
+        archCode.style.fontFamily = 'var(--font-mono)';
+        archCode.style.fontSize = '0.74rem';
+        archCode.textContent = n.arch || 'linux-amd64';
+        tdArch.appendChild(archCode);
+
+        const tdVer = document.createElement('td');
+        const verSpan = document.createElement('span');
+        verSpan.style.fontFamily = 'var(--font-mono)';
+        verSpan.style.fontWeight = '600';
+        verSpan.style.color = n.up_to_date === true ? '#34d399' : '#e2e8f0';
+        verSpan.textContent = n.version ? `v${String(n.version).replace(/^v/i, '')}` : 'unknown';
+        tdVer.appendChild(verSpan);
+
+        const tdTarget = document.createElement('td');
+        const targetSpan = document.createElement('span');
+        targetSpan.style.fontFamily = 'var(--font-mono)';
+        targetSpan.style.fontSize = '0.75rem';
+        targetSpan.style.color = release?.version ? '#38bdf8' : 'var(--text-dim)';
+        targetSpan.textContent = release?.version ? `v${String(release.version).replace(/^v/i, '')}` : 'Unpublished';
+        tdTarget.appendChild(targetSpan);
+
+        const tdOta = document.createElement('td');
+        if (n.ota_status && n.ota_status.status) {
+          const st = String(n.ota_status.status);
+          const variant = st === 'succeeded' ? 'healthy' : (st === 'failed' ? 'missing' : 'outofsync');
+          const badge = createGitopsBadge(st, variant);
+          if (n.ota_status.message || n.ota_status.updated_at) {
+            badge.title = [n.ota_status.message, n.ota_status.updated_at].filter(Boolean).join(' · ');
+          }
+          tdOta.appendChild(badge);
+        } else if (n.up_to_date === true) {
+          tdOta.appendChild(createGitopsBadge('Up to Date', 'synced'));
+        } else {
+          const idleSpan = document.createElement('span');
+          idleSpan.style.color = 'var(--text-dim)';
+          idleSpan.style.fontSize = '0.75rem';
+          idleSpan.textContent = 'Idle';
+          tdOta.appendChild(idleSpan);
+        }
+
+        const tdAct = document.createElement('td');
+        const upBtn = document.createElement('button');
+        upBtn.type = 'button';
+        upBtn.className = 'btn';
+        upBtn.style.fontSize = '0.72rem';
+        upBtn.style.padding = '0.28rem 0.65rem';
+        upBtn.textContent = '⚡ Upgrade OTA';
+        upBtn.addEventListener('click', () => openOtaDialogForNode(n.node_id, n.arch));
+        tdAct.appendChild(upBtn);
+
+        tr.append(tdId, tdHost, tdArch, tdVer, tdTarget, tdOta, tdAct);
+        fragment.appendChild(tr);
+      }
+
+      agentOtaNodesBody.replaceChildren(fragment);
+    }
+
+    async function fetchFleetGitopsAndOta() {
+      try {
+        const qs = activeGitopsEnvFilter ? `?env=${encodeURIComponent(activeGitopsEnvFilter)}` : '';
+        const [fleetRes, otaRes] = await Promise.all([
+          fetch(`/api/v1/control/fleet/status${qs}`),
+          fetch('/api/v1/control/agent/releases?target=linux-amd64'),
+        ]);
+
+        if (fleetRes.ok) {
+          const fleetData = await fleetRes.json();
+          const sum = fleetData.summary || {};
+          const services = fleetData.services || [];
+
+          const elTotal = document.getElementById('gitopsKpiTotal');
+          const elSynced = document.getElementById('gitopsKpiSynced');
+          const elOut = document.getElementById('gitopsKpiOutOfSync');
+          const elSusp = document.getElementById('gitopsKpiSuspended');
+          const elHealthySub = document.getElementById('gitopsKpiHealthySub');
+          const elDegSub = document.getElementById('gitopsKpiDegradedSub');
+          const elSidebarBadge = document.getElementById('sidebarGitopsBadge');
+          const elLastSynced = document.getElementById('gitopsLastSyncedLabel');
+
+          if (elTotal) elTotal.textContent = String(sum.total ?? services.length);
+          if (elSynced) elSynced.textContent = String(sum.synced ?? 0);
+          if (elOut) elOut.textContent = String(sum.out_of_sync ?? 0);
+          if (elSusp) elSusp.textContent = String(sum.suspended ?? 0);
+          if (elHealthySub) elHealthySub.textContent = `${sum.healthy ?? 0} healthy containers`;
+          if (elDegSub) elDegSub.textContent = `${sum.degraded ?? 0} degraded / missing`;
+
+          if (elSidebarBadge && !activeGitopsEnvFilter) {
+            const outCount = Number(sum.out_of_sync || 0);
+            if (outCount > 0) {
+              elSidebarBadge.textContent = `${outCount} Drift`;
+              elSidebarBadge.style.color = '#fbbf24';
+              elSidebarBadge.style.background = 'rgba(251, 191, 36, 0.16)';
+            } else {
+              elSidebarBadge.textContent = `${sum.synced ?? 0}/${sum.total ?? 0}`;
+              elSidebarBadge.style.color = '#34d399';
+              elSidebarBadge.style.background = 'rgba(16, 185, 129, 0.16)';
+            }
+          }
+
+          const newestSync = services.find((x) => x.updated_at)?.updated_at;
+          if (elLastSynced) {
+            elLastSynced.textContent = newestSync
+              ? `Last manifest sync: ${new Date(newestSync).toLocaleString()}`
+              : '';
+          }
+
+          renderFleetGitopsTable(services);
+        }
+
+        if (otaRes.ok) {
+          const otaData = await otaRes.json();
+          latestAgentReleaseCache = otaData.release || null;
+          const elAgentVer = document.getElementById('gitopsKpiAgentVersion');
+          const elAgentSha = document.getElementById('gitopsKpiAgentSha');
+          if (latestAgentReleaseCache && latestAgentReleaseCache.version) {
+            if (elAgentVer) elAgentVer.textContent = `v${String(latestAgentReleaseCache.version).replace(/^v/i, '')}`;
+            if (elAgentSha) elAgentSha.textContent = `sha256:${String(latestAgentReleaseCache.sha256 || '').slice(0, 12)}…`;
+          } else {
+            if (elAgentVer) elAgentVer.textContent = 'Unpublished';
+            if (elAgentSha) elAgentSha.textContent = 'Awaiting R2 binary publish';
+          }
+          renderAgentOtaTable(otaData.nodes || [], latestAgentReleaseCache);
+        }
+      } catch (err) {
+        console.error('Failed to fetch Fleet GitOps & OTA status:', err);
+      }
+    }
+
+    gitopsEnvFilterGroup?.querySelectorAll('.env-pill').forEach((pill) => {
+      pill.addEventListener('click', () => {
+        gitopsEnvFilterGroup.querySelectorAll('.env-pill').forEach((p) => p.classList.remove('active'));
+        pill.classList.add('active');
+        activeGitopsEnvFilter = pill.getAttribute('data-gitops-env') || '';
+        fetchFleetGitopsAndOta();
+      });
+    });
+
+    btnRefreshGitops?.addEventListener('click', () => {
+      fetchFleetGitopsAndOta();
+      showToast('Refreshed Fleet GitOps & Agent OTA state');
+    });
+
+    btnOtaUpgradeAll?.addEventListener('click', () => openOtaDialogForNode('all', 'linux-amd64'));
+
+    otaTargetArchSelect?.addEventListener('change', async () => {
+      try {
+        const resp = await fetch(`/api/v1/control/agent/releases?target=${encodeURIComponent(otaTargetArchSelect.value)}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          latestAgentReleaseCache = data.release || null;
+          if (otaTargetVersionInput && latestAgentReleaseCache?.version) {
+            otaTargetVersionInput.value = latestAgentReleaseCache.version;
+          }
+          updateOtaReleaseSummaryBox();
+        }
+      } catch {}
+    });
+
+    if (otaConfirmDialog) {
+      otaConfirmDialog.addEventListener('close', async () => {
+        const action = otaConfirmDialog.returnValue;
+        otaConfirmDialog.returnValue = '';
+        if (action !== 'confirm') return;
+
+        const payload = {
+          node_id: otaTargetNodeInput?.value || 'all',
+          target: otaTargetArchSelect?.value || 'linux-amd64',
+          version: otaTargetVersionInput?.value?.trim() || undefined,
+          force: Boolean(otaForceCheckbox?.checked),
+        };
+
+        try {
+          const resp = await fetch('/api/v1/control/agent/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok) {
+            showToast(`OTA trigger failed: ${data.error || resp.statusText}`, true);
+            return;
+          }
+          showToast(`Queued zero-SSH OTA upgrade (v${data.version}) for ${(data.target_nodes || []).join(', ') || payload.node_id}!`);
+          fetchFleetGitopsAndOta();
+        } catch (err) {
+          showToast(`OTA network error: ${err.message}`, true);
+        }
+      });
+
+      // Fallback light-dismiss for browsers without native dialog[closedby] support
+      if (!('closedBy' in HTMLDialogElement.prototype)) {
+        let pointerDownOutside = false;
+        otaConfirmDialog.addEventListener('pointerdown', (e) => {
+          if (e.target !== otaConfirmDialog) {
+            pointerDownOutside = false;
+            return;
+          }
+          const rect = otaConfirmDialog.getBoundingClientRect();
+          pointerDownOutside =
+            e.clientX < rect.left ||
+            e.clientX > rect.right ||
+            e.clientY < rect.top ||
+            e.clientY > rect.bottom;
+        });
+        otaConfirmDialog.addEventListener('pointerup', (e) => {
+          if (!pointerDownOutside || e.target !== otaConfirmDialog) return;
+          const rect = otaConfirmDialog.getBoundingClientRect();
+          const upOutside =
+            e.clientX < rect.left ||
+            e.clientX > rect.right ||
+            e.clientY < rect.top ||
+            e.clientY > rect.bottom;
+          pointerDownOutside = false;
+          if (upOutside) otaConfirmDialog.close();
+        });
+      }
+    }
 
     async function fetchAuthIdentity() {
       try {
@@ -3541,6 +5403,7 @@
     fetchServices();
     fetchDeployments();
     fetchFleetNodes();
+    fetchFleetGitopsAndOta();
     fetchMeshPeers();
     fetchMeshAccessPolicy();
     fetchIngressRoutes();
@@ -3637,6 +5500,7 @@
         bodyEl.innerHTML = `<tr><td style="color:#f43f5e; padding:2rem;">Failed to read Parquet file: ${escapeHtml(err.message)}</td></tr>`;
       }
     });
+
 
     function escapeHtml(str) {
       return String(str).replace(/[&<>"']/g, m => ({

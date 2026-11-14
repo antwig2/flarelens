@@ -17,8 +17,22 @@ import {
   MeshCreateClientPayload,
   PreAuthKeyRecord,
   FeatureFlag,
+  AgentReleaseMetadata,
+  FleetServiceManifest,
 } from './types';
 import { processAlerts } from './alerts';
+import {
+  isSingletonManifest,
+  isContainerRunningOnNode,
+  validateFleetManifest,
+  saveFleetManifests,
+  getFleetManifest,
+  listFleetManifests,
+  getLiveServiceImage,
+  computeFleetDriftStatus,
+  normalizeCommandArray,
+  normalizeFleetEnv,
+} from './control/fleet';
 import {
   upsertNodeRecord,
   getNodeRecordD1,
@@ -141,7 +155,7 @@ export default {
         .replace('/bin/flarelens-agent-', '')
         .replace('/bin/', '')
         .trim();
-      return handleAgentBinary(target, env);
+      return handleAgentBinary(target, env, url);
     }
 
     // 1. Ingestion: POST /api/v1/ingest (Protected by INGEST_SECRET), GET/HEAD for healthcheck
@@ -179,6 +193,16 @@ export default {
       return handleDeployWebhook(request, env, ctx);
     }
 
+    // 3b-ota. Publish Agent OTA Binary & Metadata via GitHub Actions OIDC or Token (POST /api/v1/control/agent/releases)
+    if (url.pathname === '/api/v1/control/agent/releases' && request.method === 'POST') {
+      return handlePublishAgentRelease(request, env, ctx, url);
+    }
+
+    // 3b-fleet. Declarative fleet/*.yml GitOps Sync via GitHub Actions OIDC or Token (POST /api/v1/control/fleet/sync)
+    if (url.pathname === '/api/v1/control/fleet/sync' && request.method === 'POST') {
+      return handleFleetSync(request, env, ctx);
+    }
+
     // 3c. OAuth2 Device Flow Initiation & Polling (Public for flarelens-agent)
     if (url.pathname === '/api/v1/auth/device/code' && request.method === 'POST') {
       return handleDeviceCode(request, env, ctx);
@@ -193,6 +217,7 @@ export default {
       (url.pathname === '/api/v1/control/commands/ack' && request.method === 'POST') ||
       (url.pathname === '/api/v1/control/deploy/status' && request.method === 'POST') ||
       (url.pathname === '/api/v1/control/backup/status' && request.method === 'POST') ||
+      (url.pathname === '/api/v1/control/agent/update/status' && request.method === 'POST') ||
       (url.pathname === '/api/v1/control/mesh/register' && request.method === 'POST') ||
       (url.pathname === '/api/v1/control/flags' && request.method === 'GET')
     ) {
@@ -202,6 +227,7 @@ export default {
       if (url.pathname === '/api/v1/control/commands/ack') return handleAckNodeCommand(request, env);
       if (url.pathname === '/api/v1/control/deploy/status') return handleUpdateDeployStatus(request, env, ctx);
       if (url.pathname === '/api/v1/control/backup/status') return handleUpdateBackupStatus(request, env, ctx);
+      if (url.pathname === '/api/v1/control/agent/update/status') return handleAgentUpdateStatus(request, env);
       if (url.pathname === '/api/v1/control/mesh/register') return handleMeshRegister(request, env, ctx);
       if (url.pathname === '/api/v1/control/flags') return handleListFlags(env);
     }
@@ -271,6 +297,25 @@ export default {
     // 7b. Active Fleet Services: List all services, active slots, containers & health (GET /api/v1/control/services)
     if (url.pathname === '/api/v1/control/services' && request.method === 'GET') {
       return handleListServices(env);
+    }
+
+    // 7c. ArgoCD-style Declarative Fleet Drift Status & Reconcile
+    if (url.pathname === '/api/v1/control/fleet/status' && request.method === 'GET') {
+      return handleFleetStatus(env, url);
+    }
+    if (url.pathname === '/api/v1/control/fleet/reconcile' && request.method === 'POST') {
+      return handleFleetReconcile(request, env, ctx);
+    }
+
+    // 7d. OTA Agent Release Registry & Upgrade Triggers
+    if (url.pathname === '/api/v1/control/agent/releases' && request.method === 'GET') {
+      return handleGetAgentReleases(env, url);
+    }
+    if (url.pathname === '/api/v1/control/agent/update' && request.method === 'POST') {
+      return handleTriggerAgentUpdate(request, env, ctx, url);
+    }
+    if (url.pathname === '/api/v1/control/agent/update/status' && request.method === 'POST') {
+      return handleAgentUpdateStatus(request, env);
     }
 
     // 8. GitOps Deployments: Update deployment status callback (POST /api/v1/control/deploy/status)
@@ -1900,6 +1945,23 @@ async function handleDeployWebhook(request: Request, env: Env, ctx: ExecutionCon
     const masterKey = env.VAULT_MASTER_KEY || env.INGEST_SECRET || 'flarelens-default-vault-key';
     const deployReq = await resolveWebhookDeployPayload(deployParsed, env.FLEET_KV, masterKey);
 
+    if (!deployParsed.is_preview && env.FLEET_KV) {
+      const targetManifest = await getFleetManifest(env.FLEET_KV, deployReq.env || 'production', deployReq.service);
+      if (targetManifest && targetManifest.enabled === false) {
+        const normEnv = normalizeFleetEnv(deployReq.env || 'production');
+        return new Response(JSON.stringify({
+          status: 'suspended',
+          service: deployReq.service,
+          env: normEnv,
+          recorded_image: deployReq.image,
+          message: `Manifest ${normEnv}/${deployReq.service} has enabled: false; release image recorded in FLEET_KV without dispatching container rollout.`,
+        }), {
+          status: 202,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+    }
+
     // If GitHub token available and commit SHA present, report pending status
     if (env.GITHUB_TOKEN && deployParsed.commit_sha && parsedJson.repository?.full_name) {
       const desc = deployParsed.is_preview
@@ -3504,24 +3566,647 @@ async function handleInstallScript(request: Request, env: Env, type: 'sh' | 'ps1
 }
 
 /**
- * Serves compiled agent binaries from Cloudflare R2
+ * Serves compiled agent binaries from Cloudflare R2 (latest or pinned ?version=...)
  */
-async function handleAgentBinary(target: string, env: Env): Promise<Response> {
-  const binaryKey = `binaries/flarelens-agent-${target}`;
+async function handleAgentBinary(target: string, env: Env, url?: URL): Promise<Response> {
+  const versionParam = url?.searchParams.get('version')?.trim();
+  const candidateKeys = versionParam
+    ? [`binaries/${versionParam}/flarelens-agent-${target}`, `binaries/flarelens-agent-${target}`]
+    : [`binaries/flarelens-agent-${target}`];
+
   if (env.LOGS_BUCKET) {
-    const obj = await env.LOGS_BUCKET.get(binaryKey);
-    if (obj) {
-      const headers = new Headers();
-      obj.writeHttpMetadata(headers);
-      headers.set('etag', obj.httpEtag);
-      headers.set('Content-Type', 'application/octet-stream');
-      headers.set('Content-Disposition', `attachment; filename="flarelens-agent-${target}"`);
-      headers.set('Access-Control-Allow-Origin', '*');
-      return new Response(obj.body, { headers });
+    for (const binaryKey of candidateKeys) {
+      const obj = await env.LOGS_BUCKET.get(binaryKey);
+      if (obj) {
+        const headers = new Headers();
+        obj.writeHttpMetadata(headers);
+        headers.set('etag', obj.httpEtag);
+        headers.set('Content-Type', 'application/octet-stream');
+        headers.set('Content-Disposition', `attachment; filename="flarelens-agent-${target}"`);
+        headers.set('Access-Control-Allow-Origin', '*');
+        return new Response(obj.body, { headers });
+      }
     }
   }
 
-  // Fallback: Redirect to GitHub release asset
   return Response.redirect(`https://github.com/antwig2/flarelens/releases/download/v0.1.0/flarelens-agent-${target}`, 302);
 }
+
+async function enqueueFleetCommand(nodeId: string, cmd: any, env: Env): Promise<void> {
+  const nodeCmds = inMemoryCommands.get(nodeId) || [];
+  nodeCmds.push(cmd);
+  inMemoryCommands.set(nodeId, nodeCmds);
+  await enqueueCommandD1(env, nodeId, cmd);
+}
+
+async function loadAllNodesMerged(env: Env): Promise<NodeRecord[]> {
+  const d1Nodes = await listNodeRecordsD1(env);
+  const byId = new Map<string, NodeRecord>();
+  for (const n of d1Nodes) byId.set(n.node_id, n);
+  for (const [id, mem] of fleetNodes.entries()) {
+    const existing = byId.get(id);
+    if (!existing || (mem.last_heartbeat || 0) >= (existing.last_heartbeat || 0)) {
+      byId.set(id, mem);
+    }
+  }
+  return Array.from(byId.values());
+}
+
+async function authenticateCiOrControlRequest(
+  request: Request,
+  env: Env
+): Promise<{ ok: true; actor: string } | { ok: false; response: Response }> {
+  const url = new URL(request.url);
+  const authHeader = request.headers.get('Authorization') || '';
+  const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  const providedToken =
+    bearerToken ||
+    request.headers.get('x-api-key') ||
+    request.headers.get('x-webhook-secret') ||
+    url.searchParams.get('token') ||
+    '';
+
+  if (bearerToken && isGitHubOidcToken(bearerToken)) {
+    const allowedOwners = env.GITHUB_OIDC_ALLOWED_OWNERS
+      ? env.GITHUB_OIDC_ALLOWED_OWNERS.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+      : [];
+    const audiences = [url.origin, url.hostname, 'https://control.flarelens.dev'];
+    if (env.GITHUB_OIDC_AUDIENCE) audiences.push(env.GITHUB_OIDC_AUDIENCE.trim());
+    const oidc = await verifyGitHubOidcToken(bearerToken, {
+      expectedAudience: audiences,
+      allowedOwners,
+    });
+    if (!oidc.valid) {
+      return {
+        ok: false,
+        response: new Response(JSON.stringify({ error: `Unauthorized GitHub OIDC: ${oidc.error}` }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        }),
+      };
+    }
+    return {
+      ok: true,
+      actor: `oidc:${oidc.claims?.repository || 'github'}:${oidc.claims?.actor || 'ci'}`,
+    };
+  }
+
+  const validSecrets = [env.WEBHOOK_SECRET, env.INGEST_SECRET, env.DASHBOARD_PASSWORD].filter(Boolean);
+  if (providedToken && validSecrets.includes(providedToken)) {
+    return { ok: true, actor: 'token' };
+  }
+
+  const cfEmail = request.headers.get('cf-access-authenticated-user-email');
+  if (cfEmail) {
+    return { ok: true, actor: `cf-access:${cfEmail}` };
+  }
+
+  if (validSecrets.length === 0) {
+    return { ok: true, actor: 'dev-open' };
+  }
+
+  return {
+    ok: false,
+    response: new Response(JSON.stringify({ error: 'Unauthorized: GitHub OIDC or valid control token required' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }),
+  };
+}
+
+async function computeSha256Hex(buffer: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', buffer);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function handlePublishAgentRelease(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  url: URL
+): Promise<Response> {
+  const auth = await authenticateCiOrControlRequest(request, env);
+  if (!auth.ok) return auth.response;
+
+  const version = (url.searchParams.get('version') || request.headers.get('x-agent-version') || '').trim();
+  const target = (url.searchParams.get('target') || request.headers.get('x-agent-target') || 'linux-amd64').trim();
+  const expectedSha = (url.searchParams.get('sha256') || request.headers.get('x-agent-sha256') || '').trim().toLowerCase();
+  const commitSha = (url.searchParams.get('commit_sha') || request.headers.get('x-commit-sha') || '').trim();
+  const autoRolloutEnv = (url.searchParams.get('auto_rollout') || '').trim().toLowerCase();
+
+  if (!version || !/^[0-9A-Za-z._-]+$/.test(version)) {
+    return new Response(JSON.stringify({ error: 'Missing or invalid version parameter' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const binaryBytes = await request.arrayBuffer();
+  if (binaryBytes.byteLength < 1024) {
+    return new Response(JSON.stringify({ error: 'Agent binary payload is empty or too small' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const computedSha256 = await computeSha256Hex(binaryBytes);
+  if (expectedSha && expectedSha !== computedSha256) {
+    return new Response(
+      JSON.stringify({ error: `SHA-256 mismatch: expected ${expectedSha}, computed ${computedSha256}` }),
+      { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+    );
+  }
+
+  const versionedKey = `binaries/${version}/flarelens-agent-${target}`;
+  const latestKey = `binaries/flarelens-agent-${target}`;
+
+  if (env.LOGS_BUCKET) {
+    await env.LOGS_BUCKET.put(versionedKey, binaryBytes, {
+      httpMetadata: { contentType: 'application/octet-stream' },
+      customMetadata: { version, target, sha256: computedSha256, commit_sha: commitSha },
+    });
+    await env.LOGS_BUCKET.put(latestKey, binaryBytes, {
+      httpMetadata: { contentType: 'application/octet-stream' },
+      customMetadata: { version, target, sha256: computedSha256, commit_sha: commitSha },
+    });
+  }
+
+  const downloadUrl = `${url.origin}/api/v1/agent/binary/${encodeURIComponent(target)}?version=${encodeURIComponent(version)}`;
+  const metadata: AgentReleaseMetadata = {
+    version,
+    target,
+    sha256: computedSha256,
+    size_bytes: binaryBytes.byteLength,
+    binary_key: versionedKey,
+    download_url: downloadUrl,
+    commit_sha: commitSha || undefined,
+    published_by: auth.actor,
+    published_at: new Date().toISOString(),
+  };
+
+  if (env.FLEET_KV) {
+    await safeKvPut(env.FLEET_KV, `agent:release:latest:${target}`, JSON.stringify(metadata));
+    await safeKvPut(env.FLEET_KV, `agent:release:${version}:${target}`, JSON.stringify(metadata));
+  }
+
+  const rolledOutNodes: string[] = [];
+  if (autoRolloutEnv) {
+    const allNodes = await loadAllNodesMerged(env);
+    for (const node of allNodes) {
+      const nodeTags = (node.tags || []).map((t) => t.toLowerCase());
+      const matchesEnv =
+        autoRolloutEnv === 'all' ||
+        nodeTags.includes(autoRolloutEnv) ||
+        (autoRolloutEnv === 'uat' && (node.node_id.includes('uat') || nodeTags.length === 0));
+      if (!matchesEnv) continue;
+      const cmd = {
+        id: `ota_${Date.now()}_${node.node_id}`,
+        type: 'self_update',
+        node_id: node.node_id,
+        version,
+        sha256: computedSha256,
+        download_url: downloadUrl,
+      };
+      await enqueueFleetCommand(node.node_id, cmd, env);
+      rolledOutNodes.push(node.node_id);
+    }
+  }
+
+  return new Response(
+    JSON.stringify({
+      status: 'published',
+      release: metadata,
+      auto_rollout_nodes: rolledOutNodes,
+    }),
+    {
+      status: 201,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+async function handleGetAgentReleases(env: Env, url: URL): Promise<Response> {
+  const target = (url.searchParams.get('target') || 'linux-amd64').trim();
+  const wantVersion = (url.searchParams.get('version') || '').trim();
+  let release: AgentReleaseMetadata | null = null;
+
+  if (env.FLEET_KV) {
+    const key = wantVersion ? `agent:release:${wantVersion}:${target}` : `agent:release:latest:${target}`;
+    const raw = await env.FLEET_KV.get(key);
+    if (raw) {
+      try {
+        release = JSON.parse(raw);
+      } catch {}
+    }
+  }
+
+  const nodes = await loadAllNodesMerged(env);
+  const nodeVersions = await Promise.all(
+    nodes.map(async (n) => {
+      let otaStatus: Record<string, any> | null = null;
+      if (env.FLEET_KV) {
+        try {
+          const rawOta = await env.FLEET_KV.get(`agent:update_status:${n.node_id}`);
+          if (rawOta) otaStatus = JSON.parse(rawOta);
+        } catch {}
+      }
+      return {
+        node_id: n.node_id,
+        hostname: n.hostname,
+        status: n.status,
+        version: n.version,
+        arch: n.specs ? `${n.specs.os}-${n.specs.arch}` : 'unknown',
+        up_to_date: release
+          ? n.version?.replace(/^v/i, '') === release.version.replace(/^v/i, '')
+          : undefined,
+        ota_status: otaStatus,
+      };
+    })
+  );
+
+  return new Response(
+    JSON.stringify({
+      target,
+      release,
+      nodes: nodeVersions,
+    }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+async function handleTriggerAgentUpdate(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  url: URL
+): Promise<Response> {
+  const body = (await request.json()) as {
+    node_id?: string;
+    version?: string;
+    sha256?: string;
+    target?: string;
+    force?: boolean;
+  };
+  const targetArch = (body.target || 'linux-amd64').trim();
+  let version = (body.version || '').trim();
+  let sha256 = (body.sha256 || '').trim().toLowerCase();
+  let downloadUrl = '';
+
+  if ((!version || !sha256) && env.FLEET_KV) {
+    const kvKey = version ? `agent:release:${version}:${targetArch}` : `agent:release:latest:${targetArch}`;
+    const raw = await env.FLEET_KV.get(kvKey);
+    if (raw) {
+      const rel = JSON.parse(raw) as AgentReleaseMetadata;
+      version = version || rel.version;
+      sha256 = sha256 || rel.sha256;
+      downloadUrl = rel.download_url;
+    }
+  }
+
+  if (!version || !sha256) {
+    return new Response(
+      JSON.stringify({ error: 'No published OTA release metadata found; publish release first or provide version + sha256' }),
+      { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+    );
+  }
+
+  if (!downloadUrl) {
+    downloadUrl = `${url.origin}/api/v1/agent/binary/${encodeURIComponent(targetArch)}?version=${encodeURIComponent(version)}`;
+  }
+
+  const targetNodes = await resolveFleetNodes(body.node_id || 'all', env);
+  const queuedCommands: any[] = [];
+
+  for (const nodeId of targetNodes) {
+    const cmd = {
+      id: `ota_${Date.now()}_${nodeId}_${Math.random().toString(36).substring(2, 6)}`,
+      type: 'self_update',
+      node_id: nodeId,
+      version,
+      sha256,
+      download_url: downloadUrl,
+      force: Boolean(body.force),
+    };
+    await enqueueFleetCommand(nodeId, cmd, env);
+    queuedCommands.push(cmd);
+  }
+
+  return new Response(
+    JSON.stringify({
+      status: 'queued',
+      version,
+      sha256,
+      target_nodes: targetNodes,
+      commands_queued: queuedCommands.length,
+    }),
+    {
+      status: 202,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+async function handleAgentUpdateStatus(request: Request, env: Env): Promise<Response> {
+  const payload = (await request.json()) as Record<string, any>;
+  const nodeId = String(payload.node_id || 'unknown');
+  if (nodeId !== 'unknown') {
+    if (env.FLEET_KV) {
+      await safeKvPut(
+        env.FLEET_KV,
+        `agent:update_status:${nodeId}`,
+        JSON.stringify({ ...payload, updated_at: new Date().toISOString() })
+      );
+    }
+    if (payload.status === 'succeeded' && payload.target_version) {
+      const existingNode = fleetNodes.get(nodeId) || (await getNodeRecordD1(env, nodeId));
+      if (existingNode) {
+        existingNode.version = String(payload.target_version).replace(/^v/i, '');
+        existingNode.updated_at = new Date().toISOString();
+        fleetNodes.set(nodeId, existingNode);
+        await upsertNodeRecord(env, existingNode, { forceWrite: true });
+      }
+    }
+  }
+  return new Response(JSON.stringify({ status: 'recorded' }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  });
+}
+
+async function reconcileManifestList(
+  manifests: FleetServiceManifest[],
+  env: Env,
+  opts?: { overrideImage?: boolean; forceRecreateStateful?: boolean }
+): Promise<{
+  reconciled: Array<{ service: string; env: string; mode: string; image: string; nodes: string[]; adopted_nodes?: string[] }>;
+  skipped: Array<{ service: string; env: string; reason: string }>;
+}> {
+  const masterKey = env.VAULT_MASTER_KEY || env.INGEST_SECRET || 'flarelens-default-vault-key';
+  const enrolledNodes = await loadAllNodesMerged(env);
+  const nodeById = new Map(enrolledNodes.map((n) => [n.node_id, n]));
+  const reconciled: Array<{ service: string; env: string; mode: string; image: string; nodes: string[]; adopted_nodes?: string[] }> = [];
+  const skipped: Array<{ service: string; env: string; reason: string }> = [];
+
+  for (const m of manifests) {
+    const normEnv = normalizeFleetEnv(m.env);
+    if (m.enabled === false) {
+      skipped.push({ service: m.service, env: normEnv, reason: 'disabled' });
+      continue;
+    }
+
+    const liveImg = !opts?.overrideImage && env.FLEET_KV
+      ? await getLiveServiceImage(env.FLEET_KV, normEnv, m.service)
+      : null;
+    const effectiveImage = liveImg || m.image;
+    const targetNodes = await resolveFleetNodes(m.node_id || 'auto', env, m.service);
+
+    let resolvedSecrets = m.secrets;
+    if (!resolvedSecrets && env.FLEET_KV) {
+      try {
+        const v = await resolveVaultSecrets(env.FLEET_KV, m.service, normEnv, masterKey);
+        if (v?.secrets) resolvedSecrets = v.secrets;
+      } catch {}
+    }
+
+    if (isSingletonManifest(m)) {
+      const containerName = m.container_name || `${m.service}-${normEnv}`;
+      const enqueuedNodes: string[] = [];
+      const adoptedNodes: string[] = [];
+
+      for (const nodeId of targetNodes) {
+        if (m.adopt_only && !opts?.forceRecreateStateful && isContainerRunningOnNode(nodeById.get(nodeId), containerName)) {
+          adoptedNodes.push(nodeId);
+          continue;
+        }
+        const cmd = {
+          id: `sing_${Date.now()}_${m.service}_${nodeId}`,
+          type: 'reconcile_singleton',
+          deployment_id: `sing_${Date.now()}_${m.service}`,
+          node_id: nodeId,
+          service: m.service,
+          env: normEnv,
+          image: effectiveImage,
+          container_name: containerName,
+          restart: m.restart || 'always',
+          networks: m.networks,
+          aliases: m.aliases,
+          volumes: m.volumes,
+          ports: m.ports,
+          command: normalizeCommandArray(m.command),
+          entrypoint: normalizeCommandArray(m.entrypoint),
+          healthcheck: m.healthcheck
+            ? {
+                ...m.healthcheck,
+                test: Array.isArray(m.healthcheck.test) ? m.healthcheck.test : ['CMD-SHELL', String(m.healthcheck.test)],
+              }
+            : undefined,
+          secrets: resolvedSecrets,
+          force_recreate_stateful: Boolean(opts?.forceRecreateStateful),
+        };
+        await enqueueFleetCommand(nodeId, cmd, env);
+        enqueuedNodes.push(nodeId);
+      }
+      reconciled.push({
+        service: m.service,
+        env: normEnv,
+        mode: 'singleton',
+        image: effectiveImage,
+        nodes: enqueuedNodes,
+        ...(adoptedNodes.length > 0 ? { adopted_nodes: adoptedNodes } : {}),
+      });
+    } else {
+      for (const nodeId of targetNodes) {
+        const deployId = `sync_${Date.now()}_${m.service}_${nodeId}`;
+        const cmd = {
+          id: deployId,
+          type: 'deploy',
+          deployment_id: deployId,
+          node_id: nodeId,
+          service: m.service,
+          image: effectiveImage,
+          env: normEnv,
+          domain: m.domain,
+          container_port: m.container_port,
+          host_port_blue: m.host_port_blue,
+          host_port_green: m.host_port_green,
+          health_path: m.health_path,
+          command: normalizeCommandArray(m.command),
+          entrypoint: normalizeCommandArray(m.entrypoint),
+          networks: m.networks,
+          aliases: m.aliases,
+          volumes: m.volumes,
+          workers: m.workers,
+          timeout_seconds: m.timeout_seconds,
+          drain_seconds: m.drain_seconds,
+          pre_deploy_snapshot: m.pre_deploy_snapshot,
+          run_migrations: m.run_migrations,
+          migration_cmd: m.migration_cmd,
+          secrets: resolvedSecrets,
+        };
+        await enqueueFleetCommand(nodeId, cmd, env);
+      }
+      reconciled.push({ service: m.service, env: normEnv, mode: 'blue_green', image: effectiveImage, nodes: targetNodes });
+    }
+  }
+
+  return { reconciled, skipped };
+}
+
+async function handleFleetSync(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const auth = await authenticateCiOrControlRequest(request, env);
+  if (!auth.ok) return auth.response;
+
+  const body = (await request.json()) as {
+    manifests?: FleetServiceManifest[];
+    commit_sha?: string;
+    reconcile?: boolean;
+    override_image?: boolean;
+    force_recreate_stateful?: boolean;
+  };
+
+  if (!Array.isArray(body.manifests) || body.manifests.length === 0) {
+    return new Response(JSON.stringify({ error: 'Request must include a non-empty manifests[] array' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const allErrors: string[] = [];
+  for (const m of body.manifests) {
+    const check = validateFleetManifest(m);
+    if (!check.valid) allErrors.push(...check.errors);
+  }
+  if (allErrors.length > 0) {
+    return new Response(JSON.stringify({ error: 'Manifest validation failed', details: allErrors }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  if (env.FLEET_KV) {
+    await saveFleetManifests(env.FLEET_KV, body.manifests, {
+      commit_sha: body.commit_sha,
+      actor: auth.actor,
+    });
+  }
+
+  let reconciled: any[] = [];
+  let skipped: any[] = [];
+  if (body.reconcile !== false) {
+    const res = await reconcileManifestList(body.manifests, env, {
+      overrideImage: Boolean(body.override_image),
+      forceRecreateStateful: Boolean(body.force_recreate_stateful),
+    });
+    reconciled = res.reconciled;
+    skipped = res.skipped;
+  }
+
+  return new Response(
+    JSON.stringify({
+      status: 'synced',
+      synced_count: body.manifests.length,
+      reconciled_count: reconciled.length,
+      skipped_count: skipped.length,
+      reconciled,
+      ...(skipped.length > 0 ? { skipped } : {}),
+    }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+async function handleFleetStatus(env: Env, url: URL): Promise<Response> {
+  const envFilter = url.searchParams.get('env') || undefined;
+  const manifests = env.FLEET_KV ? await listFleetManifests(env.FLEET_KV, envFilter) : [];
+  const nodes = await loadAllNodesMerged(env);
+
+  const liveImages: Record<string, string> = {};
+  if (env.FLEET_KV) {
+    for (const m of manifests) {
+      const normEnv = normalizeFleetEnv(m.env);
+      const live = await getLiveServiceImage(env.FLEET_KV, normEnv, m.service);
+      if (live) liveImages[`${normEnv}:${m.service.toLowerCase()}`] = live;
+    }
+  }
+
+  const statuses = computeFleetDriftStatus(manifests, nodes, liveImages);
+  const summary = {
+    total: statuses.length,
+    synced: statuses.filter((s) => s.sync_status === 'Synced').length,
+    out_of_sync: statuses.filter((s) => s.sync_status === 'OutOfSync').length,
+    suspended: statuses.filter((s) => s.sync_status === 'Suspended').length,
+    healthy: statuses.filter((s) => s.health_status === 'Healthy').length,
+    degraded: statuses.filter((s) => s.health_status === 'Degraded' || s.health_status === 'Missing').length,
+  };
+
+  return new Response(
+    JSON.stringify({
+      summary,
+      services: statuses,
+    }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+async function handleFleetReconcile(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext
+): Promise<Response> {
+  if (!env.FLEET_KV) {
+    return new Response(JSON.stringify({ error: 'FLEET_KV binding is not configured' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
+    env?: string;
+    service?: string;
+    force_recreate_stateful?: boolean;
+  };
+
+  let manifests: FleetServiceManifest[] = [];
+  if (body.env && body.service) {
+    const single = await getFleetManifest(env.FLEET_KV, body.env, body.service);
+    if (!single) {
+      return new Response(JSON.stringify({ error: `Manifest ${body.env}/${body.service} not found in FLEET_KV` }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+    manifests = [single];
+  } else {
+    manifests = await listFleetManifests(env.FLEET_KV, body.env);
+  }
+
+  const { reconciled, skipped } = await reconcileManifestList(manifests, env, {
+    forceRecreateStateful: Boolean(body.force_recreate_stateful),
+  });
+
+  return new Response(
+    JSON.stringify({
+      status: 'reconciled',
+      reconciled_count: reconciled.length,
+      skipped_count: skipped.length,
+      reconciled,
+      ...(skipped.length > 0 ? { skipped } : {}),
+    }),
+    {
+      status: 202,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
 

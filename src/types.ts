@@ -85,6 +85,7 @@ export interface DeployRequestPayload {
   command?: string[];
   entrypoint?: string[];
   networks?: string[];
+  aliases?: string[];
   volumes?: string[];
   workers?: Array<{
     name: string;
@@ -225,10 +226,25 @@ export interface Env {
   DASHBOARD_PASSWORD?: string;
   WEBHOOK_SECRET?: string;
   GITHUB_TOKEN?: string;
+  GITHUB_OIDC_ALLOWED_OWNERS?: string;
+  GITHUB_OIDC_AUDIENCE?: string;
   VAULT_MASTER_KEY?: string;
 }
 
 export { ParsedWebhookDeploy } from './control/webhook';
+export type { FleetServiceManifest, FleetServiceStatus, FleetWorkerSpec, FleetHealthcheckSpec } from './control/fleet';
+
+export interface AgentReleaseMetadata {
+  version: string;
+  target: string;
+  sha256: string;
+  size_bytes: number;
+  binary_key: string;
+  download_url: string;
+  commit_sha?: string;
+  published_by?: string;
+  published_at: string;
+}
 
 export interface AlertRule {
   id: string;

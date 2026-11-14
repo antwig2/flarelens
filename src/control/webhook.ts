@@ -1,5 +1,6 @@
 import type { DeployRequestPayload } from '../types';
 import { resolveVaultSecrets } from './vault';
+import { getFleetManifest, normalizeCommandArray, recordLiveServiceImage } from './fleet';
 
 export interface ParsedWebhookDeploy {
   service: string;
@@ -17,6 +18,7 @@ export interface ParsedWebhookDeploy {
   command?: string[];
   entrypoint?: string[];
   networks?: string[];
+  aliases?: string[];
   volumes?: string[];
   workers?: Array<{
     name: string;
@@ -302,7 +304,12 @@ export async function resolveWebhookDeployPayload(
   masterKey?: string
 ): Promise<DeployRequestPayload> {
   const envName = parsed.env || (parsed.is_preview ? 'preview' : 'production');
+  const manifest = kv && !parsed.is_preview ? await getFleetManifest(kv, envName, parsed.service) : null;
   const defaults = getServiceDeclarativeDefaults(parsed.service, envName);
+
+  if (kv && !parsed.is_preview && parsed.image) {
+    await recordLiveServiceImage(kv, envName, manifest?.service || parsed.service, parsed.image);
+  }
 
   // 1. In-memory zero-plaintext secret resolution
   let resolvedSecrets = parsed.secrets;
@@ -313,29 +320,38 @@ export async function resolveWebhookDeployPayload(
     }
   }
 
+  const manifestCmd = normalizeCommandArray(manifest?.command);
+  const manifestEntrypoint = normalizeCommandArray(manifest?.entrypoint);
+
   // 2. Assemble complete deployment request payload
   const deployReq: DeployRequestPayload = {
-    service: parsed.service,
+    service: manifest?.service || parsed.service,
     image: parsed.image,
     env: envName,
-    node_id: parsed.node_id || 'all-prod',
-    domain: parsed.domain || defaults.domain,
-    container_port: parsed.container_port || defaults.container_port,
-    host_port_blue: parsed.host_port_blue || defaults.host_port_blue,
-    host_port_green: parsed.host_port_green || defaults.host_port_green,
-    health_path: parsed.health_path || defaults.health_path,
-    command: parsed.command || defaults.command,
-    entrypoint: parsed.entrypoint || defaults.entrypoint,
-    networks: parsed.networks || defaults.networks,
-    volumes: parsed.volumes,
-    workers: parsed.workers || defaults.workers,
-    timeout_seconds: parsed.timeout_seconds || defaults.timeout_seconds,
-    drain_seconds: parsed.drain_seconds || defaults.drain_seconds,
-    pre_deploy_snapshot: parsed.pre_deploy_snapshot !== undefined ? parsed.pre_deploy_snapshot : defaults.pre_deploy_snapshot,
-    run_migrations: parsed.run_migrations,
-    migration_cmd: parsed.migration_cmd || defaults.migration_cmd,
-    canary_weight: parsed.canary_weight,
-    canary_duration: parsed.canary_duration,
+    node_id: parsed.node_id && parsed.node_id !== 'auto' ? parsed.node_id : (manifest?.node_id || parsed.node_id || 'all-prod'),
+    domain: parsed.domain || manifest?.domain || defaults.domain,
+    container_port: parsed.container_port || manifest?.container_port || defaults.container_port,
+    host_port_blue: parsed.host_port_blue || manifest?.host_port_blue || defaults.host_port_blue,
+    host_port_green: parsed.host_port_green || manifest?.host_port_green || defaults.host_port_green,
+    health_path: parsed.health_path || manifest?.health_path || defaults.health_path,
+    command: parsed.command || manifestCmd || defaults.command,
+    entrypoint: parsed.entrypoint || manifestEntrypoint || defaults.entrypoint,
+    networks: parsed.networks || manifest?.networks || defaults.networks,
+    aliases: parsed.aliases || manifest?.aliases,
+    volumes: parsed.volumes || manifest?.volumes,
+    workers: parsed.workers || manifest?.workers || defaults.workers,
+    timeout_seconds: parsed.timeout_seconds || manifest?.timeout_seconds || defaults.timeout_seconds,
+    drain_seconds: parsed.drain_seconds || manifest?.drain_seconds || defaults.drain_seconds,
+    pre_deploy_snapshot:
+      parsed.pre_deploy_snapshot !== undefined
+        ? parsed.pre_deploy_snapshot
+        : manifest?.pre_deploy_snapshot !== undefined
+          ? manifest.pre_deploy_snapshot
+          : defaults.pre_deploy_snapshot,
+    run_migrations: parsed.run_migrations !== undefined ? parsed.run_migrations : manifest?.run_migrations,
+    migration_cmd: parsed.migration_cmd || manifest?.migration_cmd || defaults.migration_cmd,
+    canary_weight: parsed.canary_weight !== undefined ? parsed.canary_weight : manifest?.canary_weight,
+    canary_duration: parsed.canary_duration !== undefined ? parsed.canary_duration : manifest?.canary_duration,
     is_preview: parsed.is_preview,
     pr_number: parsed.pr_number,
     secrets: resolvedSecrets,
