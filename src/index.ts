@@ -22,12 +22,19 @@ import {
 } from './types';
 import { processAlerts } from './alerts';
 import {
+  FLEET_JSON_SCHEMA,
+  stripManifestInternalMeta,
+  computeManifestSha256,
+  computeManifestDiffSummary,
+  buildPromotedManifest,
+  deleteFleetManifest,
   isSingletonManifest,
   isContainerRunningOnNode,
   validateFleetManifest,
   saveFleetManifests,
   getFleetManifest,
   listFleetManifests,
+  recordLiveServiceImage,
   getLiveServiceImage,
   computeFleetDriftStatus,
   normalizeCommandArray,
@@ -48,6 +55,9 @@ import {
   saveFeatureFlagD1,
   deleteFeatureFlagD1,
   getFlagsVersion,
+  recordFleetRevision,
+  listFleetRevisions,
+  getFleetRevision,
 } from './control/db';
 import { encryptSecrets, decryptSecrets, parseEnvContent, getVaultLookupKeys, resolveVaultSecrets } from './control/vault';
 import { verifyGitHubSignature, parseDeployWebhook, reportGitHubStatus, resolveWebhookDeployPayload, getServiceDeclarativeDefaults } from './control/webhook';
@@ -203,6 +213,18 @@ export default {
       return handleFleetSync(request, env, ctx);
     }
 
+    // 3b-schema. Public JSON Schema for IDE autocomplete & manifest validation
+    if (url.pathname === '/schemas/fleet.schema.json' && request.method === 'GET') {
+      return new Response(JSON.stringify(FLEET_JSON_SCHEMA, null, 2), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/schema+json; charset=utf-8',
+          'Cache-Control': 'public, max-age=3600',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+
     // 3c. OAuth2 Device Flow Initiation & Polling (Public for flarelens-agent)
     if (url.pathname === '/api/v1/auth/device/code' && request.method === 'POST') {
       return handleDeviceCode(request, env, ctx);
@@ -307,12 +329,39 @@ export default {
       return handleListServices(env);
     }
 
-    // 7c. ArgoCD-style Declarative Fleet Drift Status & Reconcile
+    // 7c. ArgoCD-style Declarative Fleet Drift Status, Zero-Git CRUD, Revisions, Rollback & Promotion
     if (url.pathname === '/api/v1/control/fleet/status' && request.method === 'GET') {
       return handleFleetStatus(env, url);
     }
     if (url.pathname === '/api/v1/control/fleet/reconcile' && request.method === 'POST') {
       return handleFleetReconcile(request, env, ctx);
+    }
+    if (url.pathname === '/api/v1/control/fleet/manifests' && request.method === 'GET') {
+      return handleListOrGetFleetManifests(env, url);
+    }
+    if (url.pathname === '/api/v1/control/fleet/manifests' && (request.method === 'POST' || request.method === 'PUT')) {
+      return handleSaveSingleFleetManifest(request, env, ctx);
+    }
+    if (
+      (url.pathname === '/api/v1/control/fleet/manifests' || url.pathname.startsWith('/api/v1/control/fleet/manifests/')) &&
+      request.method === 'DELETE'
+    ) {
+      return handleDeleteFleetManifest(request, env, ctx, url);
+    }
+    if (url.pathname === '/api/v1/control/fleet/revisions' && request.method === 'GET') {
+      return handleListFleetRevisionsApi(env, url);
+    }
+    if (url.pathname === '/api/v1/control/fleet/rollback' && request.method === 'POST') {
+      return handleRollbackFleetRevision(request, env, ctx);
+    }
+    if (url.pathname === '/api/v1/control/fleet/promote' && request.method === 'POST') {
+      return handlePromoteFleetService(request, env, ctx);
+    }
+    if (url.pathname === '/api/v1/control/fleet/export' && request.method === 'GET') {
+      return handleExportFleetManifests(env, url);
+    }
+    if (url.pathname === '/api/v1/control/fleet/import' && request.method === 'POST') {
+      return handleImportFleetManifests(request, env, ctx);
     }
 
     // 7d. OTA Agent Release Registry & Upgrade Triggers
@@ -4256,30 +4305,42 @@ async function handleFleetSync(request: Request, env: Env, ctx: ExecutionContext
   }
 
   if (env.FLEET_KV) {
-    await saveFleetManifests(env.FLEET_KV, body.manifests, {
+    const manifestsWithRevs: FleetServiceManifest[] = [];
+    for (const m of body.manifests) {
+      const clean = stripManifestInternalMeta(m);
+      const normEnv = normalizeFleetEnv(clean.env);
+      clean.env = normEnv;
+      const prev = await getFleetManifest(env.FLEET_KV, normEnv, clean.service);
+      const currSha = await computeManifestSha256(clean);
+      const prevSha = prev ? await computeManifestSha256(prev) : '';
+      let assignedRev = prev?._revision;
+
+      if (!prevSha || prevSha !== currSha) {
+        const rev = await recordFleetRevision(
+          env,
+          {
+            service: clean.service,
+            env: normEnv,
+            action: prev ? 'sync' : 'create',
+            actor: auth.actor,
+            reason: body.commit_sha ? `CI sync (${body.commit_sha.slice(0, 7)})` : 'Fleet sync',
+            manifest_sha256: currSha,
+            manifest: clean,
+            prev_manifest: prev ? stripManifestInternalMeta(prev) : null,
+            diff_summary: computeManifestDiffSummary(prev, clean),
+          },
+          ctx
+        );
+        assignedRev = rev.rev_id;
+      }
+      manifestsWithRevs.push({ ...clean, ...(assignedRev ? { _revision: assignedRev } : {}) } as any);
+      await seedMissingVaultBundleFromEnvVars(env, clean);
+    }
+
+    await saveFleetManifests(env.FLEET_KV, manifestsWithRevs, {
       commit_sha: body.commit_sha,
       actor: auth.actor,
     });
-    const seedKey = env.VAULT_MASTER_KEY || env.INGEST_SECRET || 'flarelens-default-vault-key';
-    for (const m of body.manifests) {
-      if (m.env_vars && typeof m.env_vars === 'object' && Object.keys(m.env_vars).length > 0) {
-        const normEnv = normalizeFleetEnv(m.env);
-        const vaultSvc = `${m.service}-${normEnv}`;
-        const existing = await env.FLEET_KV.get(`vault:${vaultSvc}`);
-        if (!existing) {
-          const encrypted = await encryptSecrets(vaultSvc, m.env_vars, seedKey, normEnv);
-          await safeKvPut(env.FLEET_KV, `vault:${vaultSvc}`, JSON.stringify(encrypted));
-          try {
-            const rawList = await env.FLEET_KV.get('fleet:vault:services');
-            const list: string[] = rawList ? JSON.parse(rawList) : [];
-            if (!list.includes(vaultSvc)) {
-              list.push(vaultSvc);
-              await safeKvPut(env.FLEET_KV, 'fleet:vault:services', JSON.stringify(list));
-            }
-          } catch {}
-        }
-      }
-    }
   }
 
   let reconciled: any[] = [];
@@ -4391,6 +4452,604 @@ async function handleFleetReconcile(
     }),
     {
       status: 202,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+function resolveDashboardActor(request: Request, env: Env): string {
+  const cfEmail = request.headers.get('cf-access-authenticated-user-email');
+  if (cfEmail && cfEmail.trim()) return cfEmail.trim();
+  return env.DASHBOARD_USERNAME || 'dashboard-operator';
+}
+
+async function seedMissingVaultBundleFromEnvVars(
+  env: Env,
+  manifest: FleetServiceManifest
+): Promise<void> {
+  if (!env.FLEET_KV || !manifest.env_vars || typeof manifest.env_vars !== 'object') return;
+  if (Object.keys(manifest.env_vars).length === 0) return;
+  const normEnv = normalizeFleetEnv(manifest.env);
+  const vaultSvc = `${manifest.service}-${normEnv}`;
+  const existing = await env.FLEET_KV.get(`vault:${vaultSvc}`);
+  if (existing) return;
+
+  const seedKey = env.VAULT_MASTER_KEY || env.INGEST_SECRET || 'flarelens-default-vault-key';
+  const encrypted = await encryptSecrets(vaultSvc, manifest.env_vars, seedKey, normEnv);
+  await safeKvPut(env.FLEET_KV, `vault:${vaultSvc}`, JSON.stringify(encrypted));
+  try {
+    const rawList = await env.FLEET_KV.get('fleet:vault:services');
+    const list: string[] = rawList ? JSON.parse(rawList) : [];
+    if (!list.includes(vaultSvc)) {
+      list.push(vaultSvc);
+      await safeKvPut(env.FLEET_KV, 'fleet:vault:services', JSON.stringify(list));
+    }
+  } catch {}
+}
+
+async function handleListOrGetFleetManifests(env: Env, url: URL): Promise<Response> {
+  if (!env.FLEET_KV) {
+    return new Response(JSON.stringify({ manifests: [] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+  const envParam = url.searchParams.get('env') || undefined;
+  const serviceParam = url.searchParams.get('service') || undefined;
+
+  if (envParam && serviceParam) {
+    const found = await getFleetManifest(env.FLEET_KV, envParam, serviceParam);
+    if (!found) {
+      return new Response(JSON.stringify({ error: `Manifest ${envParam}/${serviceParam} not found` }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+    const normEnv = normalizeFleetEnv(envParam);
+    const liveImg = await getLiveServiceImage(env.FLEET_KV, normEnv, found.service);
+    return new Response(
+      JSON.stringify({
+        manifest: stripManifestInternalMeta(found),
+        revision: found._revision || null,
+        synced_commit: found._synced_commit || null,
+        updated_at: found._synced_at || null,
+        live_image: liveImg || null,
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      }
+    );
+  }
+
+  const list = await listFleetManifests(env.FLEET_KV, envParam);
+  return new Response(
+    JSON.stringify({
+      manifests: list.map((m) => ({
+        ...stripManifestInternalMeta(m),
+        _revision: m._revision,
+        _synced_commit: m._synced_commit,
+        _synced_at: m._synced_at,
+      })),
+    }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+async function handleSaveSingleFleetManifest(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext
+): Promise<Response> {
+  if (!env.FLEET_KV) {
+    return new Response(JSON.stringify({ error: 'FLEET_KV binding is not configured' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
+    manifest?: FleetServiceManifest;
+    reason?: string;
+    reconcile?: boolean;
+  };
+  const candidate = (body.manifest || body) as FleetServiceManifest;
+  const check = validateFleetManifest(candidate);
+  if (!check.valid) {
+    return new Response(JSON.stringify({ error: 'Manifest validation failed', details: check.errors }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const cleanManifest = stripManifestInternalMeta(candidate);
+  const normEnv = normalizeFleetEnv(cleanManifest.env);
+  cleanManifest.env = normEnv;
+
+  const prev = await getFleetManifest(env.FLEET_KV, normEnv, cleanManifest.service);
+  const currSha = await computeManifestSha256(cleanManifest);
+  const diff = computeManifestDiffSummary(prev, cleanManifest);
+  const actor = resolveDashboardActor(request, env);
+
+  const rev = await recordFleetRevision(
+    env,
+    {
+      service: cleanManifest.service,
+      env: normEnv,
+      action: prev ? 'update' : 'create',
+      actor,
+      reason: body.reason || (prev ? 'Updated in Dashboard' : 'Created in Dashboard'),
+      manifest_sha256: currSha,
+      manifest: cleanManifest,
+      prev_manifest: prev ? stripManifestInternalMeta(prev) : null,
+      diff_summary: diff,
+    },
+    ctx
+  );
+
+  await saveFleetManifests(env.FLEET_KV, [cleanManifest], {
+    actor,
+    revision: rev.rev_id,
+  });
+
+  if (!prev || prev.image !== cleanManifest.image) {
+    await recordLiveServiceImage(env.FLEET_KV, normEnv, cleanManifest.service, cleanManifest.image);
+  }
+
+  await seedMissingVaultBundleFromEnvVars(env, cleanManifest);
+
+  let reconcileResult: any = null;
+  const shouldReconcile = body.reconcile !== false && cleanManifest.enabled !== false;
+  if (shouldReconcile) {
+    const recReq = new Request('https://internal/api/v1/control/fleet/reconcile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ env: normEnv, service: cleanManifest.service }),
+    });
+    const recResp = await handleFleetReconcile(recReq, env, ctx);
+    reconcileResult = await recResp.json().catch(() => null);
+  }
+
+  return new Response(
+    JSON.stringify({
+      status: 'saved',
+      created: !prev,
+      revision: rev,
+      manifest: cleanManifest,
+      reconciled: shouldReconcile,
+      reconcile_result: reconcileResult,
+    }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+async function handleDeleteFleetManifest(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  url: URL
+): Promise<Response> {
+  if (!env.FLEET_KV) {
+    return new Response(JSON.stringify({ error: 'FLEET_KV binding is not configured' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  let envParam = url.searchParams.get('env') || '';
+  let serviceParam = url.searchParams.get('service') || '';
+  if ((!envParam || !serviceParam) && url.pathname.startsWith('/api/v1/control/fleet/manifests/')) {
+    const parts = url.pathname
+      .replace('/api/v1/control/fleet/manifests/', '')
+      .split('/')
+      .filter(Boolean);
+    if (parts.length >= 2) {
+      envParam = decodeURIComponent(parts[0]);
+      serviceParam = decodeURIComponent(parts[1]);
+    }
+  }
+
+  if (!envParam || !serviceParam) {
+    return new Response(JSON.stringify({ error: 'Both env and service are required' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const normEnv = normalizeFleetEnv(envParam);
+  const prev = await getFleetManifest(env.FLEET_KV, normEnv, serviceParam);
+  if (!prev) {
+    return new Response(JSON.stringify({ error: `Manifest ${normEnv}/${serviceParam} not found` }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const deleted = await deleteFleetManifest(env.FLEET_KV, normEnv, prev.service);
+  const actor = resolveDashboardActor(request, env);
+  const rev = await recordFleetRevision(
+    env,
+    {
+      service: prev.service,
+      env: normEnv,
+      action: 'delete',
+      actor,
+      reason: `Deleted ${normEnv}/${prev.service} manifest`,
+      manifest_sha256: '',
+      manifest: null,
+      prev_manifest: stripManifestInternalMeta(prev),
+      diff_summary: computeManifestDiffSummary(prev, null),
+    },
+    ctx
+  );
+
+  return new Response(
+    JSON.stringify({
+      status: 'deleted',
+      deleted,
+      service: prev.service,
+      env: normEnv,
+      revision: rev,
+    }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+async function handleListFleetRevisionsApi(env: Env, url: URL): Promise<Response> {
+  const envFilter = url.searchParams.get('env') || undefined;
+  const serviceFilter = url.searchParams.get('service') || undefined;
+  const limitParam = Number(url.searchParams.get('limit') || 40);
+  const revisions = await listFleetRevisions(env, {
+    env: envFilter ? normalizeFleetEnv(envFilter) : undefined,
+    service: serviceFilter,
+    limit: Number.isFinite(limitParam) ? limitParam : 40,
+  });
+
+  return new Response(JSON.stringify({ revisions }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  });
+}
+
+async function handleRollbackFleetRevision(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext
+): Promise<Response> {
+  if (!env.FLEET_KV) {
+    return new Response(JSON.stringify({ error: 'FLEET_KV binding is not configured' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
+    rev_id?: string;
+    reconcile?: boolean;
+  };
+  if (!body.rev_id || typeof body.rev_id !== 'string') {
+    return new Response(JSON.stringify({ error: 'rev_id is required' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const targetRev = await getFleetRevision(env, body.rev_id);
+  if (!targetRev) {
+    return new Response(JSON.stringify({ error: `Revision ${body.rev_id} not found` }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const snapshotToRestore = targetRev.manifest || targetRev.prev_manifest;
+  if (!snapshotToRestore) {
+    return new Response(JSON.stringify({ error: `Revision ${body.rev_id} has no restorable manifest payload` }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const cleanManifest = stripManifestInternalMeta(snapshotToRestore);
+  const normEnv = normalizeFleetEnv(cleanManifest.env);
+  cleanManifest.env = normEnv;
+
+  const current = await getFleetManifest(env.FLEET_KV, normEnv, cleanManifest.service);
+  const currSha = await computeManifestSha256(cleanManifest);
+  const actor = resolveDashboardActor(request, env);
+
+  const newRev = await recordFleetRevision(
+    env,
+    {
+      service: cleanManifest.service,
+      env: normEnv,
+      action: 'rollback',
+      actor,
+      reason: `Rolled back to ${targetRev.rev_id}`,
+      manifest_sha256: currSha,
+      manifest: cleanManifest,
+      prev_manifest: current ? stripManifestInternalMeta(current) : null,
+      diff_summary: computeManifestDiffSummary(current, cleanManifest),
+    },
+    ctx
+  );
+
+  await saveFleetManifests(env.FLEET_KV, [cleanManifest], {
+    actor,
+    revision: newRev.rev_id,
+  });
+  await recordLiveServiceImage(env.FLEET_KV, normEnv, cleanManifest.service, cleanManifest.image);
+
+  let reconcileResult: any = null;
+  const shouldReconcile = body.reconcile !== false && cleanManifest.enabled !== false;
+  if (shouldReconcile) {
+    const recReq = new Request('https://internal/api/v1/control/fleet/reconcile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ env: normEnv, service: cleanManifest.service }),
+    });
+    const recResp = await handleFleetReconcile(recReq, env, ctx);
+    reconcileResult = await recResp.json().catch(() => null);
+  }
+
+  return new Response(
+    JSON.stringify({
+      status: 'rolled_back',
+      restored_from: targetRev.rev_id,
+      revision: newRev,
+      manifest: cleanManifest,
+      reconciled: shouldReconcile,
+      reconcile_result: reconcileResult,
+    }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+async function handlePromoteFleetService(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext
+): Promise<Response> {
+  if (!env.FLEET_KV) {
+    return new Response(JSON.stringify({ error: 'FLEET_KV binding is not configured' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
+    service?: string;
+    from_env?: string;
+    to_env?: string;
+    enable_target?: boolean;
+    reconcile?: boolean;
+  };
+  if (!body.service || typeof body.service !== 'string') {
+    return new Response(JSON.stringify({ error: 'service is required' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const fromEnv = normalizeFleetEnv(body.from_env || 'uat');
+  const toEnv = normalizeFleetEnv(body.to_env || 'prod');
+  if (fromEnv === toEnv) {
+    return new Response(JSON.stringify({ error: 'from_env and to_env must differ' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const sourceManifest = await getFleetManifest(env.FLEET_KV, fromEnv, body.service);
+  if (!sourceManifest) {
+    return new Response(JSON.stringify({ error: `Source manifest ${fromEnv}/${body.service} not found` }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const liveSourceImg = await getLiveServiceImage(env.FLEET_KV, fromEnv, sourceManifest.service);
+  const existingTarget = await getFleetManifest(env.FLEET_KV, toEnv, sourceManifest.service);
+  const promoted = buildPromotedManifest(
+    sourceManifest,
+    existingTarget,
+    toEnv,
+    liveSourceImg || sourceManifest.image,
+    body.enable_target
+  );
+
+  const check = validateFleetManifest(promoted);
+  if (!check.valid) {
+    return new Response(JSON.stringify({ error: 'Promoted manifest failed validation', details: check.errors }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const actor = resolveDashboardActor(request, env);
+  const currSha = await computeManifestSha256(promoted);
+  const rev = await recordFleetRevision(
+    env,
+    {
+      service: promoted.service,
+      env: toEnv,
+      action: 'promote',
+      actor,
+      reason: `Promoted ${fromEnv} → ${toEnv} (${promoted.image})`,
+      manifest_sha256: currSha,
+      manifest: promoted,
+      prev_manifest: existingTarget ? stripManifestInternalMeta(existingTarget) : null,
+      diff_summary: computeManifestDiffSummary(existingTarget, promoted),
+    },
+    ctx
+  );
+
+  await saveFleetManifests(env.FLEET_KV, [promoted], {
+    actor,
+    revision: rev.rev_id,
+  });
+  await recordLiveServiceImage(env.FLEET_KV, toEnv, promoted.service, promoted.image);
+  await seedMissingVaultBundleFromEnvVars(env, promoted);
+
+  let reconcileResult: any = null;
+  const shouldReconcile = body.reconcile !== false && promoted.enabled !== false;
+  if (shouldReconcile) {
+    const recReq = new Request('https://internal/api/v1/control/fleet/reconcile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ env: toEnv, service: promoted.service }),
+    });
+    const recResp = await handleFleetReconcile(recReq, env, ctx);
+    reconcileResult = await recResp.json().catch(() => null);
+  }
+
+  return new Response(
+    JSON.stringify({
+      status: 'promoted',
+      from_env: fromEnv,
+      to_env: toEnv,
+      revision: rev,
+      manifest: promoted,
+      reconciled: shouldReconcile,
+      reconcile_result: reconcileResult,
+    }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+async function handleExportFleetManifests(env: Env, url: URL): Promise<Response> {
+  const envFilter = url.searchParams.get('env') || undefined;
+  const list = env.FLEET_KV ? await listFleetManifests(env.FLEET_KV, envFilter) : [];
+  const cleanList = list.map((m) => stripManifestInternalMeta(m));
+  const payload = {
+    version: '1.0',
+    exported_at: new Date().toISOString(),
+    count: cleanList.length,
+    manifests: cleanList,
+  };
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+  };
+  if (url.searchParams.get('download') === '1') {
+    const slug = envFilter ? normalizeFleetEnv(envFilter) : 'all';
+    headers['Content-Disposition'] = `attachment; filename="flarelens-fleet-${slug}.json"`;
+  }
+
+  return new Response(JSON.stringify(payload, null, 2), { status: 200, headers });
+}
+
+async function handleImportFleetManifests(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext
+): Promise<Response> {
+  if (!env.FLEET_KV) {
+    return new Response(JSON.stringify({ error: 'FLEET_KV binding is not configured' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
+    manifests?: FleetServiceManifest[];
+    reconcile?: boolean;
+    reason?: string;
+  };
+  const items = Array.isArray(body.manifests) ? body.manifests : [];
+  if (items.length === 0) {
+    return new Response(JSON.stringify({ error: 'manifests[] array is required' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const errors: string[] = [];
+  for (const m of items) {
+    const check = validateFleetManifest(m);
+    if (!check.valid) errors.push(...check.errors);
+  }
+  if (errors.length > 0) {
+    return new Response(JSON.stringify({ error: 'Import validation failed', details: errors }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const actor = resolveDashboardActor(request, env);
+  const toSave: FleetServiceManifest[] = [];
+  const createdRevisions: string[] = [];
+
+  for (const raw of items) {
+    const clean = stripManifestInternalMeta(raw);
+    const normEnv = normalizeFleetEnv(clean.env);
+    clean.env = normEnv;
+    const prev = await getFleetManifest(env.FLEET_KV, normEnv, clean.service);
+    const currSha = await computeManifestSha256(clean);
+    const prevSha = prev ? await computeManifestSha256(prev) : '';
+    if (prevSha && prevSha === currSha) {
+      toSave.push({ ...clean, ...(prev?._revision ? { _revision: prev._revision } : {}) } as any);
+      continue;
+    }
+    const rev = await recordFleetRevision(
+      env,
+      {
+        service: clean.service,
+        env: normEnv,
+        action: 'import',
+        actor,
+        reason: body.reason || 'Imported Fleet snapshot',
+        manifest_sha256: currSha,
+        manifest: clean,
+        prev_manifest: prev ? stripManifestInternalMeta(prev) : null,
+        diff_summary: computeManifestDiffSummary(prev, clean),
+      },
+      ctx
+    );
+    createdRevisions.push(rev.rev_id);
+    toSave.push({ ...clean, ...({ _revision: rev.rev_id } as any) });
+    await seedMissingVaultBundleFromEnvVars(env, clean);
+  }
+
+  await saveFleetManifests(env.FLEET_KV, toSave, { actor });
+
+  let reconcileResult: any = null;
+  if (body.reconcile === true) {
+    const recReq = new Request('https://internal/api/v1/control/fleet/reconcile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const recResp = await handleFleetReconcile(recReq, env, ctx);
+    reconcileResult = await recResp.json().catch(() => null);
+  }
+
+  return new Response(
+    JSON.stringify({
+      status: 'imported',
+      imported_count: toSave.length,
+      revisions: createdRevisions,
+      reconciled: Boolean(body.reconcile),
+      reconcile_result: reconcileResult,
+    }),
+    {
+      status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     }
   );

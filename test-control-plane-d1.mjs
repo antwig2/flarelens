@@ -421,6 +421,142 @@ async function runTests() {
   assert.strictEqual(trigOtaBody.commands_queued, 1);
   console.log('   ✅ Passed: Fleet GitOps adopt_only + Suspended guard + Agent OTA verified.\n');
 
+  console.log('5️⃣  Testing Zero-Git Fleet CRUD, Immutable D1+R2 Revisions, UAT→Prod Promotion & 1-Click Rollback...');
+  const schemaRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/schemas/fleet.schema.json'),
+    env,
+    ctx
+  );
+  assert.strictEqual(schemaRes.status, 200, 'Public JSON schema must return 200 without auth');
+  const schemaJson = await schemaRes.json();
+  assert.strictEqual(schemaJson.type, 'object');
+
+  const createRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/fleet/manifests', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        manifest: {
+          service: 'orders-api',
+          env: 'uat',
+          enabled: true,
+          image: 'ghcr.io/example/orders-api:1.0.0',
+          domains: ['orders-uat.example.com'],
+          container_port: 8080,
+          host_port_blue: 8081,
+          host_port_green: 8082,
+          networks: ['app-uat', 'flarelens-edge'],
+          env_vars: { JWT_SECRET_KEY: 'top-secret-1', LOG_LEVEL: 'info' },
+        },
+        reason: 'Created orders-api in UI without Git',
+        reconcile: false,
+      }),
+    }),
+    env,
+    ctx
+  );
+  await Promise.all(pendingWaitTasks.splice(0));
+  assert.strictEqual(createRes.status, 200);
+  const createBody = await createRes.json();
+  assert.strictEqual(createBody.created, true);
+  const initialOrdersRev = createBody.revision.rev_id;
+  const r2RevSnapshot = await backupBucket.get(`state/revisions/${initialOrdersRev}.json`);
+  assert.ok(r2RevSnapshot, 'R2 state/revisions/rev-N.json snapshot must be written');
+
+  const updateRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/fleet/manifests', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        manifest: {
+          service: 'orders-api',
+          env: 'uat',
+          enabled: true,
+          image: 'ghcr.io/example/orders-api:1.1.0',
+          domains: ['orders-uat.example.com'],
+          container_port: 8080,
+          host_port_blue: 8081,
+          host_port_green: 8082,
+          networks: ['app-uat', 'flarelens-edge'],
+          env_vars: { JWT_SECRET_KEY: 'top-secret-2', LOG_LEVEL: 'debug' },
+        },
+        reconcile: false,
+      }),
+    }),
+    env,
+    ctx
+  );
+  await Promise.all(pendingWaitTasks.splice(0));
+  const updateBody = await updateRes.json();
+  const diffStr = updateBody.revision.diff_summary.join(' | ');
+  assert.ok(diffStr.includes('orders-api:1.0.0 → ghcr.io/example/orders-api:1.1.0'));
+  assert.ok(!diffStr.includes('top-secret-2'), 'Sensitive env_vars must be masked in revision diff');
+
+  // Promote uat/orders-api -> prod/orders-api (auto-offsets ports +1000 and swaps env tokens when prod doesn't exist yet)
+  const promoteRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/fleet/promote', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ service: 'orders-api', from_env: 'uat', to_env: 'prod', reconcile: false }),
+    }),
+    env,
+    ctx
+  );
+  await Promise.all(pendingWaitTasks.splice(0));
+  assert.strictEqual(promoteRes.status, 200);
+  const promoteBody = await promoteRes.json();
+  assert.strictEqual(promoteBody.manifest.image, 'ghcr.io/example/orders-api:1.1.0');
+  assert.strictEqual(promoteBody.manifest.host_port_blue, 9081);
+  assert.deepStrictEqual(promoteBody.manifest.networks, ['app-prod', 'flarelens-edge']);
+
+  // Delete uat/orders-api and restore via 1-click Rollback
+  const delRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/fleet/manifests?env=uat&service=orders-api', {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer test-admin-password' },
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(delRes.status, 200);
+
+  const rbRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/fleet/rollback', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ rev_id: initialOrdersRev, reconcile: false }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(rbRes.status, 200);
+  const rbBody = await rbRes.json();
+  assert.strictEqual(rbBody.manifest.image, 'ghcr.io/example/orders-api:1.0.0');
+
+  const expRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/fleet/export?env=uat', {
+      headers: { Authorization: 'Bearer test-admin-password' },
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(expRes.status, 200);
+  const expBody = await expRes.json();
+  assert.strictEqual(expBody.count, 1);
+  console.log('   ✅ Passed: Zero-Git CRUD, D1+R2 revisions, UAT→Prod promotion, 1-click rollback & export verified!\n');
+
   console.log('🎉 ALL FLARELENS OPEN-SOURCE D1 CONTROL PLANE TESTS PASSED!');
 }
 

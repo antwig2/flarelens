@@ -888,7 +888,7 @@
       --label-3: "Health";
       --label-4: "Desired Image";
       --label-5: "Live State";
-      --label-6: "Commit";
+      --label-6: "Revision";
       --label-7: "Actions";
     }
     .fleet-gitops-table th,
@@ -941,10 +941,12 @@
         border-block-end: 2px solid var(--border);
       }
       .fleet-gitops-table tbody th[scope="row"] {
-        position: static;
-        background: transparent;
+        position: sticky;
+        inset-block-start: 0;
+        z-index: 2;
+        background: #090e1a;
         border: none;
-        padding: 0 0 0.25rem 0;
+        padding: 0.15rem 0 0.3rem 0;
         font-size: 0.92rem;
       }
       .fleet-gitops-table tbody td {
@@ -988,6 +990,82 @@
       backdrop-filter: blur(4px);
       overflow: hidden;
       overscroll-behavior: contain;
+    }
+
+    dialog.fleet-wide-dialog {
+      max-width: 740px;
+      width: 95vw;
+      max-block-size: 88vh;
+      overflow-y: auto;
+    }
+
+    .visually-hidden:where(:not(:focus-within, :active)) {
+      position: absolute !important;
+      clip-path: inset(50%) !important;
+      overflow: hidden !important;
+      width: 1px !important;
+      height: 1px !important;
+      margin: -1px !important;
+      padding: 0 !important;
+      border: 0 !important;
+      white-space: nowrap !important;
+    }
+
+    .fleet-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.22rem;
+      margin-block-end: 0.85rem;
+    }
+    .fleet-field > label {
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .fleet-hint {
+      display: block;
+      font-size: 0.71rem;
+      color: var(--text-muted);
+      margin-block-end: 0.15rem;
+    }
+    .fleet-error-msg {
+      display: none;
+      color: #fb7185;
+      font-size: 0.74rem;
+      margin-block-start: 0.2rem;
+    }
+    #fleetServiceForm :is(:user-invalid, .user-invalid-fallback) {
+      border-color: #f43f5e !important;
+      background-color: rgba(244, 63, 94, 0.08) !important;
+    }
+    #fleetServiceForm :is(:user-invalid, .user-invalid-fallback) + .fleet-error-msg {
+      display: block;
+    }
+    #fleetServiceForm input:focus-visible,
+    #fleetServiceForm select:focus-visible,
+    #fleetServiceForm textarea:focus-visible,
+    #fleetServiceForm button:focus-visible {
+      outline: 2px solid var(--border-focus);
+      outline-offset: 2px;
+    }
+    .fleet-preset-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      padding: 0.55rem 0.65rem;
+      background: #070b14;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .fleet-rev-item {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem 0.9rem;
+      background: #070b14;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.85rem;
     }
 
     /* Live Toast Container */
@@ -1447,19 +1525,24 @@
       <div class="panel-content">
         <div class="gitops-hero" style="flex-wrap:wrap; gap:1rem;">
           <div>
-            <h2 style="font-size:1.15rem; font-weight:700;">Declarative Fleet GitOps &amp; Host Agent OTA</h2>
+            <h2 style="font-size:1.15rem; font-weight:700;">Declarative Fleet State, Revisions &amp; Host Agent OTA</h2>
             <p style="color:var(--text-muted); font-size:0.8rem; margin-top:0.25rem;">
-              ArgoCD-style drift reconciliation across <code>fleet/infra</code>, <code>fleet/uat</code>, and <code>fleet/prod</code> manifests plus zero-SSH <code>flarelensd</code> over-the-air binary rollouts.
+              Manage services directly in Cloudflare D1 &amp; R2 with immutable numbered revisions, 1-click UAT → Prod promotion, instant rollbacks, and zero-SSH <code>flarelensd</code> OTA updates — no Git repo required.
             </p>
           </div>
-          <div style="display:flex; align-items:center; gap:0.65rem; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
             <div class="env-pill-group" role="group" aria-label="Filter manifests by environment" id="gitopsEnvFilterGroup">
               <button type="button" class="env-pill active" data-gitops-env="">All</button>
               <button type="button" class="env-pill" data-gitops-env="infra">infra</button>
               <button type="button" class="env-pill" data-gitops-env="uat">uat</button>
               <button type="button" class="env-pill" data-gitops-env="prod">prod</button>
             </div>
-            <button type="button" class="btn" id="btnRefreshGitops">↻ Refresh Drift &amp; OTA</button>
+            <button type="button" class="btn btn-primary" id="btnNewFleetService">+ New Service</button>
+            <button type="button" class="btn" id="btnOpenAllRevisions">🕘 Revisions</button>
+            <button type="button" class="btn" id="btnExportFleetJson">⬇ Export</button>
+            <button type="button" class="btn" id="btnImportFleetJson">⬆ Import</button>
+            <input type="file" id="fleetImportFileInput" accept=".json,application/json" class="visually-hidden" aria-label="Import Fleet JSON snapshot">
+            <button type="button" class="btn" id="btnRefreshGitops">↻ Refresh</button>
           </div>
         </div>
 
@@ -1473,7 +1556,7 @@
           <div class="fleet-gitops-kpi">
             <span class="kpi-label">Synced</span>
             <span class="kpi-value" style="color:#34d399;" id="gitopsKpiSynced">0</span>
-            <span class="kpi-sub">Matches desired Git state</span>
+            <span class="kpi-sub">Matches desired revision state</span>
           </div>
           <div class="fleet-gitops-kpi">
             <span class="kpi-label">OutOfSync</span>
@@ -1497,7 +1580,7 @@
           <div class="card-header" style="flex-wrap:wrap; gap:0.5rem;">
             <div>
               <div class="card-title">
-                <span>Declarative Fleet Manifests (GitOps Desired vs. Live Telemetry)</span>
+                <span>Declarative Fleet Manifests (Desired State vs. Live Telemetry)</span>
               </div>
               <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
                 Live CI image SHA overrides are preserved across topology syncs; <code>adopt_only</code> guards stateful singletons and <code>enabled: false</code> gates staged environments.
@@ -1517,7 +1600,7 @@
                   <th scope="col">Health</th>
                   <th scope="col">Desired Image</th>
                   <th scope="col">Live State</th>
-                  <th scope="col">Commit</th>
+                  <th scope="col">Revision</th>
                   <th scope="col">Actions</th>
                 </tr>
               </thead>
@@ -2376,6 +2459,285 @@
         <button value="cancel" autofocus class="btn">Cancel</button>
         <button value="confirm" class="btn btn-primary" id="btnConfirmRebootSubmit">🔁 Queue Graceful Reboot</button>
       </div>
+    </form>
+  </dialog>
+
+  <!-- MODAL: CREATE / EDIT DECLARATIVE FLEET SERVICE (ZERO-GIT) -->
+  <dialog id="fleetServiceDialog" class="ota-dialog fleet-wide-dialog" aria-labelledby="fleetServiceDialogTitle">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.75rem;">
+      <div>
+        <h3 id="fleetServiceDialogTitle" style="font-size:1.08rem; font-weight:700;">Create Declarative Service</h3>
+        <p style="font-size:0.78rem; color:var(--text-muted); margin-top:0.2rem;">
+          Saves directly to Cloudflare D1 &amp; KV as an immutable numbered revision with R2 backup snapshot.
+        </p>
+      </div>
+      <div style="display:flex; gap:0.4rem; align-items:center;">
+        <button type="button" class="btn" id="btnToggleFleetJsonMode" aria-pressed="false" style="font-size:0.73rem; padding:0.3rem 0.65rem;">{ } JSON Editor</button>
+        <button type="button" class="btn" id="btnCloseFleetServiceTop" aria-label="Close service dialog" style="padding:0.3rem 0.6rem;">✕</button>
+      </div>
+    </div>
+
+    <div class="fleet-preset-bar" role="group" aria-label="One-click service templates">
+      <span style="font-size:0.72rem; color:var(--text-dim); align-self:center; margin-inline-end:0.25rem;">Templates:</span>
+      <button type="button" class="btn" data-fleet-preset="web" style="font-size:0.72rem; padding:0.24rem 0.55rem;">⚡ Blue/Green App</button>
+      <button type="button" class="btn" data-fleet-preset="postgres" style="font-size:0.72rem; padding:0.24rem 0.55rem;">🐘 PostgreSQL 18</button>
+      <button type="button" class="btn" data-fleet-preset="dragonfly" style="font-size:0.72rem; padding:0.24rem 0.55rem;">🐉 Dragonfly</button>
+      <button type="button" class="btn" data-fleet-preset="traefik" style="font-size:0.72rem; padding:0.24rem 0.55rem;">🔀 Traefik v3</button>
+      <button type="button" class="btn" data-fleet-preset="cloudflared" style="font-size:0.72rem; padding:0.24rem 0.55rem;">☁️ Cloudflared</button>
+    </div>
+
+    <form id="fleetServiceForm" action="/api/v1/control/fleet/manifests" method="post" aria-labelledby="fleetServiceDialogTitle" novalidate>
+      <div id="fleetStructuredFieldsPane">
+        <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:0.75rem;">
+          <div class="fleet-field">
+            <label for="fleetSvcNameInput">Service Name <span aria-hidden="true">*</span></label>
+            <span id="fleetSvcNameHint" class="fleet-hint">Lowercase letters, numbers, and hyphens (e.g. billing-api).</span>
+            <input
+              type="text"
+              id="fleetSvcNameInput"
+              name="service"
+              class="search-box"
+              required
+              autofocus
+              pattern="[a-z0-9-]+"
+              autocorrect="off"
+              autocapitalize="none"
+              spellcheck="false"
+              aria-describedby="fleetSvcNameHint"
+              data-error="fleetSvcNameError"
+              style="width:100%;"
+            >
+            <div id="fleetSvcNameError" class="fleet-error-msg">
+              <span role="img" aria-label="Error">❌</span> Enter a lowercase service slug using only a-z, 0-9, and hyphens.
+            </div>
+          </div>
+
+          <div class="fleet-field">
+            <label for="fleetSvcEnvSelect">Environment <span aria-hidden="true">*</span></label>
+            <span id="fleetSvcEnvHint" class="fleet-hint">Target isolation tier.</span>
+            <select id="fleetSvcEnvSelect" name="env" class="filter-select" aria-describedby="fleetSvcEnvHint" style="width:100%; height:36px;">
+              <option value="uat">uat</option>
+              <option value="prod">prod</option>
+              <option value="infra">infra</option>
+              <option value="staging">staging</option>
+              <option value="dev">dev</option>
+            </select>
+          </div>
+        </div>
+
+        <fieldset style="border:1px solid var(--border); border-radius:8px; padding:0.6rem 0.85rem; margin-block-end:0.85rem;">
+          <legend style="font-size:0.74rem; font-weight:600; color:var(--text-muted); padding:0 0.35rem;">Workload Orchestration Mode</legend>
+          <div style="display:flex; gap:1.25rem; flex-wrap:wrap; margin-block-start:0.2rem;">
+            <div style="display:flex; align-items:center; gap:0.4rem;">
+              <input type="radio" id="fleetModeBlueGreen" name="workload_mode" value="blue_green" checked style="accent-color:#3b82f6;">
+              <label for="fleetModeBlueGreen" style="font-size:0.8rem; cursor:pointer;">Blue/Green Rolling Web Service</label>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.4rem;">
+              <input type="radio" id="fleetModeSingleton" name="workload_mode" value="singleton" style="accent-color:#3b82f6;">
+              <label for="fleetModeSingleton" style="font-size:0.8rem; cursor:pointer;">Singleton / Stateful Container</label>
+            </div>
+          </div>
+        </fieldset>
+
+        <div class="fleet-field">
+          <label for="fleetSvcImageInput">Container Image <span aria-hidden="true">*</span></label>
+          <span id="fleetSvcImageHint" class="fleet-hint">Fully qualified OCI image and tag (e.g. ghcr.io/org/app:v1.2.0 or postgres:18).</span>
+          <input
+            type="text"
+            id="fleetSvcImageInput"
+            name="image"
+            class="search-box"
+            required
+            autocorrect="off"
+            autocapitalize="none"
+            spellcheck="false"
+            aria-describedby="fleetSvcImageHint"
+            data-error="fleetSvcImageError"
+            style="width:100%;"
+          >
+          <div id="fleetSvcImageError" class="fleet-error-msg">
+            <span role="img" aria-label="Error">❌</span> Enter a container image reference such as ghcr.io/org/app:latest.
+          </div>
+        </div>
+
+        <div id="fleetBgFieldsGroup">
+          <div class="fleet-field">
+            <label for="fleetSvcDomainsInput">Public / Internal Domains</label>
+            <span id="fleetSvcDomainsHint" class="fleet-hint">Comma-separated hostnames routed by Traefik (e.g. api.example.com, auth.example.com).</span>
+            <input
+              type="text"
+              id="fleetSvcDomainsInput"
+              name="domains"
+              class="search-box"
+              autocorrect="off"
+              autocapitalize="none"
+              spellcheck="false"
+              aria-describedby="fleetSvcDomainsHint"
+              style="width:100%;"
+            >
+          </div>
+
+          <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.6rem;">
+            <div class="fleet-field">
+              <label for="fleetContainerPortInput">Container Port</label>
+              <input type="text" id="fleetContainerPortInput" name="container_port" inputmode="numeric" pattern="[0-9]*" class="search-box" value="8080" style="width:100%;">
+            </div>
+            <div class="fleet-field">
+              <label for="fleetBluePortInput">Blue Port</label>
+              <input type="text" id="fleetBluePortInput" name="host_port_blue" inputmode="numeric" pattern="[0-9]*" class="search-box" value="8081" style="width:100%;">
+            </div>
+            <div class="fleet-field">
+              <label for="fleetGreenPortInput">Green Port</label>
+              <input type="text" id="fleetGreenPortInput" name="host_port_green" inputmode="numeric" pattern="[0-9]*" class="search-box" value="8082" style="width:100%;">
+            </div>
+            <div class="fleet-field">
+              <label for="fleetHealthPathInput">Health Path</label>
+              <input type="text" id="fleetHealthPathInput" name="health_path" class="search-box" value="/health" autocorrect="off" autocapitalize="none" spellcheck="false" style="width:100%;">
+            </div>
+          </div>
+        </div>
+
+        <div id="fleetSingletonFieldsGroup" hidden>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.75rem;">
+            <div class="fleet-field">
+              <label for="fleetContainerNameInput">Container Name</label>
+              <span id="fleetContainerNameHint" class="fleet-hint">Explicit singleton container name (e.g. app-uat-postgres).</span>
+              <input
+                type="text"
+                id="fleetContainerNameInput"
+                name="container_name"
+                class="search-box"
+                autocorrect="off"
+                autocapitalize="none"
+                spellcheck="false"
+                aria-describedby="fleetContainerNameHint"
+                style="width:100%;"
+              >
+            </div>
+            <div class="fleet-field">
+              <label for="fleetPortsListInput">Host Port Bindings</label>
+              <span id="fleetPortsListHint" class="fleet-hint">Comma-separated (e.g. 127.0.0.1:5432:5432).</span>
+              <input
+                type="text"
+                id="fleetPortsListInput"
+                name="ports"
+                class="search-box"
+                autocorrect="off"
+                autocapitalize="none"
+                spellcheck="false"
+                aria-describedby="fleetPortsListHint"
+                style="width:100%;"
+              >
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.5rem; margin-block-end:0.85rem;">
+            <input type="checkbox" id="fleetAdoptOnlyCheckbox" name="adopt_only" style="accent-color:#10b981;">
+            <label for="fleetAdoptOnlyCheckbox" style="font-size:0.79rem; cursor:pointer;">
+              Adopt existing container without restarting (<code>adopt_only: true</code> — recommended for Postgres, Dragonfly, Traefik)
+            </label>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.75rem;">
+          <div class="fleet-field">
+            <label for="fleetNetworksInput">Docker Networks</label>
+            <span id="fleetNetworksHint" class="fleet-hint">Comma-separated (e.g. app-uat, flarelens-edge or host).</span>
+            <input type="text" id="fleetNetworksInput" name="networks" class="search-box" value="flarelens-edge" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="fleetNetworksHint" style="width:100%;">
+          </div>
+          <div class="fleet-field">
+            <label for="fleetAliasesInput">Docker DNS Aliases</label>
+            <span id="fleetAliasesHint" class="fleet-hint">Optional internal aliases (e.g. api, postgres).</span>
+            <input type="text" id="fleetAliasesInput" name="aliases" class="search-box" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="fleetAliasesHint" style="width:100%;">
+          </div>
+        </div>
+
+        <div class="fleet-field">
+          <label for="fleetEnvVarsTextarea">Declarative Environment Overrides (<code>KEY=VALUE</code>)</label>
+          <span id="fleetEnvVarsHint" class="fleet-hint">Merged onto encrypted Vault bundle at deploy time (also initializes Vault bundle if missing).</span>
+          <textarea
+            id="fleetEnvVarsTextarea"
+            name="env_vars"
+            rows="3"
+            autocorrect="off"
+            autocapitalize="none"
+            spellcheck="false"
+            aria-describedby="fleetEnvVarsHint"
+            style="width:100%; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-mono); font-size:0.76rem; padding:0.55rem;"
+          ></textarea>
+        </div>
+      </div>
+
+      <div id="fleetRawJsonPane" hidden>
+        <div class="fleet-field">
+          <label for="fleetRawJsonTextarea">Full Service Manifest JSON</label>
+          <span id="fleetRawJsonHint" class="fleet-hint">Validated against <code>/schemas/fleet.schema.json</code> on save.</span>
+          <textarea
+            id="fleetRawJsonTextarea"
+            name="raw_manifest_json"
+            rows="14"
+            autocorrect="off"
+            autocapitalize="none"
+            spellcheck="false"
+            aria-describedby="fleetRawJsonHint"
+            style="width:100%; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#e2e8f0; font-family:var(--font-mono); font-size:0.76rem; padding:0.65rem;"
+          ></textarea>
+        </div>
+      </div>
+
+      <div class="fleet-field">
+        <label for="fleetChangeReasonInput">Revision Note</label>
+        <input type="text" id="fleetChangeReasonInput" name="reason" class="search-box" placeholder="e.g. Bump image tag or add auth domain" style="width:100%;">
+      </div>
+
+      <div style="display:flex; gap:1.25rem; flex-wrap:wrap; margin-block:0.4rem 0.9rem;">
+        <div style="display:flex; align-items:center; gap:0.45rem;">
+          <input type="checkbox" id="fleetEnabledCheckbox" name="enabled" checked style="accent-color:#10b981;">
+          <label for="fleetEnabledCheckbox" style="font-size:0.8rem; cursor:pointer; font-weight:600;">Enabled (Active)</label>
+        </div>
+        <div style="display:flex; align-items:center; gap:0.45rem;">
+          <input type="checkbox" id="fleetReconcileNowCheckbox" name="reconcile" checked style="accent-color:#3b82f6;">
+          <label for="fleetReconcileNowCheckbox" style="font-size:0.8rem; cursor:pointer;">Reconcile on target node immediately</label>
+        </div>
+      </div>
+
+      <div id="fleetServiceFormStatus" role="status" style="font-size:0.78rem; color:#fb7185; margin-block-end:0.65rem; min-height:1.1rem;"></div>
+
+      <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
+        <button type="button" class="btn" id="btnCancelFleetServiceDialog">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btnSaveFleetService">Save Revision &amp; Apply</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- MODAL: IMMUTABLE REVISION TIMELINE & 1-CLICK ROLLBACK -->
+  <dialog id="fleetRevisionsDialog" class="ota-dialog fleet-wide-dialog" aria-labelledby="fleetRevisionsDialogTitle" closedby="any">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem;">
+      <div>
+        <h3 id="fleetRevisionsDialogTitle" style="font-size:1.08rem; font-weight:700;">Immutable Fleet Revisions &amp; Rollback</h3>
+        <p id="fleetRevisionsDialogSub" style="font-size:0.77rem; color:var(--text-muted); margin-top:0.2rem;">
+          Stored in Cloudflare D1 + R2 state snapshots. Roll back to any revision in 1 click.
+        </p>
+      </div>
+      <form method="dialog">
+        <button value="close" autofocus class="btn" style="padding:0.3rem 0.7rem;">Close</button>
+      </form>
+    </div>
+    <div id="fleetRevisionsListContainer" style="display:flex; flex-direction:column; gap:0.65rem; max-block-size:62vh; overflow-y:auto;">
+      <div style="text-align:center; color:var(--text-muted); padding:1.5rem;">Loading revisions...</div>
+    </div>
+  </dialog>
+
+  <!-- MODAL: CONFIRM DELETE FLEET MANIFEST -->
+  <dialog id="fleetDeleteConfirmDialog" class="ota-dialog" aria-labelledby="fleetDeleteConfirmTitle" closedby="any">
+    <div>
+      <h3 id="fleetDeleteConfirmTitle" style="font-size:1.05rem; font-weight:700; color:#fb7185;">Remove Service Manifest?</h3>
+      <p id="fleetDeleteConfirmDesc" style="font-size:0.8rem; color:var(--text-muted); margin-top:0.35rem; line-height:1.45;">
+        Removes this manifest from active reconciliation while recording a recoverable revision in D1 &amp; R2 so you can roll it back anytime.
+      </p>
+    </div>
+    <form method="dialog" style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.5rem;">
+      <button value="cancel" autofocus class="btn">Cancel</button>
+      <button value="delete" class="btn" style="background:#be123c; color:#fff; border-color:#9f1239;">Delete Manifest</button>
     </form>
   </dialog>
 
@@ -5019,30 +5381,69 @@
           tdLive.appendChild(reasonSpan);
         }
 
-        // 7. Git Commit
+        // 7. Revision & Optional Commit
         const tdCommit = document.createElement('td');
-        const commitCode = document.createElement('code');
-        commitCode.style.fontFamily = 'var(--font-mono)';
-        commitCode.style.fontSize = '0.72rem';
-        commitCode.style.color = 'var(--text-muted)';
-        commitCode.textContent = s.synced_commit ? String(s.synced_commit).slice(0, 7) : '—';
-        if (s.updated_at) commitCode.title = `Synced at ${s.updated_at}`;
-        tdCommit.appendChild(commitCode);
+        const revWrap = document.createElement('div');
+        revWrap.style.display = 'flex';
+        revWrap.style.alignItems = 'center';
+        revWrap.style.gap = '0.35rem';
+        revWrap.style.flexWrap = 'wrap';
+
+        if (s.revision) {
+          const revBtn = document.createElement('button');
+          revBtn.type = 'button';
+          revBtn.className = 'btn';
+          revBtn.style.fontFamily = 'var(--font-mono)';
+          revBtn.style.fontSize = '0.7rem';
+          revBtn.style.padding = '0.12rem 0.42rem';
+          revBtn.style.color = '#38bdf8';
+          revBtn.style.borderColor = 'rgba(56, 189, 248, 0.35)';
+          revBtn.style.background = 'rgba(56, 189, 248, 0.08)';
+          revBtn.textContent = s.revision;
+          revBtn.title = `View revision history & rollback for ${s.env}/${s.service}`;
+          revBtn.addEventListener('click', () => openFleetRevisionsDialog(s.env, s.service));
+          revWrap.appendChild(revBtn);
+        }
+
+        if (s.synced_commit) {
+          const commitCode = document.createElement('code');
+          commitCode.style.fontFamily = 'var(--font-mono)';
+          commitCode.style.fontSize = '0.7rem';
+          commitCode.style.color = 'var(--text-muted)';
+          commitCode.textContent = String(s.synced_commit).slice(0, 7);
+          if (s.updated_at) commitCode.title = `Updated at ${s.updated_at}`;
+          revWrap.appendChild(commitCode);
+        } else if (!s.revision) {
+          const dashSpan = document.createElement('span');
+          dashSpan.style.color = 'var(--text-dim)';
+          dashSpan.style.fontFamily = 'var(--font-mono)';
+          dashSpan.style.fontSize = '0.72rem';
+          dashSpan.textContent = '—';
+          if (s.updated_at) dashSpan.title = `Updated at ${s.updated_at}`;
+          revWrap.appendChild(dashSpan);
+        }
+        tdCommit.appendChild(revWrap);
 
         // 8. Actions
         const tdActions = document.createElement('td');
+        const actRow = document.createElement('div');
+        actRow.style.display = 'flex';
+        actRow.style.alignItems = 'center';
+        actRow.style.gap = '0.32rem';
+        actRow.style.flexWrap = 'wrap';
+
         const recBtn = document.createElement('button');
         recBtn.type = 'button';
         recBtn.className = 'btn';
-        recBtn.style.fontSize = '0.72rem';
-        recBtn.style.padding = '0.28rem 0.6rem';
+        recBtn.style.fontSize = '0.71rem';
+        recBtn.style.padding = '0.24rem 0.52rem';
 
         if (s.enabled === false) {
-          recBtn.disabled = true;
-          recBtn.style.opacity = '0.45';
-          recBtn.style.cursor = 'not-allowed';
-          recBtn.textContent = '⏸ Suspended';
-          recBtn.title = 'Set enabled: true in infra-repo/fleet/prod/*.yml to activate this service';
+          recBtn.textContent = '▶ Enable';
+          recBtn.style.color = '#34d399';
+          recBtn.style.borderColor = 'rgba(16, 185, 129, 0.35)';
+          recBtn.title = `Activate ${s.env}/${s.service} and reconcile on fleet`;
+          recBtn.addEventListener('click', () => toggleEnableFleetService(s.env, s.service, true, recBtn));
         } else {
           recBtn.textContent = '↻ Reconcile';
           recBtn.title = `Reconcile ${s.env}/${s.service} on ${s.target_node || 'fleet'}`;
@@ -5076,7 +5477,56 @@
             }
           });
         }
-        tdActions.appendChild(recBtn);
+        actRow.appendChild(recBtn);
+
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'btn';
+        editBtn.style.fontSize = '0.71rem';
+        editBtn.style.padding = '0.24rem 0.48rem';
+        editBtn.textContent = '✏️ Edit';
+        editBtn.title = `Edit ${s.env}/${s.service} manifest`;
+        editBtn.addEventListener('click', () => openFleetServiceDialogForEdit(s.env, s.service));
+        actRow.appendChild(editBtn);
+
+        if (s.env === 'uat') {
+          const promBtn = document.createElement('button');
+          promBtn.type = 'button';
+          promBtn.className = 'btn';
+          promBtn.style.fontSize = '0.71rem';
+          promBtn.style.padding = '0.24rem 0.48rem';
+          promBtn.style.color = '#a5b4fc';
+          promBtn.style.borderColor = 'rgba(99, 102, 241, 0.35)';
+          promBtn.textContent = '🚀 Promote';
+          promBtn.title = `Promote ${s.service} image & config from uat → prod (preserves prod domains/ports)`;
+          promBtn.addEventListener('click', () => promoteFleetService(s.service, 'uat', 'prod', promBtn));
+          actRow.appendChild(promBtn);
+        }
+
+        const histBtn = document.createElement('button');
+        histBtn.type = 'button';
+        histBtn.className = 'btn';
+        histBtn.style.fontSize = '0.71rem';
+        histBtn.style.padding = '0.24rem 0.44rem';
+        histBtn.textContent = '🕘';
+        histBtn.setAttribute('aria-label', `Revision history for ${s.env}/${s.service}`);
+        histBtn.title = `Revision history & 1-click rollback for ${s.env}/${s.service}`;
+        histBtn.addEventListener('click', () => openFleetRevisionsDialog(s.env, s.service));
+        actRow.appendChild(histBtn);
+
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'btn';
+        delBtn.style.fontSize = '0.71rem';
+        delBtn.style.padding = '0.24rem 0.44rem';
+        delBtn.style.color = '#fb7185';
+        delBtn.setAttribute('aria-label', `Delete ${s.env}/${s.service} manifest`);
+        delBtn.title = `Delete ${s.env}/${s.service} manifest (recoverable via Rollback)`;
+        delBtn.textContent = '🗑';
+        delBtn.addEventListener('click', () => openFleetDeleteDialog(s.env, s.service));
+        actRow.appendChild(delBtn);
+
+        tdActions.appendChild(actRow);
 
         tr.append(th, tdEnv, tdSync, tdHealth, tdDesired, tdLive, tdCommit, tdActions);
         fragment.appendChild(tr);
@@ -5403,6 +5853,823 @@
         });
       }
     }
+
+    // =========================================================================
+    // ZERO-GIT DECLARATIVE FLEET ENGINE (CRUD, REVISIONS, ROLLBACK, PROMOTE)
+    // =========================================================================
+    const fleetServiceDialog = document.getElementById('fleetServiceDialog');
+    const fleetServiceForm = document.getElementById('fleetServiceForm');
+    const fleetServiceDialogTitle = document.getElementById('fleetServiceDialogTitle');
+    const btnToggleFleetJsonMode = document.getElementById('btnToggleFleetJsonMode');
+    const fleetStructuredFieldsPane = document.getElementById('fleetStructuredFieldsPane');
+    const fleetRawJsonPane = document.getElementById('fleetRawJsonPane');
+    const fleetRawJsonTextarea = document.getElementById('fleetRawJsonTextarea');
+    const fleetServiceFormStatus = document.getElementById('fleetServiceFormStatus');
+    const fleetBgFieldsGroup = document.getElementById('fleetBgFieldsGroup');
+    const fleetSingletonFieldsGroup = document.getElementById('fleetSingletonFieldsGroup');
+    const fleetRevisionsDialog = document.getElementById('fleetRevisionsDialog');
+    const fleetRevisionsDialogSub = document.getElementById('fleetRevisionsDialogSub');
+    const fleetRevisionsListContainer = document.getElementById('fleetRevisionsListContainer');
+    const fleetDeleteConfirmDialog = document.getElementById('fleetDeleteConfirmDialog');
+    const fleetDeleteConfirmDesc = document.getElementById('fleetDeleteConfirmDesc');
+
+    let isFleetJsonEditorOpen = false;
+    let currentEditingBaseManifest = null;
+    let pendingDeleteTarget = null;
+
+    function attachDialogLightDismissFallback(dialogEl) {
+      if (!dialogEl || ('closedBy' in HTMLDialogElement.prototype)) return;
+      let pointerDownOutside = false;
+      const outsideRect = (e) => {
+        const r = dialogEl.getBoundingClientRect();
+        return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+      };
+      dialogEl.addEventListener('pointerdown', (e) => {
+        pointerDownOutside = e.target === dialogEl && outsideRect(e);
+      });
+      dialogEl.addEventListener('pointerup', (e) => {
+        if (pointerDownOutside && e.target === dialogEl && outsideRect(e)) {
+          dialogEl.close();
+        }
+        pointerDownOutside = false;
+      });
+    }
+
+    attachDialogLightDismissFallback(fleetRevisionsDialog);
+    attachDialogLightDismissFallback(fleetDeleteConfirmDialog);
+
+    function parseCsvTokens(raw) {
+      return String(raw || '')
+        .split(',')
+        .map((x) => x.trim())
+        .filter(Boolean);
+    }
+
+    function parseKeyValueLines(raw) {
+      const out = {};
+      const lines = String(raw || '').split(/\r?\n/);
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const idx = trimmed.indexOf('=');
+        if (idx <= 0) continue;
+        const k = trimmed.slice(0, idx).trim();
+        const v = trimmed.slice(idx + 1).trim();
+        if (k) out[k] = v;
+      }
+      return out;
+    }
+
+    function serializeKeyValueLines(obj) {
+      if (!obj || typeof obj !== 'object') return '';
+      return Object.entries(obj)
+        .map(([k, v]) => `${k}=${v ?? ''}`)
+        .join('\n');
+    }
+
+    function syncWorkloadModeVisibility() {
+      const modeSingleton = document.getElementById('fleetModeSingleton')?.checked;
+      if (fleetBgFieldsGroup) fleetBgFieldsGroup.hidden = Boolean(modeSingleton);
+      if (fleetSingletonFieldsGroup) fleetSingletonFieldsGroup.hidden = !modeSingleton;
+    }
+
+    document.getElementById('fleetModeBlueGreen')?.addEventListener('change', syncWorkloadModeVisibility);
+    document.getElementById('fleetModeSingleton')?.addEventListener('change', syncWorkloadModeVisibility);
+
+    function buildManifestFromForm() {
+      const base = currentEditingBaseManifest && typeof currentEditingBaseManifest === 'object'
+        ? JSON.parse(JSON.stringify(currentEditingBaseManifest))
+        : {};
+
+      const service = document.getElementById('fleetSvcNameInput')?.value.trim().toLowerCase() || '';
+      const env = document.getElementById('fleetSvcEnvSelect')?.value || 'uat';
+      const image = document.getElementById('fleetSvcImageInput')?.value.trim() || '';
+      const isSingleton = Boolean(document.getElementById('fleetModeSingleton')?.checked);
+      const enabled = Boolean(document.getElementById('fleetEnabledCheckbox')?.checked);
+
+      base.service = service;
+      base.env = env;
+      base.image = image;
+      base.mode = isSingleton ? 'singleton' : 'blue_green';
+      base.enabled = enabled;
+
+      const networks = parseCsvTokens(document.getElementById('fleetNetworksInput')?.value);
+      if (networks.length > 0) base.networks = networks;
+      else delete base.networks;
+
+      const aliases = parseCsvTokens(document.getElementById('fleetAliasesInput')?.value);
+      if (aliases.length > 0) base.aliases = aliases;
+      else delete base.aliases;
+
+      const envVars = parseKeyValueLines(document.getElementById('fleetEnvVarsTextarea')?.value);
+      if (Object.keys(envVars).length > 0) base.env_vars = envVars;
+      else delete base.env_vars;
+
+      if (isSingleton) {
+        delete base.domains;
+        delete base.domain;
+        delete base.container_port;
+        delete base.host_port_blue;
+        delete base.host_port_green;
+        delete base.health_path;
+
+        const ctrName = document.getElementById('fleetContainerNameInput')?.value.trim();
+        if (ctrName) base.container_name = ctrName;
+        else delete base.container_name;
+
+        const ports = parseCsvTokens(document.getElementById('fleetPortsListInput')?.value);
+        if (ports.length > 0) base.ports = ports;
+        else delete base.ports;
+
+        base.adopt_only = Boolean(document.getElementById('fleetAdoptOnlyCheckbox')?.checked);
+      } else {
+        delete base.container_name;
+        delete base.ports;
+        delete base.adopt_only;
+
+        const domains = parseCsvTokens(document.getElementById('fleetSvcDomainsInput')?.value);
+        delete base.domain;
+        if (domains.length > 0) base.domains = domains;
+        else delete base.domains;
+
+        const cp = Number(document.getElementById('fleetContainerPortInput')?.value);
+        const bp = Number(document.getElementById('fleetBluePortInput')?.value);
+        const gp = Number(document.getElementById('fleetGreenPortInput')?.value);
+        if (Number.isFinite(cp) && cp > 0) base.container_port = cp;
+        if (Number.isFinite(bp) && bp > 0) base.host_port_blue = bp;
+        if (Number.isFinite(gp) && gp > 0) base.host_port_green = gp;
+
+        const hp = document.getElementById('fleetHealthPathInput')?.value.trim();
+        if (hp) base.health_path = hp;
+      }
+
+      return base;
+    }
+
+    function populateFormFromManifest(m) {
+      currentEditingBaseManifest = m ? JSON.parse(JSON.stringify(m)) : null;
+      const isSingleton = m?.mode === 'singleton';
+
+      const svcInput = document.getElementById('fleetSvcNameInput');
+      const envSel = document.getElementById('fleetSvcEnvSelect');
+      const imgInput = document.getElementById('fleetSvcImageInput');
+      const modeBg = document.getElementById('fleetModeBlueGreen');
+      const modeSg = document.getElementById('fleetModeSingleton');
+
+      if (svcInput) svcInput.value = m?.service || '';
+      if (envSel) envSel.value = m?.env || (activeGitopsEnvFilter || 'uat');
+      if (imgInput) imgInput.value = m?.image || '';
+      if (modeBg) modeBg.checked = !isSingleton;
+      if (modeSg) modeSg.checked = Boolean(isSingleton);
+      syncWorkloadModeVisibility();
+
+      const domList = Array.isArray(m?.domains) && m.domains.length > 0
+        ? m.domains
+        : (m?.domain ? [m.domain] : []);
+      const domInput = document.getElementById('fleetSvcDomainsInput');
+      if (domInput) domInput.value = domList.join(', ');
+
+      const cpInput = document.getElementById('fleetContainerPortInput');
+      const bpInput = document.getElementById('fleetBluePortInput');
+      const gpInput = document.getElementById('fleetGreenPortInput');
+      const hpInput = document.getElementById('fleetHealthPathInput');
+      if (cpInput) cpInput.value = String(m?.container_port ?? 8080);
+      if (bpInput) bpInput.value = String(m?.host_port_blue ?? 8081);
+      if (gpInput) gpInput.value = String(m?.host_port_green ?? 8082);
+      if (hpInput) hpInput.value = m?.health_path || '/health';
+
+      const ctrInput = document.getElementById('fleetContainerNameInput');
+      const portsInput = document.getElementById('fleetPortsListInput');
+      const adoptCb = document.getElementById('fleetAdoptOnlyCheckbox');
+      if (ctrInput) ctrInput.value = m?.container_name || '';
+      if (portsInput) portsInput.value = Array.isArray(m?.ports) ? m.ports.join(', ') : '';
+      if (adoptCb) adoptCb.checked = Boolean(m?.adopt_only);
+
+      const netInput = document.getElementById('fleetNetworksInput');
+      const aliasInput = document.getElementById('fleetAliasesInput');
+      const envVarsArea = document.getElementById('fleetEnvVarsTextarea');
+      const enabledCb = document.getElementById('fleetEnabledCheckbox');
+      if (netInput) netInput.value = Array.isArray(m?.networks) ? m.networks.join(', ') : 'flarelens-edge';
+      if (aliasInput) aliasInput.value = Array.isArray(m?.aliases) ? m.aliases.join(', ') : '';
+      if (envVarsArea) envVarsArea.value = serializeKeyValueLines(m?.env_vars);
+      if (enabledCb) enabledCb.checked = m?.enabled !== false;
+
+      if (fleetRawJsonTextarea) {
+        fleetRawJsonTextarea.value = JSON.stringify(buildManifestFromForm(), null, 2);
+      }
+    }
+
+    function setFleetJsonEditorMode(openJson) {
+      if (openJson && !isFleetJsonEditorOpen) {
+        if (fleetRawJsonTextarea) {
+          fleetRawJsonTextarea.value = JSON.stringify(buildManifestFromForm(), null, 2);
+        }
+      } else if (!openJson && isFleetJsonEditorOpen) {
+        try {
+          const parsed = JSON.parse(fleetRawJsonTextarea?.value || '{}');
+          populateFormFromManifest(parsed);
+          if (fleetServiceFormStatus) fleetServiceFormStatus.textContent = '';
+        } catch (err) {
+          if (fleetServiceFormStatus) {
+            fleetServiceFormStatus.textContent = `Invalid JSON syntax: ${err.message}`;
+          }
+          return;
+        }
+      }
+      isFleetJsonEditorOpen = Boolean(openJson);
+      if (fleetStructuredFieldsPane) fleetStructuredFieldsPane.hidden = isFleetJsonEditorOpen;
+      if (fleetRawJsonPane) fleetRawJsonPane.hidden = !isFleetJsonEditorOpen;
+      if (btnToggleFleetJsonMode) {
+        btnToggleFleetJsonMode.setAttribute('aria-pressed', String(isFleetJsonEditorOpen));
+        btnToggleFleetJsonMode.textContent = isFleetJsonEditorOpen ? '📝 Form Editor' : '{ } JSON Editor';
+      }
+    }
+
+    btnToggleFleetJsonMode?.addEventListener('click', () => {
+      setFleetJsonEditorMode(!isFleetJsonEditorOpen);
+    });
+
+    const FLEET_PRESETS = {
+      web: (env) => ({
+        service: 'web-api',
+        env,
+        mode: 'blue_green',
+        enabled: true,
+        image: 'ghcr.io/your-org/web-api:latest',
+        domains: [`api-${env}.example.com`],
+        container_port: 8080,
+        host_port_blue: 8081,
+        host_port_green: 8082,
+        health_path: '/health',
+        networks: [`app-${env}`, 'flarelens-edge'],
+        aliases: ['web-api'],
+      }),
+      postgres: (env) => ({
+        service: 'postgres',
+        env,
+        mode: 'singleton',
+        adopt_only: true,
+        enabled: true,
+        container_name: `app-${env}-postgres`,
+        image: 'postgres:18-alpine',
+        ports: ['127.0.0.1:5432:5432'],
+        volumes: [`/var/lib/flarelens/${env}/postgres:/var/lib/postgresql/data`],
+        networks: [`app-${env}`],
+        aliases: ['postgres'],
+        healthcheck: {
+          test: ['CMD-SHELL', 'pg_isready -U postgres'],
+          interval: '10s',
+          timeout: '5s',
+          retries: 5,
+        },
+      }),
+      dragonfly: (env) => ({
+        service: 'dragonfly',
+        env,
+        mode: 'singleton',
+        adopt_only: true,
+        enabled: true,
+        container_name: `app-${env}-dragonfly`,
+        image: 'docker.dragonflydb.io/dragonflydb/dragonfly:latest',
+        command: ['dragonfly', '--logtostderr', '--maxmemory=512mb'],
+        ports: ['127.0.0.1:6379:6379'],
+        networks: [`app-${env}`],
+        aliases: ['redis', 'dragonfly'],
+      }),
+      traefik: () => ({
+        service: 'traefik',
+        env: 'infra',
+        mode: 'singleton',
+        adopt_only: true,
+        enabled: true,
+        container_name: 'traefik',
+        image: 'traefik:v3.6',
+        ports: ['80:80', '443:443'],
+        volumes: [
+          '/etc/traefik:/etc/traefik',
+          '/var/run/docker.sock:/var/run/docker.sock:ro',
+        ],
+        networks: ['flarelens-edge'],
+      }),
+      cloudflared: () => ({
+        service: 'cloudflared',
+        env: 'infra',
+        mode: 'singleton',
+        adopt_only: true,
+        enabled: true,
+        container_name: 'cloudflared',
+        image: 'cloudflare/cloudflared:latest',
+        command: ['tunnel', '--no-autoupdate', 'run'],
+        networks: ['flarelens-edge'],
+      }),
+    };
+
+    document.querySelectorAll('[data-fleet-preset]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-fleet-preset');
+        const currentEnv = document.getElementById('fleetSvcEnvSelect')?.value || activeGitopsEnvFilter || 'uat';
+        const factory = key ? FLEET_PRESETS[key] : null;
+        if (!factory) return;
+        const presetManifest = factory(currentEnv);
+        populateFormFromManifest(presetManifest);
+        if (isFleetJsonEditorOpen && fleetRawJsonTextarea) {
+          fleetRawJsonTextarea.value = JSON.stringify(presetManifest, null, 2);
+        }
+      });
+    });
+
+    // Accessible validation-after-interaction sync (WCAG 3.3.1 / 4.1.3)
+    let resetFleetFormValidationState = () => {};
+    if (fleetServiceForm) {
+      const validatedFields = Array.from(fleetServiceForm.querySelectorAll('[data-error]'));
+      const liveAnnouncer = document.createElement('div');
+      liveAnnouncer.className = 'visually-hidden';
+      liveAnnouncer.setAttribute('aria-live', 'polite');
+      fleetServiceForm.appendChild(liveAnnouncer);
+
+      const interactedFields = new WeakSet();
+      const needsFallbackClass = !CSS.supports('selector(:user-invalid)');
+      let announceTimer = null;
+
+      function linkErrorId(input, shouldLink) {
+        const errorId = input.dataset.error;
+        if (!errorId) return;
+        const tokens = (input.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+        const present = tokens.includes(errorId);
+        if (shouldLink && !present) tokens.push(errorId);
+        if (!shouldLink && present) tokens.splice(tokens.indexOf(errorId), 1);
+        if (tokens.length > 0) input.setAttribute('aria-describedby', tokens.join(' '));
+        else input.removeAttribute('aria-describedby');
+      }
+
+      function syncFieldAria(input, announceNow) {
+        const showInvalid = interactedFields.has(input) && !input.validity.valid;
+        const wasInvalid = input.getAttribute('aria-invalid') === 'true';
+        input.setAttribute('aria-invalid', String(showInvalid));
+        linkErrorId(input, showInvalid);
+        if (needsFallbackClass) {
+          input.classList.toggle('user-invalid-fallback', showInvalid);
+        }
+        if (showInvalid && !wasInvalid && announceNow) {
+          const msg = document.getElementById(input.dataset.error)?.textContent?.trim() || '';
+          clearTimeout(announceTimer);
+          liveAnnouncer.textContent = '';
+          announceTimer = setTimeout(() => { liveAnnouncer.textContent = msg; }, 50);
+        } else if (!showInvalid && wasInvalid) {
+          liveAnnouncer.textContent = '';
+        }
+      }
+
+      for (const field of validatedFields) {
+        field.setAttribute('aria-invalid', 'false');
+        field.addEventListener('blur', () => {
+          if (field.value !== '') {
+            interactedFields.add(field);
+            syncFieldAria(field, true);
+          }
+        });
+        field.addEventListener('input', () => {
+          if (interactedFields.has(field)) syncFieldAria(field, false);
+        });
+        field.addEventListener('change', () => {
+          interactedFields.add(field);
+          syncFieldAria(field, true);
+        });
+        field.addEventListener('invalid', (ev) => {
+          ev.preventDefault();
+          interactedFields.add(field);
+          syncFieldAria(field, false);
+        });
+      }
+
+      resetFleetFormValidationState = () => {
+        for (const field of validatedFields) {
+          interactedFields.delete(field);
+          field.setAttribute('aria-invalid', 'false');
+          linkErrorId(field, false);
+          field.classList.remove('user-invalid-fallback');
+        }
+        liveAnnouncer.textContent = '';
+        if (fleetServiceFormStatus) fleetServiceFormStatus.textContent = '';
+      };
+
+      fleetServiceForm.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        if (fleetServiceFormStatus) fleetServiceFormStatus.textContent = '';
+
+        let manifestPayload;
+        if (isFleetJsonEditorOpen) {
+          try {
+            manifestPayload = JSON.parse(fleetRawJsonTextarea?.value || '{}');
+          } catch (err) {
+            if (fleetServiceFormStatus) {
+              fleetServiceFormStatus.textContent = `Invalid JSON manifest: ${err.message}`;
+            }
+            fleetRawJsonTextarea?.focus();
+            return;
+          }
+        } else {
+          if (!fleetServiceForm.checkValidity()) {
+            const firstInvalid = validatedFields.find((f) => !f.validity.valid);
+            if (firstInvalid) {
+              const errMsg = document.getElementById(firstInvalid.dataset.error)?.textContent?.trim() || 'Please check required fields.';
+              liveAnnouncer.textContent = '';
+              setTimeout(() => { liveAnnouncer.textContent = errMsg; }, 50);
+              firstInvalid.focus();
+            }
+            return;
+          }
+          manifestPayload = buildManifestFromForm();
+        }
+
+        const saveBtn = document.getElementById('btnSaveFleetService');
+        const reasonText = document.getElementById('fleetChangeReasonInput')?.value.trim() || undefined;
+        const reconcileNow = Boolean(document.getElementById('fleetReconcileNowCheckbox')?.checked);
+
+        if (saveBtn) saveBtn.disabled = true;
+        try {
+          const resp = await fetch('/api/v1/control/fleet/manifests', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              manifest: manifestPayload,
+              reason: reasonText,
+              reconcile: reconcileNow,
+            }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok) {
+            const msg = Array.isArray(data.details) && data.details.length
+              ? data.details.join(' · ')
+              : (data.error || resp.statusText);
+            if (fleetServiceFormStatus) fleetServiceFormStatus.textContent = msg;
+            return;
+          }
+          const revLabel = data.revision?.rev_id ? ` (${data.revision.rev_id})` : '';
+          showToast(`Saved ${manifestPayload.env}/${manifestPayload.service}${revLabel}${data.reconciled ? ' & queued reconciliation' : ''}!`);
+          fleetServiceDialog?.close('saved');
+          fetchFleetGitopsAndOta();
+        } catch (err) {
+          if (fleetServiceFormStatus) {
+            fleetServiceFormStatus.textContent = `Network error: ${err.message}`;
+          }
+        } finally {
+          if (saveBtn) saveBtn.disabled = false;
+        }
+      });
+    }
+
+    function openFleetServiceDialogForNew() {
+      if (!fleetServiceDialog || typeof fleetServiceDialog.showModal !== 'function') return;
+      resetFleetFormValidationState();
+      setFleetJsonEditorMode(false);
+      const defaultEnv = activeGitopsEnvFilter || 'uat';
+      populateFormFromManifest({
+        service: '',
+        env: defaultEnv,
+        mode: 'blue_green',
+        enabled: true,
+        image: '',
+        container_port: 8080,
+        host_port_blue: 8081,
+        host_port_green: 8082,
+        health_path: '/health',
+        networks: ['flarelens-edge'],
+      });
+      const reasonInput = document.getElementById('fleetChangeReasonInput');
+      if (reasonInput) reasonInput.value = '';
+      if (fleetServiceDialogTitle) fleetServiceDialogTitle.textContent = 'Create Declarative Service';
+      fleetServiceDialog.returnValue = '';
+      fleetServiceDialog.showModal();
+    }
+
+    async function openFleetServiceDialogForEdit(env, service) {
+      if (!fleetServiceDialog || typeof fleetServiceDialog.showModal !== 'function') return;
+      try {
+        const resp = await fetch(`/api/v1/control/fleet/manifests?env=${encodeURIComponent(env)}&service=${encodeURIComponent(service)}`);
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.manifest) {
+          showToast(`Could not load ${env}/${service}: ${data.error || resp.statusText}`, true);
+          return;
+        }
+        resetFleetFormValidationState();
+        setFleetJsonEditorMode(false);
+        populateFormFromManifest(data.manifest);
+        const reasonInput = document.getElementById('fleetChangeReasonInput');
+        if (reasonInput) reasonInput.value = '';
+        if (fleetServiceDialogTitle) {
+          fleetServiceDialogTitle.textContent = `Edit ${env}/${service}${data.revision ? ` (${data.revision})` : ''}`;
+        }
+        fleetServiceDialog.returnValue = '';
+        fleetServiceDialog.showModal();
+      } catch (err) {
+        showToast(`Failed to load manifest: ${err.message}`, true);
+      }
+    }
+
+    document.getElementById('btnNewFleetService')?.addEventListener('click', openFleetServiceDialogForNew);
+    document.getElementById('btnCancelFleetServiceDialog')?.addEventListener('click', () => fleetServiceDialog?.close('cancel'));
+    document.getElementById('btnCloseFleetServiceTop')?.addEventListener('click', () => fleetServiceDialog?.close('cancel'));
+
+    async function toggleEnableFleetService(env, service, enabledState, btnEl) {
+      if (btnEl) btnEl.disabled = true;
+      try {
+        const getResp = await fetch(`/api/v1/control/fleet/manifests?env=${encodeURIComponent(env)}&service=${encodeURIComponent(service)}`);
+        const getData = await getResp.json().catch(() => ({}));
+        if (!getResp.ok || !getData.manifest) {
+          showToast(`Failed to read ${env}/${service}: ${getData.error || getResp.statusText}`, true);
+          return;
+        }
+        const updatedManifest = { ...getData.manifest, enabled: Boolean(enabledState) };
+        const saveResp = await fetch('/api/v1/control/fleet/manifests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            manifest: updatedManifest,
+            reason: enabledState ? 'Enabled service from Dashboard' : 'Suspended service from Dashboard',
+            reconcile: Boolean(enabledState),
+          }),
+        });
+        const saveData = await saveResp.json().catch(() => ({}));
+        if (!saveResp.ok) {
+          showToast(`Failed to update ${env}/${service}: ${saveData.error || saveResp.statusText}`, true);
+          return;
+        }
+        showToast(`${enabledState ? 'Enabled' : 'Suspended'} ${env}/${service} (${saveData.revision?.rev_id || 'saved'})!`);
+        fetchFleetGitopsAndOta();
+      } catch (err) {
+        showToast(`Network error: ${err.message}`, true);
+      } finally {
+        if (btnEl) btnEl.disabled = false;
+      }
+    }
+
+    async function promoteFleetService(service, fromEnv, toEnv, btnEl) {
+      if (btnEl) btnEl.disabled = true;
+      try {
+        const resp = await fetch('/api/v1/control/fleet/promote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            service,
+            from_env: fromEnv,
+            to_env: toEnv,
+            reconcile: true,
+          }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          showToast(`Promote failed: ${data.error || resp.statusText}`, true);
+          return;
+        }
+        const revId = data.revision?.rev_id || '';
+        const note = data.manifest?.enabled === false
+          ? ' (staged with enabled: false — click ▶ Enable in prod when ready)'
+          : ' & queued prod reconciliation';
+        showToast(`Promoted ${service} ${fromEnv} → ${toEnv} ${revId ? `[${revId}]` : ''}${note}!`);
+        fetchFleetGitopsAndOta();
+      } catch (err) {
+        showToast(`Promote network error: ${err.message}`, true);
+      } finally {
+        if (btnEl) btnEl.disabled = false;
+      }
+    }
+
+    async function openFleetRevisionsDialog(env, service) {
+      if (!fleetRevisionsDialog || typeof fleetRevisionsDialog.showModal !== 'function') return;
+      if (fleetRevisionsDialogSub) {
+        fleetRevisionsDialogSub.textContent = env && service
+          ? `Showing immutable D1 + R2 revisions for ${env}/${service}. Roll back to any state in 1 click.`
+          : 'Showing recent immutable D1 + R2 revisions across your fleet. Roll back any change in 1 click.';
+      }
+      if (fleetRevisionsListContainer) {
+        fleetRevisionsListContainer.textContent = 'Loading immutable revisions...';
+      }
+      fleetRevisionsDialog.returnValue = '';
+      fleetRevisionsDialog.showModal();
+
+      try {
+        const params = new URLSearchParams({ limit: '40' });
+        if (env) params.set('env', env);
+        if (service) params.set('service', service);
+        const resp = await fetch(`/api/v1/control/fleet/revisions?${params.toString()}`);
+        const data = await resp.json().catch(() => ({}));
+        const revs = Array.isArray(data.revisions) ? data.revisions : [];
+
+        if (!fleetRevisionsListContainer) return;
+        if (revs.length === 0) {
+          const emptyDiv = document.createElement('div');
+          emptyDiv.style.textAlign = 'center';
+          emptyDiv.style.color = 'var(--text-muted)';
+          emptyDiv.style.padding = '1.5rem';
+          emptyDiv.textContent = 'No revisions recorded yet. Create or edit a service to generate rev-1.';
+          fleetRevisionsListContainer.replaceChildren(emptyDiv);
+          return;
+        }
+
+        const frag = document.createDocumentFragment();
+        for (const r of revs) {
+          const card = document.createElement('div');
+          card.style.background = '#070b14';
+          card.style.border = '1px solid var(--border)';
+          card.style.borderRadius = '8px';
+          card.style.padding = '0.75rem 0.9rem';
+          card.style.display = 'flex';
+          card.style.justifyContent = 'space-between';
+          card.style.alignItems = 'center';
+          card.style.gap = '0.85rem';
+          card.style.flexWrap = 'wrap';
+
+          const infoCol = document.createElement('div');
+          infoCol.style.flex = '1';
+          infoCol.style.minWidth = '240px';
+
+          const topLine = document.createElement('div');
+          topLine.style.display = 'flex';
+          topLine.style.alignItems = 'center';
+          topLine.style.gap = '0.45rem';
+          topLine.style.flexWrap = 'wrap';
+
+          const revBadge = document.createElement('code');
+          revBadge.style.fontFamily = 'var(--font-mono)';
+          revBadge.style.fontSize = '0.75rem';
+          revBadge.style.fontWeight = '700';
+          revBadge.style.color = '#38bdf8';
+          revBadge.style.background = 'rgba(56, 189, 248, 0.12)';
+          revBadge.style.padding = '0.1rem 0.45rem';
+          revBadge.style.borderRadius = '4px';
+          revBadge.textContent = r.rev_id;
+
+          const targetStrong = document.createElement('strong');
+          targetStrong.style.fontSize = '0.82rem';
+          targetStrong.style.color = '#fff';
+          targetStrong.textContent = `${r.env}/${r.service}`;
+
+          const actSpan = document.createElement('span');
+          actSpan.style.fontSize = '0.68rem';
+          actSpan.style.textTransform = 'uppercase';
+          actSpan.style.fontWeight = '700';
+          actSpan.style.color = r.action === 'delete' ? '#fb7185' : (r.action === 'rollback' ? '#fbbf24' : '#34d399');
+          actSpan.textContent = r.action;
+
+          topLine.append(revBadge, targetStrong, actSpan);
+
+          const diffLine = document.createElement('div');
+          diffLine.style.fontSize = '0.76rem';
+          diffLine.style.color = '#cbd5e1';
+          diffLine.style.marginTop = '0.28rem';
+          diffLine.style.fontFamily = 'var(--font-mono)';
+          const diffText = Array.isArray(r.diff_summary)
+            ? r.diff_summary.join(' · ')
+            : (r.diff_summary || '');
+          diffLine.textContent = diffText || r.reason || 'Manifest snapshot';
+
+          const metaLine = document.createElement('div');
+          metaLine.style.fontSize = '0.7rem';
+          metaLine.style.color = 'var(--text-dim)';
+          metaLine.style.marginTop = '0.22rem';
+          const tsStr = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+          const shaHex = r.manifest_sha256 || r.sha256 || '';
+          const shaShort = shaHex ? ` · sha256:${String(shaHex).slice(0, 10)}` : '';
+          const reasonSuffix = r.reason ? ` · "${r.reason}"` : '';
+          metaLine.textContent = `${tsStr} · by ${r.actor || 'operator'}${shaShort}${reasonSuffix}`;
+
+          infoCol.append(topLine, diffLine, metaLine);
+          card.appendChild(infoCol);
+
+          if (r.action !== 'delete') {
+            const rbBtn = document.createElement('button');
+            rbBtn.type = 'button';
+            rbBtn.className = 'btn';
+            rbBtn.style.fontSize = '0.73rem';
+            rbBtn.style.padding = '0.3rem 0.65rem';
+            rbBtn.style.color = '#fbbf24';
+            rbBtn.style.borderColor = 'rgba(251, 191, 36, 0.35)';
+            rbBtn.textContent = `⏪ Rollback to ${r.rev_id}`;
+            rbBtn.addEventListener('click', async () => {
+              rbBtn.disabled = true;
+              rbBtn.textContent = '⏳ Restoring...';
+              try {
+                const rbResp = await fetch('/api/v1/control/fleet/rollback', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ rev_id: r.rev_id, reconcile: true }),
+                });
+                const rbData = await rbResp.json().catch(() => ({}));
+                if (!rbResp.ok) {
+                  showToast(`Rollback failed: ${rbData.error || rbResp.statusText}`, true);
+                  rbBtn.disabled = false;
+                  rbBtn.textContent = `⏪ Rollback to ${r.rev_id}`;
+                  return;
+                }
+                showToast(`Rolled back ${r.env}/${r.service} to ${r.rev_id} (recorded as ${rbData.revision?.rev_id || 'new rev'})!`);
+                fleetRevisionsDialog.close('rolled_back');
+                fetchFleetGitopsAndOta();
+              } catch (err) {
+                showToast(`Rollback error: ${err.message}`, true);
+                rbBtn.disabled = false;
+                rbBtn.textContent = `⏪ Rollback to ${r.rev_id}`;
+              }
+            });
+            card.appendChild(rbBtn);
+          }
+
+          frag.appendChild(card);
+        }
+        fleetRevisionsListContainer.replaceChildren(frag);
+      } catch (err) {
+        if (fleetRevisionsListContainer) {
+          fleetRevisionsListContainer.textContent = `Failed to load revisions: ${err.message}`;
+        }
+      }
+    }
+
+    document.getElementById('btnOpenAllRevisions')?.addEventListener('click', () => {
+      openFleetRevisionsDialog(activeGitopsEnvFilter || '', '');
+    });
+
+    function openFleetDeleteDialog(env, service) {
+      if (!fleetDeleteConfirmDialog || typeof fleetDeleteConfirmDialog.showModal !== 'function') return;
+      pendingDeleteTarget = { env, service };
+      if (fleetDeleteConfirmDesc) {
+        fleetDeleteConfirmDesc.textContent =
+          `Removes ${env}/${service} from active fleet reconciliation while recording a recoverable revision in Cloudflare D1 & R2 so you can restore it anytime via Rollback.`;
+      }
+      fleetDeleteConfirmDialog.returnValue = '';
+      fleetDeleteConfirmDialog.showModal();
+    }
+
+    if (fleetDeleteConfirmDialog) {
+      fleetDeleteConfirmDialog.addEventListener('close', async () => {
+        const decision = fleetDeleteConfirmDialog.returnValue;
+        fleetDeleteConfirmDialog.returnValue = '';
+        const target = pendingDeleteTarget;
+        pendingDeleteTarget = null;
+        if (decision !== 'delete' || !target) return;
+
+        try {
+          const qs = new URLSearchParams({ env: target.env, service: target.service });
+          const resp = await fetch(`/api/v1/control/fleet/manifests?${qs.toString()}`, {
+            method: 'DELETE',
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok) {
+            showToast(`Delete failed: ${data.error || resp.statusText}`, true);
+            return;
+          }
+          showToast(`Removed ${target.env}/${target.service} (${data.revision?.rev_id || 'recorded'} — recoverable via Rollback).`);
+          fetchFleetGitopsAndOta();
+        } catch (err) {
+          showToast(`Delete network error: ${err.message}`, true);
+        }
+      });
+    }
+
+    document.getElementById('btnExportFleetJson')?.addEventListener('click', () => {
+      const qs = new URLSearchParams({ download: '1' });
+      if (activeGitopsEnvFilter) qs.set('env', activeGitopsEnvFilter);
+      window.location.href = `/api/v1/control/fleet/export?${qs.toString()}`;
+    });
+
+    const fleetImportFileInput = document.getElementById('fleetImportFileInput');
+    document.getElementById('btnImportFleetJson')?.addEventListener('click', () => {
+      if (fleetImportFileInput) {
+        fleetImportFileInput.value = '';
+        fleetImportFileInput.click();
+      }
+    });
+
+    fleetImportFileInput?.addEventListener('change', async () => {
+      const file = fleetImportFileInput.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        const manifests = Array.isArray(parsed) ? parsed : parsed.manifests;
+        if (!Array.isArray(manifests) || manifests.length === 0) {
+          showToast('Import JSON must contain a non-empty manifests array.', true);
+          return;
+        }
+        const resp = await fetch('/api/v1/control/fleet/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            manifests,
+            reason: `Imported ${file.name}`,
+            reconcile: false,
+          }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          showToast(`Import failed: ${data.error || resp.statusText}`, true);
+          return;
+        }
+        showToast(`Imported ${data.imported_count} manifests (${(data.revisions || []).length} new revisions)!`);
+        fetchFleetGitopsAndOta();
+      } catch (err) {
+        showToast(`Invalid JSON snapshot file: ${err.message}`, true);
+      }
+    });
 
     async function fetchAuthIdentity() {
       try {

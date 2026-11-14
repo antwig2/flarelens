@@ -44,6 +44,22 @@ const SCHEMA_STATEMENTS = [
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS fleet_revisions (
+    rev_id TEXT PRIMARY KEY,
+    seq INTEGER NOT NULL UNIQUE,
+    service TEXT NOT NULL,
+    env TEXT NOT NULL,
+    action TEXT NOT NULL,
+    actor TEXT NOT NULL DEFAULT 'dashboard',
+    reason TEXT NOT NULL DEFAULT '',
+    manifest_sha256 TEXT NOT NULL DEFAULT '',
+    manifest_json TEXT NOT NULL,
+    prev_manifest_json TEXT,
+    diff_summary_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_fleet_revisions_seq ON fleet_revisions(seq DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_fleet_revisions_service ON fleet_revisions(env, service, seq DESC)`,
 ];
 
 const initializedDbs = new WeakSet<object>();
@@ -648,4 +664,282 @@ export async function getFlagsVersion(env: Env): Promise<string> {
   }
 
   return cached?.version || 'fv_default';
+}
+
+export interface FleetRevisionRecord {
+  rev_id: string;
+  seq: number;
+  service: string;
+  env: string;
+  action: string;
+  actor: string;
+  reason: string;
+  manifest_sha256: string;
+  manifest: any | null;
+  prev_manifest: any | null;
+  diff_summary: string[];
+  created_at: string;
+}
+
+interface RawFleetRevisionRow {
+  rev_id: string;
+  seq: number;
+  service: string;
+  env: string;
+  action: string;
+  actor: string;
+  reason: string;
+  manifest_sha256: string;
+  manifest_json: string;
+  prev_manifest_json: string | null;
+  diff_summary_json: string;
+  created_at: string;
+}
+
+function hydrateRevisionRow(row: RawFleetRevisionRow): FleetRevisionRecord {
+  let manifest: any = null;
+  let prevManifest: any = null;
+  let diffSummary: string[] = [];
+  try {
+    manifest = row.manifest_json ? JSON.parse(row.manifest_json) : null;
+  } catch {}
+  try {
+    prevManifest = row.prev_manifest_json ? JSON.parse(row.prev_manifest_json) : null;
+  } catch {}
+  try {
+    const parsedDiff = row.diff_summary_json ? JSON.parse(row.diff_summary_json) : [];
+    if (Array.isArray(parsedDiff)) diffSummary = parsedDiff.map(String);
+  } catch {}
+
+  return {
+    rev_id: row.rev_id,
+    seq: Number(row.seq || 0),
+    service: row.service,
+    env: row.env,
+    action: row.action,
+    actor: row.actor,
+    reason: row.reason,
+    manifest_sha256: row.manifest_sha256,
+    manifest,
+    prev_manifest: prevManifest,
+    diff_summary: diffSummary,
+    created_at: row.created_at,
+  };
+}
+
+export async function recordFleetRevision(
+  env: Env,
+  params: {
+    service: string;
+    env: string;
+    action: string;
+    actor?: string;
+    reason?: string;
+    manifest_sha256: string;
+    manifest: any | null;
+    prev_manifest?: any | null;
+    diff_summary?: string[];
+  },
+  ctx?: ExecutionContext
+): Promise<FleetRevisionRecord> {
+  const nowIso = new Date().toISOString();
+  const actor = (params.actor || 'dashboard').trim() || 'dashboard';
+  const reason = (params.reason || '').trim();
+  const diffSummary = Array.isArray(params.diff_summary) ? params.diff_summary : [];
+  const manifestJson = JSON.stringify(params.manifest ?? null);
+  const prevManifestJson = params.prev_manifest !== undefined && params.prev_manifest !== null
+    ? JSON.stringify(params.prev_manifest)
+    : null;
+  const diffSummaryJson = JSON.stringify(diffSummary);
+
+  const db = await ensureControlDbReady(env);
+  let seq = 1;
+
+  if (db) {
+    const maxRow = await db
+      .prepare(`SELECT COALESCE(MAX(seq), 0) AS max_seq FROM fleet_revisions`)
+      .first<{ max_seq: number }>();
+    seq = Number(maxRow?.max_seq || 0) + 1;
+    const revId = `rev-${seq}`;
+
+    await db
+      .prepare(
+        `INSERT INTO fleet_revisions (
+          rev_id, seq, service, env, action, actor, reason,
+          manifest_sha256, manifest_json, prev_manifest_json, diff_summary_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        revId,
+        seq,
+        params.service,
+        params.env,
+        params.action,
+        actor,
+        reason,
+        params.manifest_sha256,
+        manifestJson,
+        prevManifestJson,
+        diffSummaryJson,
+        nowIso
+      )
+      .run();
+
+    const record: FleetRevisionRecord = {
+      rev_id: revId,
+      seq,
+      service: params.service,
+      env: params.env,
+      action: params.action,
+      actor,
+      reason,
+      manifest_sha256: params.manifest_sha256,
+      manifest: params.manifest ?? null,
+      prev_manifest: params.prev_manifest ?? null,
+      diff_summary: diffSummary,
+      created_at: nowIso,
+    };
+    persistRevisionToR2(env, record, ctx);
+    return record;
+  }
+
+  if (env.FLEET_KV) {
+    let list: FleetRevisionRecord[] = [];
+    try {
+      const raw = await env.FLEET_KV.get('fleet:revisions:all');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) list = parsed;
+      }
+    } catch {}
+    const maxSeq = list.reduce((acc, r) => Math.max(acc, Number(r.seq || 0)), 0);
+    seq = maxSeq + 1;
+    const revId = `rev-${seq}`;
+    const record: FleetRevisionRecord = {
+      rev_id: revId,
+      seq,
+      service: params.service,
+      env: params.env,
+      action: params.action,
+      actor,
+      reason,
+      manifest_sha256: params.manifest_sha256,
+      manifest: params.manifest ?? null,
+      prev_manifest: params.prev_manifest ?? null,
+      diff_summary: diffSummary,
+      created_at: nowIso,
+    };
+    list.unshift(record);
+    if (list.length > 100) list = list.slice(0, 100);
+    await env.FLEET_KV.put('fleet:revisions:all', JSON.stringify(list));
+    persistRevisionToR2(env, record, ctx);
+    return record;
+  }
+
+  return {
+    rev_id: 'rev-1',
+    seq: 1,
+    service: params.service,
+    env: params.env,
+    action: params.action,
+    actor,
+    reason,
+    manifest_sha256: params.manifest_sha256,
+    manifest: params.manifest ?? null,
+    prev_manifest: params.prev_manifest ?? null,
+    diff_summary: diffSummary,
+    created_at: nowIso,
+  };
+}
+
+function persistRevisionToR2(env: Env, record: FleetRevisionRecord, ctx?: ExecutionContext): void {
+  const bucket = (env as any).BACKUP_BUCKET || (env as any).LOGS_BUCKET;
+  if (!bucket || typeof bucket.put !== 'function') return;
+  const writePromise = Promise.resolve(
+    bucket.put(`state/revisions/${record.rev_id}.json`, JSON.stringify(record, null, 2), {
+      httpMetadata: { contentType: 'application/json' },
+    })
+  ).catch(() => {});
+  if (ctx && typeof ctx.waitUntil === 'function') {
+    ctx.waitUntil(writePromise);
+  }
+}
+
+export async function listFleetRevisions(
+  env: Env,
+  opts?: { env?: string; service?: string; limit?: number }
+): Promise<FleetRevisionRecord[]> {
+  const limit = Math.min(Math.max(Number(opts?.limit || 40), 1), 200);
+  const envFilter = opts?.env ? opts.env.trim().toLowerCase() : '';
+  const svcFilter = opts?.service ? opts.service.trim().toLowerCase() : '';
+
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    let sql = `SELECT * FROM fleet_revisions`;
+    const clauses: string[] = [];
+    const binds: any[] = [];
+    if (envFilter) {
+      clauses.push(`LOWER(env) = ?`);
+      binds.push(envFilter);
+    }
+    if (svcFilter) {
+      clauses.push(`LOWER(service) = ?`);
+      binds.push(svcFilter);
+    }
+    if (clauses.length > 0) {
+      sql += ` WHERE ` + clauses.join(' AND ');
+    }
+    sql += ` ORDER BY seq DESC LIMIT ?`;
+    binds.push(limit);
+
+    const res = await db.prepare(sql).bind(...binds).all<RawFleetRevisionRow>();
+    return (res.results || []).map(hydrateRevisionRow);
+  }
+
+  if (env.FLEET_KV) {
+    try {
+      const raw = await env.FLEET_KV.get('fleet:revisions:all');
+      const list: FleetRevisionRecord[] = raw ? JSON.parse(raw) : [];
+      return list
+        .filter((r) => (!envFilter || r.env.toLowerCase() === envFilter) && (!svcFilter || r.service.toLowerCase() === svcFilter))
+        .slice(0, limit);
+    } catch {}
+  }
+  return [];
+}
+
+export async function getFleetRevision(env: Env, revId: string): Promise<FleetRevisionRecord | null> {
+  const cleanId = (revId || '').trim();
+  if (!cleanId) return null;
+
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    const row = await db
+      .prepare(`SELECT * FROM fleet_revisions WHERE rev_id = ?`)
+      .bind(cleanId)
+      .first<RawFleetRevisionRow>();
+    if (row) return hydrateRevisionRow(row);
+  }
+
+  if (env.FLEET_KV) {
+    try {
+      const raw = await env.FLEET_KV.get('fleet:revisions:all');
+      const list: FleetRevisionRecord[] = raw ? JSON.parse(raw) : [];
+      const found = list.find((r) => r.rev_id === cleanId);
+      if (found) return found;
+    } catch {}
+  }
+
+  const bucket = (env as any).BACKUP_BUCKET || (env as any).LOGS_BUCKET;
+  if (bucket && typeof bucket.get === 'function') {
+    try {
+      const obj = await bucket.get(`state/revisions/${cleanId}.json`);
+      if (obj) {
+        const text = typeof obj.text === 'function' ? await obj.text() : '';
+        if (text) return JSON.parse(text) as FleetRevisionRecord;
+      }
+    } catch {}
+  }
+
+  return null;
 }

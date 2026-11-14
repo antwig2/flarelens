@@ -65,8 +65,231 @@ export interface FleetServiceStatus {
   sync_status: 'Synced' | 'OutOfSync' | 'Suspended' | 'Unknown';
   health_status: 'Healthy' | 'Progressing' | 'Degraded' | 'Missing' | 'Suspended';
   drift_reasons: string[];
+  revision?: string;
   synced_commit?: string;
   updated_at?: string;
+}
+
+export const FLEET_JSON_SCHEMA = {
+  $schema: 'http://json-schema.org/draft-07/schema#',
+  $id: 'https://flarelens.dev/schemas/fleet.schema.json',
+  title: 'FlareLens Fleet Resource Manifest',
+  description:
+    'Declarative schema for FlareLens fleet service workloads, supporting Blue/Green rolling deployments, host infrastructure adoption, and stateful foundation services.',
+  type: 'object',
+  required: ['service', 'env', 'image'],
+  properties: {
+    $schema: { type: 'string' },
+    service: { type: 'string', pattern: '^[a-z0-9-]+$' },
+    env: { type: 'string', enum: ['infra', 'uat', 'prod', 'staging', 'dev'] },
+    image: { type: 'string' },
+    enabled: { type: 'boolean', default: true },
+    adopt_only: { type: 'boolean', default: false },
+    node_id: { type: 'string' },
+    container_name: { type: 'string' },
+    restart: { type: 'string', enum: ['always', 'unless-stopped', 'on-failure', 'no'], default: 'unless-stopped' },
+    runtime: { type: 'string', enum: ['runc', 'runsc'], default: 'runc' },
+    domain: { type: 'string', format: 'hostname' },
+    domains: { type: 'array', items: { type: 'string', format: 'hostname' } },
+    container_port: { type: 'integer', minimum: 1, maximum: 65535 },
+    host_port_blue: { type: 'integer', minimum: 1, maximum: 65535 },
+    host_port_green: { type: 'integer', minimum: 1, maximum: 65535 },
+    health_path: { type: 'string', default: '/health' },
+    timeout_seconds: { type: 'integer', minimum: 1, default: 90 },
+    drain_seconds: { type: 'integer', minimum: 0, default: 15 },
+    pre_deploy_snapshot: { type: 'boolean', default: false },
+    run_migrations: { type: 'boolean', default: false },
+    migration_cmd: { type: 'string' },
+    canary_weight: { type: 'integer', minimum: 0, maximum: 100, default: 0 },
+    canary_duration: { type: 'integer', minimum: 0, default: 0 },
+    networks: { type: 'array', items: { type: 'string' } },
+    aliases: { type: 'array', items: { type: 'string' } },
+    volumes: { type: 'array', items: { type: 'string' } },
+    ports: { type: 'array', items: { type: 'string' } },
+    command: { oneOf: [{ type: 'array', items: { type: 'string' } }, { type: 'string' }] },
+    entrypoint: { oneOf: [{ type: 'array', items: { type: 'string' } }, { type: 'string' }] },
+    healthcheck: {
+      type: 'object',
+      required: ['test'],
+      properties: {
+        test: { oneOf: [{ type: 'array', items: { type: 'string' } }, { type: 'string' }] },
+        interval: { type: 'string' },
+        timeout: { type: 'string' },
+        retries: { type: 'integer', minimum: 1 },
+        start_period: { type: 'string' },
+      },
+    },
+    workers: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['name'],
+        properties: {
+          name: { type: 'string' },
+          command: { type: 'array', items: { type: 'string' } },
+          entrypoint: { type: 'array', items: { type: 'string' } },
+          volumes: { type: 'array', items: { type: 'string' } },
+          networks: { type: 'array', items: { type: 'string' } },
+        },
+      },
+    },
+    env_vars: { type: 'object', additionalProperties: { type: 'string' } },
+    secrets: { type: 'object', additionalProperties: { type: 'string' } },
+  },
+  additionalProperties: false,
+};
+
+export function stripManifestInternalMeta(m: any): FleetServiceManifest {
+  if (!m || typeof m !== 'object') return m;
+  const clean: Record<string, any> = {};
+  for (const key of Object.keys(m).sort()) {
+    if (key.startsWith('_') || key === 'secrets') continue;
+    if (m[key] === undefined) continue;
+    clean[key] = m[key];
+  }
+  if (clean.env) clean.env = normalizeFleetEnv(clean.env);
+  return clean as FleetServiceManifest;
+}
+
+function canonicalizeJson(value: any): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return '[' + value.map(canonicalizeJson).join(',') + ']';
+  }
+  const keys = Object.keys(value).sort();
+  return '{' + keys.map((k) => `${JSON.stringify(k)}:${canonicalizeJson(value[k])}`).join(',') + '}';
+}
+
+export async function computeManifestSha256(m: any): Promise<string> {
+  const clean = m ? stripManifestInternalMeta(m) : null;
+  const bytes = new TextEncoder().encode(canonicalizeJson(clean));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function maskIfSensitive(key: string, val: string): string {
+  if (/secret|token|password|key|dsn|private/i.test(key)) {
+    return '***';
+  }
+  return val.length > 48 ? val.slice(0, 45) + '...' : val;
+}
+
+export function computeManifestDiffSummary(prevRaw: any | null, currRaw: any | null): string[] {
+  if (!prevRaw && currRaw) {
+    const c = stripManifestInternalMeta(currRaw);
+    return [`Created ${c.env}/${c.service} (${c.image})`];
+  }
+  if (prevRaw && !currRaw) {
+    const p = stripManifestInternalMeta(prevRaw);
+    return [`Deleted ${p.env}/${p.service}`];
+  }
+  if (!prevRaw && !currRaw) return [];
+
+  const prev = stripManifestInternalMeta(prevRaw) as Record<string, any>;
+  const curr = stripManifestInternalMeta(currRaw) as Record<string, any>;
+  const allKeys = Array.from(new Set([...Object.keys(prev), ...Object.keys(curr)])).sort();
+  const diffs: string[] = [];
+
+  for (const k of allKeys) {
+    if (k === '$schema') continue;
+    const pVal = prev[k];
+    const cVal = curr[k];
+    if (canonicalizeJson(pVal) === canonicalizeJson(cVal)) continue;
+
+    if (k === 'env_vars') {
+      const pEnv = (pVal || {}) as Record<string, string>;
+      const cEnv = (cVal || {}) as Record<string, string>;
+      const envKeys = Array.from(new Set([...Object.keys(pEnv), ...Object.keys(cEnv)])).sort();
+      const changedEnv = envKeys.filter((ek) => pEnv[ek] !== cEnv[ek]);
+      if (changedEnv.length > 0) {
+        const preview = changedEnv
+          .slice(0, 3)
+          .map((ek) =>
+            cEnv[ek] === undefined
+              ? `-${ek}`
+              : `${ek}=${maskIfSensitive(ek, String(cEnv[ek]))}`
+          )
+          .join(', ');
+        diffs.push(`env_vars (${changedEnv.length}): ${preview}${changedEnv.length > 3 ? '…' : ''}`);
+      }
+      continue;
+    }
+
+    const fmt = (v: any) => (v === undefined ? 'unset' : typeof v === 'string' ? v : JSON.stringify(v));
+    diffs.push(`${k}: ${fmt(pVal)} → ${fmt(cVal)}`);
+  }
+
+  return diffs.length > 0 ? diffs : ['No structural manifest fields changed'];
+}
+
+export function buildPromotedManifest(
+  sourceRaw: FleetServiceManifest,
+  existingTargetRaw: FleetServiceManifest | null,
+  toEnvRaw: string,
+  effectiveSourceImage?: string,
+  enableTarget?: boolean
+): FleetServiceManifest {
+  const fromEnv = normalizeFleetEnv(sourceRaw.env);
+  const toEnv = normalizeFleetEnv(toEnvRaw);
+  const src = stripManifestInternalMeta(sourceRaw);
+  const rawImg = effectiveSourceImage || src.image;
+
+  const promotedImage = rawImg.endsWith(`:${fromEnv}`)
+    ? `${rawImg.slice(0, -(fromEnv.length + 1))}:${toEnv}`
+    : rawImg;
+
+  if (existingTargetRaw) {
+    const tgt = stripManifestInternalMeta(existingTargetRaw);
+    return {
+      ...tgt,
+      service: src.service,
+      env: toEnv,
+      image: promotedImage,
+      enabled: enableTarget !== undefined ? enableTarget : tgt.enabled,
+      container_port: src.container_port ?? tgt.container_port,
+      health_path: src.health_path ?? tgt.health_path,
+      timeout_seconds: src.timeout_seconds ?? tgt.timeout_seconds,
+      drain_seconds: src.drain_seconds ?? tgt.drain_seconds,
+      migration_cmd: src.migration_cmd ?? tgt.migration_cmd,
+      command: src.command ?? tgt.command,
+      entrypoint: src.entrypoint ?? tgt.entrypoint,
+      workers: tgt.workers ?? src.workers,
+    };
+  }
+
+  const swapEnvToken = (val: string) =>
+    val
+      .replace(new RegExp(`-${fromEnv}\\b`, 'g'), `-${toEnv}`)
+      .replace(new RegExp(`\\b${fromEnv}-`, 'g'), `${toEnv}-`)
+      .replace(new RegExp(`/${fromEnv}/`, 'g'), `/${toEnv}/`);
+
+  const portOffset = toEnv === 'prod' && fromEnv !== 'prod' ? 1000 : 0;
+
+  return {
+    ...src,
+    env: toEnv,
+    image: promotedImage,
+    enabled: enableTarget !== undefined ? enableTarget : false,
+    ...(src.container_name ? { container_name: swapEnvToken(src.container_name) } : {}),
+    ...(src.host_port_blue ? { host_port_blue: src.host_port_blue + portOffset } : {}),
+    ...(src.host_port_green ? { host_port_green: src.host_port_green + portOffset } : {}),
+    ...(src.networks ? { networks: src.networks.map(swapEnvToken) } : {}),
+    ...(src.aliases ? { aliases: src.aliases.map(swapEnvToken) } : {}),
+    ...(src.volumes ? { volumes: src.volumes.map(swapEnvToken) } : {}),
+    ...(src.workers
+      ? {
+          workers: src.workers.map((w) => ({
+            ...w,
+            ...(w.networks ? { networks: w.networks.map(swapEnvToken) } : {}),
+            ...(w.volumes ? { volumes: w.volumes.map(swapEnvToken) } : {}),
+          })),
+        }
+      : {}),
+  };
 }
 
 export function normalizeFleetEnv(envName: string | undefined): string {
@@ -127,7 +350,7 @@ export function validateFleetManifest(m: any): { valid: boolean; errors: string[
 export async function saveFleetManifests(
   kv: any,
   manifests: FleetServiceManifest[],
-  meta?: { commit_sha?: string; actor?: string; synced_at?: string }
+  meta?: { commit_sha?: string; actor?: string; synced_at?: string; revision?: string }
 ): Promise<void> {
   if (!kv) return;
   const byEnv = new Map<string, string[]>();
@@ -137,10 +360,11 @@ export async function saveFleetManifests(
     const env = normalizeFleetEnv(m.env);
     const key = `fleet:manifest:${env}:${m.service}`;
     const stored = {
-      ...m,
+      ...stripManifestInternalMeta(m),
       env,
-      _synced_commit: meta?.commit_sha,
-      _synced_by: meta?.actor,
+      ...(meta?.revision || (m as any)._revision ? { _revision: meta?.revision || (m as any)._revision } : {}),
+      ...(meta?.commit_sha !== undefined ? { _synced_commit: meta.commit_sha } : {}),
+      ...(meta?.actor ? { _synced_by: meta.actor } : {}),
       _synced_at: syncedAt,
     };
     await kv.put(key, JSON.stringify(stored));
@@ -171,11 +395,39 @@ export async function saveFleetManifests(
   }
 }
 
+export async function deleteFleetManifest(kv: any, envName: string, service: string): Promise<boolean> {
+  if (!kv || !service) return false;
+  const env = normalizeFleetEnv(envName);
+  const cleanSvc = service.trim().toLowerCase();
+  const key = `fleet:manifest:${env}:${cleanSvc}`;
+  const existing = await kv.get(key);
+  if (!existing) return false;
+
+  await kv.delete(key);
+  try {
+    await kv.delete(`fleet:live_image:${env}:${cleanSvc}`);
+  } catch {}
+
+  try {
+    const indexKey = `fleet:manifests:${env}`;
+    const rawIdx = await kv.get(indexKey);
+    if (rawIdx) {
+      const parsed = JSON.parse(rawIdx);
+      if (Array.isArray(parsed)) {
+        const filtered = parsed.filter((s: string) => s.toLowerCase() !== cleanSvc);
+        await kv.put(indexKey, JSON.stringify(filtered));
+      }
+    }
+  } catch {}
+
+  return true;
+}
+
 export async function getFleetManifest(
   kv: any,
   envName: string,
   service: string
-): Promise<(FleetServiceManifest & { _synced_commit?: string; _synced_at?: string }) | null> {
+): Promise<(FleetServiceManifest & { _revision?: string; _synced_commit?: string; _synced_at?: string }) | null> {
   if (!kv || !service) return null;
   const env = normalizeFleetEnv(envName);
   try {
@@ -190,10 +442,10 @@ export async function getFleetManifest(
 export async function listFleetManifests(
   kv: any,
   envFilter?: string
-): Promise<Array<FleetServiceManifest & { _synced_commit?: string; _synced_at?: string }>> {
+): Promise<Array<FleetServiceManifest & { _revision?: string; _synced_commit?: string; _synced_at?: string }>> {
   if (!kv) return [];
   const envs = envFilter ? [normalizeFleetEnv(envFilter)] : ['infra', 'uat', 'prod', 'staging', 'dev'];
-  const out: Array<FleetServiceManifest & { _synced_commit?: string; _synced_at?: string }> = [];
+  const out: Array<FleetServiceManifest & { _revision?: string; _synced_commit?: string; _synced_at?: string }> = [];
 
   for (const env of envs) {
     try {
@@ -257,7 +509,7 @@ export function isContainerRunningOnNode(node: NodeRecord | undefined, container
 }
 
 export function computeFleetDriftStatus(
-  manifests: Array<FleetServiceManifest & { _synced_commit?: string; _synced_at?: string }>,
+  manifests: Array<FleetServiceManifest & { _revision?: string; _synced_commit?: string; _synced_at?: string }>,
   nodes: NodeRecord[],
   liveImagesByServiceKey: Record<string, string> = {}
 ): FleetServiceStatus[] {
@@ -323,6 +575,7 @@ export function computeFleetDriftStatus(
         sync_status: 'Suspended',
         health_status: 'Suspended',
         drift_reasons: ['Manifest disabled (enabled: false) — awaiting environment activation'],
+        revision: m._revision,
         synced_commit: m._synced_commit,
         updated_at: m._synced_at,
       };
@@ -342,6 +595,7 @@ export function computeFleetDriftStatus(
         sync_status: searchNodes.length === 0 ? 'Unknown' : 'OutOfSync',
         health_status: 'Missing',
         drift_reasons: driftReasons,
+        revision: m._revision,
         synced_commit: m._synced_commit,
         updated_at: m._synced_at,
       };
@@ -362,6 +616,7 @@ export function computeFleetDriftStatus(
         sync_status: 'OutOfSync',
         health_status: 'Degraded',
         drift_reasons: driftReasons,
+        revision: m._revision,
         synced_commit: m._synced_commit,
         updated_at: m._synced_at,
       };
@@ -386,6 +641,7 @@ export function computeFleetDriftStatus(
       sync_status: driftReasons.length === 0 ? 'Synced' : 'OutOfSync',
       health_status: 'Healthy',
       drift_reasons: driftReasons,
+      revision: m._revision,
       synced_commit: m._synced_commit,
       updated_at: m._synced_at,
     };

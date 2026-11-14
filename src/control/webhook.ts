@@ -266,6 +266,7 @@ export interface ServiceDeclarativeDefaults {
   host_port_green?: number;
   health_path?: string;
   domain?: string;
+  domains?: string[];
   command?: string[];
   entrypoint?: string[];
   migration_cmd?: string;

@@ -4,20 +4,25 @@ compatibility_date = "2024-10-01"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
-# Cloudflare R2 Bucket Binding for Apache Parquet Lakehouse
+# Cloudflare D1 Control-Plane Database (Auto-provisioned on Wrangler v4 / Deploy to Cloudflare)
+[[d1_databases]]
+binding = "CONTROL_DB"
+database_name = "flarelens-control"
+migrations_dir = "migrations"
+
+# Cloudflare KV Binding for Fleet Manifests, Encrypted Vault & Mesh Registry (Auto-provisioned)
+[[kv_namespaces]]
+binding = "FLEET_KV"
+
+# Cloudflare R2 Bucket Binding for Apache Parquet Lakehouse (Auto-provisioned)
 [[r2_buckets]]
 binding = "LOGS_BUCKET"
 bucket_name = "flarelens-logs"
 
-# Optional Cloudflare R2 Bucket Binding for Database Backups
+# Cloudflare R2 Bucket Binding for Database Snapshots & Immutable Fleet State Revisions (Auto-provisioned)
 [[r2_buckets]]
 binding = "BACKUP_BUCKET"
 bucket_name = "flarelens-backups"
-
-# Cloudflare KV Binding for Fleet, Mesh & Device Registry
-[[kv_namespaces]]
-binding = "FLEET_KV"
-id = "YOUR_KV_NAMESPACE_ID"
 
 # Static Assets for the Web UI Dashboard
 [assets]
