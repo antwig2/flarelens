@@ -4260,6 +4260,26 @@ async function handleFleetSync(request: Request, env: Env, ctx: ExecutionContext
       commit_sha: body.commit_sha,
       actor: auth.actor,
     });
+    const seedKey = env.VAULT_MASTER_KEY || env.INGEST_SECRET || 'flarelens-default-vault-key';
+    for (const m of body.manifests) {
+      if (m.env_vars && typeof m.env_vars === 'object' && Object.keys(m.env_vars).length > 0) {
+        const normEnv = normalizeFleetEnv(m.env);
+        const vaultSvc = `${m.service}-${normEnv}`;
+        const existing = await env.FLEET_KV.get(`vault:${vaultSvc}`);
+        if (!existing) {
+          const encrypted = await encryptSecrets(vaultSvc, m.env_vars, seedKey, normEnv);
+          await safeKvPut(env.FLEET_KV, `vault:${vaultSvc}`, JSON.stringify(encrypted));
+          try {
+            const rawList = await env.FLEET_KV.get('fleet:vault:services');
+            const list: string[] = rawList ? JSON.parse(rawList) : [];
+            if (!list.includes(vaultSvc)) {
+              list.push(vaultSvc);
+              await safeKvPut(env.FLEET_KV, 'fleet:vault:services', JSON.stringify(list));
+            }
+          } catch {}
+        }
+      }
+    }
   }
 
   let reconciled: any[] = [];
