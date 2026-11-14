@@ -314,10 +314,19 @@ export async function resolveWebhookDeployPayload(
   // 1. In-memory zero-plaintext secret resolution
   let resolvedSecrets = parsed.secrets;
   if (!resolvedSecrets && kv) {
-    const vaultRes = await resolveVaultSecrets(kv, parsed.service, envName, masterKey);
+    const vaultRes = await resolveVaultSecrets(
+      kv,
+      parsed.service,
+      envName,
+      masterKey,
+      parsed.aliases || manifest?.aliases
+    );
     if (vaultRes?.secrets) {
       resolvedSecrets = vaultRes.secrets;
     }
+  }
+  if (manifest?.env_vars && typeof manifest.env_vars === 'object') {
+    resolvedSecrets = { ...(resolvedSecrets || {}), ...manifest.env_vars };
   }
 
   const manifestCmd = normalizeCommandArray(manifest?.command);

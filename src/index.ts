@@ -598,7 +598,7 @@ async function notifyUptimeFailure(url: string, error: string, latencyMs: number
           parse_mode: 'Markdown',
         }),
       });
-    } catch (e) {}
+    } catch (e) { }
   }
 
   // WhatsApp
@@ -617,7 +617,7 @@ async function notifyUptimeFailure(url: string, error: string, latencyMs: number
           text: { body: alertText },
         }),
       });
-    } catch (e) {}
+    } catch (e) { }
   }
 }
 
@@ -827,7 +827,7 @@ function validateDashboardAuth(request: Request, env: Env): Response | null {
     if (username === expectedUser && expectedPass && password === expectedPass) {
       return null; // Authorized!
     }
-  } catch (e) {}
+  } catch (e) { }
 
   return requestBasicAuth();
 }
@@ -863,11 +863,11 @@ async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): 
     if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
       try {
         items = JSON.parse(trimmed);
-      } catch (e) {}
+      } catch (e) { }
     } else if (trimmed.startsWith('{') && !trimmed.includes('\n')) {
       try {
         items = [JSON.parse(trimmed)];
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // Support NDJSON (Newline Delimited JSON, default batch format emitted by Vector & Fluentbit)
@@ -878,7 +878,7 @@ async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): 
         if (l) {
           try {
             items.push(JSON.parse(l));
-          } catch (e) {}
+          } catch (e) { }
         }
       }
     }
@@ -1081,7 +1081,7 @@ function handleLiveSSE(): Response {
   sseClients.add(writer);
 
   // Send initial connection acknowledgement
-  writer.write(textEncoder.encode(`: connected to FlareLens Live Tail\n\n`)).catch(() => {});
+  writer.write(textEncoder.encode(`: connected to FlareLens Live Tail\n\n`)).catch(() => { });
 
   // Keep-alive heartbeat ping every 15 seconds to prevent browser/proxy timeouts
   const keepAliveTimer = setInterval(() => {
@@ -1133,7 +1133,7 @@ async function handleRecentLogs(env: Env): Promise<Response> {
                 ringBuffer.shift();
               }
             }
-          } catch (e) {}
+          } catch (e) { }
         }
       } else {
         // Fallback: list newest file if recent/latest.json does not exist yet
@@ -1152,7 +1152,7 @@ async function handleRecentLogs(env: Env): Promise<Response> {
                   const parsed = JSON.parse(line);
                   ringBuffer.push(parsed);
                   if (ringBuffer.length > RING_BUFFER_MAX) ringBuffer.shift();
-                } catch (e) {}
+                } catch (e) { }
               }
             }
           }
@@ -1226,7 +1226,7 @@ async function flushToR2(logs: LogRecord[], env: Env, date: Date): Promise<void>
         const newLines = body.split('\n').filter(Boolean);
         combined = [...existingLines, ...newLines].slice(-1000).join('\n');
       }
-    } catch (e) {}
+    } catch (e) { }
 
     await env.LOGS_BUCKET.put('recent/latest.json', combined, {
       httpMetadata: {
@@ -1507,7 +1507,7 @@ function handleControlWebSocket(request: Request, env: Env): Response {
       if (msg && msg.type === 'ping') {
         server.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
       }
-    } catch {}
+    } catch { }
   });
 
   server.addEventListener('close', () => {
@@ -1702,7 +1702,13 @@ async function handleTriggerDeploy(request: Request, env: Env, ctx: ExecutionCon
     if (!payload.secrets && env.FLEET_KV) {
       try {
         const masterKey = env.VAULT_MASTER_KEY || env.INGEST_SECRET || 'flarelens-default-vault-key';
-        const vaultRes = await resolveVaultSecrets(env.FLEET_KV, payload.service, payload.env || 'uat', masterKey);
+        const vaultRes = await resolveVaultSecrets(
+          env.FLEET_KV,
+          payload.service,
+          payload.env || 'uat',
+          masterKey,
+          payload.aliases || manifest?.aliases
+        );
         if (vaultRes?.secrets) {
           payload.secrets = vaultRes.secrets;
         } else {
@@ -1711,6 +1717,9 @@ async function handleTriggerDeploy(request: Request, env: Env, ctx: ExecutionCon
       } catch (err) {
         console.warn(`Could not auto-decrypt vault secrets for ${payload.service}:`, err);
       }
+    }
+    if (manifest?.env_vars && typeof manifest.env_vars === 'object') {
+      payload.secrets = { ...(payload.secrets || {}), ...manifest.env_vars };
     }
 
     const createdDeployments: DeploymentRecord[] = [];
@@ -1734,8 +1743,8 @@ async function handleTriggerDeploy(request: Request, env: Env, ctx: ExecutionCon
         message: payload.is_preview
           ? `Ephemeral PR preview initiated for PR #${payload.pr_number} (${payload.service}) on ${targetNode}`
           : (payload.canary_weight && payload.canary_weight > 0
-              ? `Canary deployment (${payload.canary_weight}% / ${payload.canary_duration || 30}s soak) initiated for ${payload.service} on ${targetNode}`
-              : `Deployment initiated for ${payload.service} with image ${payload.image} on ${targetNode}`),
+            ? `Canary deployment (${payload.canary_weight}% / ${payload.canary_duration || 30}s soak) initiated for ${payload.service} on ${targetNode}`
+            : `Deployment initiated for ${payload.service} with image ${payload.image} on ${targetNode}`),
         is_preview: payload.is_preview,
         pr_number: payload.pr_number,
         canary_weight: payload.canary_weight,
@@ -1754,7 +1763,7 @@ async function handleTriggerDeploy(request: Request, env: Env, ctx: ExecutionCon
             if (list.length > 50) list.pop(); // keep last 50
             await safeKvPut(env.FLEET_KV, 'fleet:deployments', JSON.stringify(list));
           }
-        } catch {}
+        } catch { }
       }
 
       // 2. Broadcast deploy event to WebSocket subscribers & SSE
@@ -1898,7 +1907,7 @@ async function handleDeployWebhook(request: Request, env: Env, ctx: ExecutionCon
         try {
           const [u, p] = atob(authHeader.substring(6).trim()).split(':');
           if (validTokens.includes(p)) isAuthValid = true;
-        } catch {}
+        } catch { }
       }
 
       if (!isAuthValid) {
@@ -2128,7 +2137,7 @@ async function handleListDeployments(env: Env): Promise<Response> {
             const raw = await env.FLEET_KV.get(`deployment:${id}`);
             if (raw) list.push(JSON.parse(raw));
           }
-        } catch {}
+        } catch { }
       } else {
         const kvList = await env.FLEET_KV.list({ prefix: 'deployment:' });
         for (const k of kvList.keys) {
@@ -2216,7 +2225,7 @@ async function handleListServices(env: Env): Promise<Response> {
     // Seed/correlate infrastructure and running containers from nodes
     for (const { node_id, container } of allContainers) {
       const rawName = (container.names && container.names[0]) ? container.names[0].replace(/^\//, '') : container.id;
-      
+
       // Match against known service or register standalone container
       let matchedService: string | null = null;
       for (const svcName of serviceMap.keys()) {
@@ -2301,7 +2310,7 @@ async function handleUpdateDeployStatus(request: Request, env: Env, ctx: Executi
     if (!record && env.FLEET_KV) {
       const raw = await env.FLEET_KV.get(`deployment:${update.deployment_id}`);
       if (raw) {
-        try { record = JSON.parse(raw); } catch {}
+        try { record = JSON.parse(raw); } catch { }
       }
     }
 
@@ -2423,7 +2432,7 @@ async function handleListBackups(request: Request, env: Env): Promise<Response> 
               kvBackups.push(rec);
             }
           }
-        } catch {}
+        } catch { }
       }
     }
 
@@ -2498,7 +2507,7 @@ async function handleTriggerBackup(request: Request, env: Env, ctx: ExecutionCon
           if (list.length > 50) list.pop();
           ctx.waitUntil(safeKvPut(env.FLEET_KV, 'fleet:backups', JSON.stringify(list)));
         }
-      } catch {}
+      } catch { }
     }
 
     // Broadcast to WebSocket and Live SSE
@@ -2653,7 +2662,7 @@ async function handleAckNodeCommand(request: Request, env: Env): Promise<Respons
     try {
       const raw = await request.text();
       if (raw.trim()) body = JSON.parse(raw);
-    } catch {}
+    } catch { }
 
     const nodeId = url.searchParams.get('node_id') || body.node_id || '';
     const cmdId = url.searchParams.get('id') || url.searchParams.get('command_id') || body.command_id || body.id || '';
@@ -2703,7 +2712,7 @@ async function handleUpdateBackupStatus(request: Request, env: Env, ctx: Executi
     if (!record && env.FLEET_KV) {
       const raw = await env.FLEET_KV.get(`backup:${update.key}`);
       if (raw) {
-        try { record = JSON.parse(raw); } catch {}
+        try { record = JSON.parse(raw); } catch { }
       }
     }
 
@@ -2779,7 +2788,7 @@ async function handleListVaultSecrets(env: Env): Promise<Response> {
               });
             }
           }
-        } catch {}
+        } catch { }
       } else {
         const kvList = await env.FLEET_KV.list({ prefix: 'vault:' });
         for (const k of kvList.keys) {
@@ -2895,7 +2904,7 @@ async function handleSaveVaultSecrets(request: Request, env: Env, ctx: Execution
         list.push(payload.service);
         await safeKvPut(env.FLEET_KV, 'fleet:vault:services', JSON.stringify(list));
       }
-    } catch {}
+    } catch { }
 
     const logRec: LogRecord = {
       id: `vault_${Date.now()}_${payload.service}`,
@@ -2979,7 +2988,7 @@ async function handleImportEnvSecrets(request: Request, env: Env, ctx: Execution
         list.push(payload.service);
         await safeKvPut(env.FLEET_KV, 'fleet:vault:services', JSON.stringify(list));
       }
-    } catch {}
+    } catch { }
 
     // Auto-trigger Blue/Green zero-downtime deployment if requested
     let triggeredDeployId: string | null = null;
@@ -3016,7 +3025,7 @@ async function handleImportEnvSecrets(request: Request, env: Env, ctx: Execution
               }
             }
           }
-        } catch {}
+        } catch { }
       }
 
       if (targetImage) {
@@ -3072,7 +3081,7 @@ async function handleDeleteVaultSecrets(service: string, env: Env, ctx: Executio
 
     try {
       await env.FLEET_KV.delete(`vault:${service}`);
-    } catch {}
+    } catch { }
 
     try {
       const rawList = await env.FLEET_KV.get('fleet:vault:services');
@@ -3081,7 +3090,7 @@ async function handleDeleteVaultSecrets(service: string, env: Env, ctx: Executio
         const filtered = list.filter((s) => s !== service);
         await safeKvPut(env.FLEET_KV, 'fleet:vault:services', JSON.stringify(filtered));
       }
-    } catch {}
+    } catch { }
 
     return new Response(JSON.stringify({ status: 'deleted', service }), {
       status: 200,
@@ -3818,7 +3827,7 @@ async function handleGetAgentReleases(env: Env, url: URL): Promise<Response> {
     if (raw) {
       try {
         release = JSON.parse(raw);
-      } catch {}
+      } catch { }
     }
   }
 
@@ -3830,7 +3839,7 @@ async function handleGetAgentReleases(env: Env, url: URL): Promise<Response> {
         try {
           const rawOta = await env.FLEET_KV.get(`agent:update_status:${n.node_id}`);
           if (rawOta) otaStatus = JSON.parse(rawOta);
-        } catch {}
+        } catch { }
       }
       return {
         node_id: n.node_id,
@@ -3988,9 +3997,12 @@ async function reconcileManifestList(
     let resolvedSecrets = m.secrets;
     if (!resolvedSecrets && env.FLEET_KV) {
       try {
-        const v = await resolveVaultSecrets(env.FLEET_KV, m.service, normEnv, masterKey);
+        const v = await resolveVaultSecrets(env.FLEET_KV, m.service, normEnv, masterKey, m.aliases);
         if (v?.secrets) resolvedSecrets = v.secrets;
-      } catch {}
+      } catch { }
+    }
+    if (m.env_vars && typeof m.env_vars === 'object') {
+      resolvedSecrets = { ...(resolvedSecrets || {}), ...m.env_vars };
     }
 
     if (isSingletonManifest(m)) {
@@ -4021,9 +4033,9 @@ async function reconcileManifestList(
           entrypoint: normalizeCommandArray(m.entrypoint),
           healthcheck: m.healthcheck
             ? {
-                ...m.healthcheck,
-                test: Array.isArray(m.healthcheck.test) ? m.healthcheck.test : ['CMD-SHELL', String(m.healthcheck.test)],
-              }
+              ...m.healthcheck,
+              test: Array.isArray(m.healthcheck.test) ? m.healthcheck.test : ['CMD-SHELL', String(m.healthcheck.test)],
+            }
             : undefined,
           secrets: resolvedSecrets,
           force_recreate_stateful: Boolean(opts?.forceRecreateStateful),

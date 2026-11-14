@@ -127,30 +127,44 @@ export function parseEnvContent(envContent: string): Record<string, string> {
  * Handles conventions where secrets are saved under <service>-<env> (e.g. app-prod, app-staging)
  * while deployments pass service "app" with env "staging" or "production".
  */
-export function getVaultLookupKeys(service: string, envName?: string): string[] {
+export function getVaultLookupKeys(service: string, envName?: string, aliases?: string[]): string[] {
   const s = service.trim().toLowerCase();
   const clean = s.replace(/-(uat|prod|production|dev|staging|preview|infra|infrastructure)$/, '');
   const env = (envName || 'production').trim().toLowerCase();
   const envSuffix = (env === 'production' || env === 'prod') ? 'prod' : env;
 
   const keys: string[] = [];
+  const pushUnique = (k: string) => {
+    if (k && !keys.includes(k)) keys.push(k);
+  };
 
   // 1. Most specific: clean service name + short environment suffix (e.g. vault:app-prod)
-  keys.push(`vault:${clean}-${envSuffix}`);
+  pushUnique(`vault:${clean}-${envSuffix}`);
 
   // 2. Clean service name + full environment name if different (e.g. vault:app-production)
   if (envSuffix !== env) {
-    keys.push(`vault:${clean}-${env}`);
+    pushUnique(`vault:${clean}-${env}`);
   }
 
   // 3. Exact service name as provided
-  if (!keys.includes(`vault:${s}`)) {
-    keys.push(`vault:${s}`);
-  }
+  pushUnique(`vault:${s}`);
 
   // 4. Clean service name (e.g. vault:app)
-  if (!keys.includes(`vault:${clean}`)) {
-    keys.push(`vault:${clean}`);
+  pushUnique(`vault:${clean}`);
+
+  // 5. Manifest service aliases
+  if (Array.isArray(aliases)) {
+    for (const rawAlias of aliases) {
+      const a = String(rawAlias || '').trim().toLowerCase();
+      if (!a) continue;
+      const aClean = a.replace(/-(uat|prod|production|dev|staging|preview|infra|infrastructure)$/, '');
+      pushUnique(`vault:${aClean}-${envSuffix}`);
+      if (envSuffix !== env) {
+        pushUnique(`vault:${aClean}-${env}`);
+      }
+      pushUnique(`vault:${a}`);
+      pushUnique(`vault:${aClean}`);
+    }
   }
 
   return keys;
@@ -164,11 +178,12 @@ export async function resolveVaultSecrets(
   kv: any,
   service: string,
   envName: string = 'production',
-  masterKey?: string
+  masterKey?: string,
+  aliases?: string[]
 ): Promise<{ secrets: Record<string, string>; matchedKey: string } | null> {
   if (!kv || typeof kv.get !== 'function') return null;
 
-  const lookupKeys = getVaultLookupKeys(service, envName);
+  const lookupKeys = getVaultLookupKeys(service, envName, aliases);
   let raw: string | null = null;
   let matchedKey = '';
 
