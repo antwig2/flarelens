@@ -1682,6 +1682,10 @@ async function handleTriggerDeploy(request: Request, env: Env, ctx: ExecutionCon
     const nowIso = new Date().toISOString();
 
     // 0a. Auto-inject declarative Blue/Green defaults if omitted
+    const targetEnv = payload.env || (payload.is_preview ? 'preview' : 'production');
+    const manifest = env.FLEET_KV && !payload.is_preview
+      ? await getFleetManifest(env.FLEET_KV, targetEnv, payload.service)
+      : null;
     const defaults = getServiceDeclarativeDefaults(payload.service, payload.env || 'uat');
     if (!payload.domain && defaults.domain) payload.domain = defaults.domain;
     if (!payload.container_port && defaults.container_port) payload.container_port = defaults.container_port;
