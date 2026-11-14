@@ -557,6 +557,315 @@ async function runTests() {
   assert.strictEqual(expBody.count, 1);
   console.log('   ✅ Passed: Zero-Git CRUD, D1+R2 revisions, UAT→Prod promotion, 1-click rollback & export verified!\n');
 
+  // =========================================================================
+  // 6. MULTI-SERVER PLACEMENT, WIREGUARD MESH ROUTING, DRAIN & AUTO-FAILOVER
+  // =========================================================================
+  console.log('6️⃣  Testing Multi-Server Placement, WireGuard Mesh Endpoints, Drain Fencing & Auto-Failover...');
+
+  for (const [idx, nid] of ['pool-eu-1', 'pool-eu-2', 'pool-eu-3'].entries()) {
+    const enrollNodeRes = await worker.fetch(
+      new Request('https://control.flarelens.dev/api/v1/control/enroll', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test-enroll-token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          node_id: nid,
+          hostname: `${nid}.internal`,
+          provider: 'hetzner',
+          region: 'eu-central',
+          tags: ['staging', 'mesh'],
+          specs: { cpus: 4, ram_total_bytes: 8_589_934_592 },
+          mesh: { tailscale_ip: `100.64.0.${31 + idx}`, public_key: `wg-pub-${nid}` },
+        }),
+      }),
+      env,
+      ctx
+    );
+    assert.strictEqual(enrollNodeRes.status, 200);
+
+    const hbPoolRes = await worker.fetch(
+      new Request('https://control.flarelens.dev/api/v1/ingest', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test-ingest-secret',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          node_id: nid,
+          timestamp: new Date().toISOString(),
+          status: 'Healthy',
+          docker_healthy: true,
+          metrics: {
+            cpu_usage_pct: 10 + idx * 5,
+            ram_used_bytes: 1_500_000_000,
+            ram_total_bytes: 8_589_934_592,
+            ram_usage_pct: 17.5,
+            disk_usage_pct: 20.0,
+          },
+          containers: [],
+        }),
+      }),
+      env,
+      ctx
+    );
+    assert.strictEqual(hbPoolRes.status, 202);
+  }
+
+  // Stateful PostgreSQL singleton pinned to pool-eu-1
+  const dbCreateRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/fleet/manifests', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        manifest: {
+          service: 'postgres',
+          env: 'staging',
+          mode: 'singleton',
+          image: 'postgres:18',
+          node_id: 'pool-eu-1',
+          placement_strategy: 'pinned',
+          memory_mb: 1024,
+          aliases: ['postgres-staging'],
+          ports: ['127.0.0.1:5432:5432'],
+        },
+        reconcile: true,
+      }),
+    }),
+    env,
+    ctx
+  );
+  await Promise.all(pendingWaitTasks.splice(0));
+  assert.strictEqual(dbCreateRes.status, 200);
+
+  // Stateless 2-replica Blue/Green API with HA anti-affinity spread across EU pool
+  const appSpreadRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/fleet/manifests', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        manifest: {
+          service: 'checkout-api',
+          env: 'staging',
+          image: 'ghcr.io/example/checkout-api:2.0.0',
+          domains: ['checkout.example.com'],
+          replicas: 2,
+          memory_mb: 512,
+          placement_strategy: 'spread',
+          required_tags: ['staging'],
+          container_port: 8080,
+          host_port_blue: 8281,
+          host_port_green: 8282,
+          health_path: '/health',
+          networks: ['app-staging', 'flarelens-edge'],
+        },
+        reconcile: true,
+      }),
+    }),
+    env,
+    ctx
+  );
+  await Promise.all(pendingWaitTasks.splice(0));
+  assert.strictEqual(appSpreadRes.status, 200);
+
+  const plListRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/fleet/placements?env=staging', {
+      headers: { Authorization: 'Bearer test-admin-password' },
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(plListRes.status, 200);
+  const plListBody = await plListRes.json();
+  const appPlacements = plListBody.placements.filter((p) => p.service === 'checkout-api');
+  assert.strictEqual(appPlacements.length, 2, '2 replicas must be scheduled across distinct nodes');
+  const distinctAppNodes = new Set(appPlacements.map((p) => p.node_id));
+  assert.strictEqual(distinctAppNodes.size, 2, 'spread strategy must enforce anti-affinity');
+
+  // Inspect piggybacked heartbeat on remote replica node (not pool-eu-1)
+  const remoteNodeId = [...distinctAppNodes].find((n) => n !== 'pool-eu-1') || [...distinctAppNodes][0];
+  const siblingNodeId = [...distinctAppNodes].find((n) => n !== remoteNodeId);
+  const siblingPlacement = appPlacements.find((p) => p.node_id === siblingNodeId);
+
+  const hbRemoteRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/ingest', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-ingest-secret',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        node_id: remoteNodeId,
+        timestamp: new Date().toISOString(),
+        status: 'Healthy',
+        docker_healthy: true,
+        metrics: { cpu_usage_pct: 12, ram_used_bytes: 1_500_000_000, ram_total_bytes: 8_589_934_592 },
+        containers: [],
+      }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(hbRemoteRes.status, 202);
+  const hbRemoteBody = await hbRemoteRes.json();
+  assert.ok(hbRemoteBody.overlay_ip.startsWith('100.64.0.'), 'Piggybacked heartbeat must include overlay_ip');
+  assert.ok(Array.isArray(hbRemoteBody.mesh_peers) && hbRemoteBody.mesh_peers.length >= 2);
+  assert.ok(Array.isArray(hbRemoteBody.cluster_endpoints) && hbRemoteBody.cluster_endpoints.length >= 2);
+
+  const deployCheckoutCmd = (hbRemoteBody.commands || []).find(
+    (c) => c.type === 'deploy' && c.service === 'checkout-api'
+  );
+  assert.ok(deployCheckoutCmd, 'Remote node must receive deploy command for checkout-api');
+  assert.ok(
+    Array.isArray(deployCheckoutCmd.extra_hosts) &&
+      deployCheckoutCmd.extra_hosts.includes('postgres-staging:100.64.0.31') &&
+      deployCheckoutCmd.extra_hosts.includes('postgres:100.64.0.31'),
+    'Remote app replica must receive ExtraHosts mapping postgres to pool-eu-1 WireGuard overlay IP'
+  );
+  assert.ok(
+    Array.isArray(deployCheckoutCmd.remote_upstreams) &&
+      deployCheckoutCmd.remote_upstreams.includes(
+        `http://${siblingPlacement.mesh_ip}:${siblingPlacement.mesh_port}`
+      ),
+    'Traefik remote_upstreams must include sibling WireGuard mesh upstream'
+  );
+
+  // Drain pool-eu-1: postgres must be fenced (NOT wiped), stateless replicas remain 2 across pool-eu-2 & pool-eu-3
+  const drainRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/nodes/pool-eu-1/drain', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ reason: 'Kernel upgrade maintenance' }),
+    }),
+    env,
+    ctx
+  );
+  await Promise.all(pendingWaitTasks.splice(0));
+  assert.strictEqual(drainRes.status, 200);
+  const drainBody = await drainRes.json();
+  assert.strictEqual(drainBody.schedulable, false);
+  assert.ok(
+    drainBody.fenced.some((f) => f.service === 'postgres'),
+    'Stateful postgres singleton on drained node must be fenced, never auto-wiped'
+  );
+
+  // Verify cordoned status survives subsequent Healthy heartbeats from pool-eu-1
+  await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/ingest', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-ingest-secret',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        node_id: 'pool-eu-1',
+        timestamp: new Date().toISOString(),
+        status: 'Healthy',
+        docker_healthy: true,
+        metrics: { cpu_usage_pct: 5, ram_used_bytes: 1_000_000_000, ram_total_bytes: 8_589_934_592 },
+        containers: [{ name: 'postgres-staging', image: 'postgres:18', status: 'Up 10 minutes', state: 'running' }],
+      }),
+    }),
+    env,
+    ctx
+  );
+  const drainedNodeInfoRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/nodes/pool-eu-1', {
+      headers: { Authorization: 'Bearer test-admin-password' },
+    }),
+    env,
+    ctx
+  );
+  const drainedNodeInfo = await drainedNodeInfoRes.json();
+  assert.strictEqual(drainedNodeInfo.schedulable, false, 'Cordoned state must survive Healthy heartbeats');
+  assert.strictEqual(drainedNodeInfo.status, 'Draining');
+
+  // Uncordon pool-eu-1 -> restores schedulable=true
+  const uncordonRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/nodes/pool-eu-1/uncordon', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    }),
+    env,
+    ctx
+  );
+  await Promise.all(pendingWaitTasks.splice(0));
+  assert.strictEqual(uncordonRes.status, 200);
+
+  // Simulate sudden crash of pool-eu-2 (stale last_heartbeat > 90s) and run failover-check
+  await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/enroll', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-enroll-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        node_id: 'pool-eu-2',
+        hostname: 'pool-eu-2.internal',
+        provider: 'hetzner',
+        region: 'eu-central',
+        tags: ['staging', 'mesh'],
+        last_heartbeat: Date.now() - 180_000,
+        specs: { cpus: 4, ram_total_bytes: 8_589_934_592 },
+        mesh: { tailscale_ip: '100.64.0.32', public_key: 'wg-pub-pool-eu-2' },
+      }),
+    }),
+    env,
+    ctx
+  );
+  await Promise.all(pendingWaitTasks.splice(0));
+
+  const failoverRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/fleet/failover-check', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ stale_threshold_ms: 90_000 }),
+    }),
+    env,
+    ctx
+  );
+  await Promise.all(pendingWaitTasks.splice(0));
+  assert.strictEqual(failoverRes.status, 200);
+  const failoverBody = await failoverRes.json();
+  assert.ok(failoverBody.dead_nodes.includes('pool-eu-2'));
+
+  const postFailoverPlRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/fleet/placements?env=staging', {
+      headers: { Authorization: 'Bearer test-admin-password' },
+    }),
+    env,
+    ctx
+  );
+  const postFailoverPlBody = await postFailoverPlRes.json();
+  const survivorCheckoutNodes = postFailoverPlBody.placements
+    .filter((p) => p.service === 'checkout-api')
+    .map((p) => p.node_id)
+    .sort();
+  assert.deepStrictEqual(
+    survivorCheckoutNodes,
+    ['pool-eu-1', 'pool-eu-3'],
+    'Dead-node failover must automatically reschedule checkout-api onto surviving healthy peers'
+  );
+  console.log('   ✅ Passed: Multi-node spread scheduling, WireGuard ExtraHosts & remote_upstreams, drain fencing & dead-node failover verified!\n');
+
   console.log('🎉 ALL FLARELENS OPEN-SOURCE D1 CONTROL PLANE TESTS PASSED!');
 }
 

@@ -1,12 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FlareLens | Unified Observability & GitOps Console</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
   <style>
     :root {
       --bg: #07090e;
@@ -31,7 +34,13 @@
       --font-mono: 'JetBrains Mono', monospace;
       --sidebar-width: 240px;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
     body {
       background-color: var(--bg);
       color: var(--text);
@@ -56,6 +65,7 @@
       z-index: 20;
       transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
+
     .sidebar-header {
       padding: 1.1rem 1.25rem;
       border-bottom: 1px solid var(--border);
@@ -63,11 +73,13 @@
       align-items: center;
       justify-content: space-between;
     }
+
     .brand-group {
       display: flex;
       align-items: center;
       gap: 0.65rem;
     }
+
     .brand-logo {
       width: 28px;
       height: 28px;
@@ -81,12 +93,14 @@
       color: #fff;
       box-shadow: 0 0 12px rgba(99, 102, 241, 0.4);
     }
+
     .brand-name {
       font-size: 1.05rem;
       font-weight: 700;
       letter-spacing: -0.02em;
       color: #fff;
     }
+
     .brand-badge {
       background: rgba(99, 102, 241, 0.15);
       border: 1px solid rgba(99, 102, 241, 0.3);
@@ -98,6 +112,7 @@
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
+
     .sidebar-nav {
       flex: 1;
       overflow-y: auto;
@@ -106,6 +121,7 @@
       flex-direction: column;
       gap: 1.25rem;
     }
+
     .nav-section-title {
       font-size: 0.68rem;
       font-weight: 700;
@@ -114,12 +130,14 @@
       letter-spacing: 0.08em;
       padding: 0 0.65rem 0.4rem 0.65rem;
     }
+
     .nav-items {
       list-style: none;
       display: flex;
       flex-direction: column;
       gap: 0.2rem;
     }
+
     .nav-item {
       display: flex;
       align-items: center;
@@ -133,16 +151,19 @@
       transition: all 0.15s ease;
       position: relative;
     }
+
     .nav-item:hover {
       background-color: var(--bg-card);
       color: var(--text);
     }
+
     .nav-item.active {
       background: linear-gradient(90deg, rgba(99, 102, 241, 0.18), rgba(99, 102, 241, 0.05));
       color: #fff;
       font-weight: 600;
       border-left: 3px solid var(--primary);
     }
+
     .nav-item svg {
       width: 17px;
       height: 17px;
@@ -151,6 +172,7 @@
       fill: none;
       flex-shrink: 0;
     }
+
     .nav-badge {
       margin-left: auto;
       font-size: 0.68rem;
@@ -160,6 +182,7 @@
       background: #1e293b;
       color: var(--text-muted);
     }
+
     .nav-badge.live-dot {
       background: rgba(16, 185, 129, 0.15);
       color: #10b981;
@@ -168,6 +191,7 @@
       align-items: center;
       gap: 0.3rem;
     }
+
     .nav-badge.live-dot::before {
       content: '';
       width: 5px;
@@ -176,6 +200,7 @@
       background-color: #10b981;
       box-shadow: 0 0 6px #10b981;
     }
+
     .sidebar-footer {
       padding: 0.85rem 1rem;
       border-top: 1px solid var(--border);
@@ -185,6 +210,7 @@
       gap: 0.5rem;
       font-size: 0.75rem;
     }
+
     .node-pulse {
       display: flex;
       align-items: center;
@@ -193,6 +219,7 @@
       font-weight: 600;
       font-size: 0.72rem;
     }
+
     .pulse-orb {
       width: 7px;
       height: 7px;
@@ -201,9 +228,19 @@
       box-shadow: 0 0 8px #10b981;
       animation: pulse 1.8s infinite;
     }
+
     @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.4; transform: scale(0.85); }
+
+      0%,
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      50% {
+        opacity: 0.4;
+        transform: scale(0.85);
+      }
     }
 
     /* ========================================================
@@ -230,6 +267,7 @@
       gap: 1rem;
       z-index: 10;
     }
+
     .breadcrumb-title {
       font-size: 0.95rem;
       font-weight: 600;
@@ -237,12 +275,17 @@
       align-items: center;
       gap: 0.5rem;
     }
-    .breadcrumb-title span { color: var(--text-dim); }
+
+    .breadcrumb-title span {
+      color: var(--text-dim);
+    }
+
     .topbar-actions {
       display: flex;
       align-items: center;
       gap: 0.6rem;
     }
+
     button.btn {
       background-color: var(--bg-card);
       border: 1px solid var(--border);
@@ -257,35 +300,42 @@
       gap: 0.4rem;
       transition: all 0.15s ease;
     }
+
     button.btn:hover {
       background-color: var(--bg-card-hover);
       border-color: #334155;
     }
+
     button.btn-primary {
       background: linear-gradient(135deg, #6366f1, #4f46e5);
       border-color: #4f46e5;
       color: #fff;
       font-weight: 600;
     }
+
     button.btn-primary:hover {
       background: linear-gradient(135deg, #4f46e5, #4338ca);
       box-shadow: 0 0 12px rgba(99, 102, 241, 0.3);
     }
+
     button.btn-live {
       background-color: #1e293b;
       border: 1px solid #334155;
       font-weight: 600;
       user-select: none;
     }
+
     button.btn-live.active {
       background-color: #064e3b;
       border-color: #059669;
       color: #34d399;
     }
+
     button.btn-live.active .indicator {
       background-color: #10b981;
       box-shadow: 0 0 8px #10b981;
     }
+
     .indicator {
       width: 7px;
       height: 7px;
@@ -301,6 +351,7 @@
       overflow: hidden;
       height: calc(100vh - 54px);
     }
+
     .view-panel.active {
       display: flex;
     }
@@ -317,6 +368,7 @@
       gap: 0.6rem;
       flex-wrap: wrap;
     }
+
     input.search-box {
       flex: 1;
       min-width: 220px;
@@ -330,10 +382,12 @@
       outline: none;
       transition: all 0.15s ease;
     }
+
     input.search-box:focus {
       border-color: var(--primary);
       box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
     }
+
     select.filter-select {
       background-color: #05080e;
       border: 1px solid var(--border);
@@ -354,10 +408,12 @@
       gap: 1.5rem;
       height: 52px;
     }
+
     .timeline-canvas {
       flex: 1;
       height: 38px;
     }
+
     .timeline-stats {
       display: flex;
       gap: 1.25rem;
@@ -373,6 +429,7 @@
       line-height: 1.45;
       background: #05070d;
     }
+
     .log-row {
       display: grid;
       grid-template-columns: 135px 55px 55px 130px 1fr 90px;
@@ -382,15 +439,53 @@
       align-items: baseline;
       transition: background-color 0.1s ease;
     }
-    .log-row:hover { background-color: var(--bg-card-hover); }
-    .log-time { color: var(--text-dim); font-size: 0.72rem; }
-    .log-env { font-size: 0.68rem; color: #94a3b8; text-transform: uppercase; font-weight: 600; }
-    .log-level { font-weight: 700; font-size: 0.7rem; text-transform: uppercase; }
-    .log-level.info { color: var(--level-info); }
-    .log-level.warn { color: var(--level-warn); }
-    .log-level.error, .log-level.fatal { color: var(--level-error); }
-    .log-service { color: #cbd5e1; font-weight: 500; }
-    .log-msg { color: #e2e8f0; white-space: pre-wrap; word-break: break-all; }
+
+    .log-row:hover {
+      background-color: var(--bg-card-hover);
+    }
+
+    .log-time {
+      color: var(--text-dim);
+      font-size: 0.72rem;
+    }
+
+    .log-env {
+      font-size: 0.68rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .log-level {
+      font-weight: 700;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+    }
+
+    .log-level.info {
+      color: var(--level-info);
+    }
+
+    .log-level.warn {
+      color: var(--level-warn);
+    }
+
+    .log-level.error,
+    .log-level.fatal {
+      color: var(--level-error);
+    }
+
+    .log-service {
+      color: #cbd5e1;
+      font-weight: 500;
+    }
+
+    .log-msg {
+      color: #e2e8f0;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
     .log-trace-tag {
       font-size: 0.68rem;
       color: var(--trace-color);
@@ -401,7 +496,10 @@
       cursor: pointer;
       border: 1px solid rgba(168, 85, 247, 0.3);
     }
-    .log-trace-tag:hover { background: rgba(168, 85, 247, 0.3); }
+
+    .log-trace-tag:hover {
+      background: rgba(168, 85, 247, 0.3);
+    }
 
     /* ========================================================
        VIEW 2: FLEET & HOST NODES
@@ -414,11 +512,13 @@
       flex-direction: column;
       gap: 1.25rem;
     }
+
     .node-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
       gap: 1.25rem;
     }
+
     .card {
       background-color: var(--bg-card);
       border: 1px solid var(--border);
@@ -429,15 +529,18 @@
       gap: 1rem;
       transition: all 0.15s ease;
     }
+
     .card:hover {
       border-color: #334155;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
     }
+
     .card-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
+
     .card-title {
       font-size: 1rem;
       font-weight: 700;
@@ -445,6 +548,7 @@
       align-items: center;
       gap: 0.5rem;
     }
+
     .status-badge {
       font-size: 0.7rem;
       font-weight: 700;
@@ -453,16 +557,19 @@
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
+
     .status-badge.healthy {
       background: rgba(16, 185, 129, 0.15);
       border: 1px solid rgba(16, 185, 129, 0.3);
       color: #34d399;
     }
+
     .status-badge.warning {
       background: rgba(251, 191, 36, 0.15);
       border: 1px solid rgba(251, 191, 36, 0.3);
       color: #fbbf24;
     }
+
     .status-badge.failed {
       background: rgba(244, 63, 94, 0.15);
       border: 1px solid rgba(244, 63, 94, 0.3);
@@ -475,32 +582,42 @@
       flex-direction: column;
       gap: 0.75rem;
     }
+
     .metric-row {
       display: flex;
       flex-direction: column;
       gap: 0.25rem;
       font-size: 0.78rem;
     }
+
     .metric-label-row {
       display: flex;
       justify-content: space-between;
       color: var(--text-muted);
     }
+
     .progress-track {
       height: 6px;
       background: #090e18;
       border-radius: 3px;
       overflow: hidden;
-      border: 1px solid rgba(255,255,255,0.05);
+      border: 1px solid rgba(255, 255, 255, 0.05);
     }
+
     .progress-fill {
       height: 100%;
       border-radius: 3px;
       background: linear-gradient(90deg, #38bdf8, #6366f1);
       transition: width 0.4s ease;
     }
-    .progress-fill.warn { background: linear-gradient(90deg, #fbbf24, #f97316); }
-    .progress-fill.crit { background: linear-gradient(90deg, #f43f5e, #be123c); }
+
+    .progress-fill.warn {
+      background: linear-gradient(90deg, #fbbf24, #f97316);
+    }
+
+    .progress-fill.crit {
+      background: linear-gradient(90deg, #f43f5e, #be123c);
+    }
 
     /* ========================================================
        VIEW 3: GITOPS & BLUE/GREEN DEPLOYMENTS
@@ -514,11 +631,13 @@
       justify-content: space-between;
       align-items: center;
     }
+
     .slot-flipper-visual {
       display: flex;
       align-items: center;
       gap: 1.5rem;
     }
+
     .slot-pill {
       padding: 0.75rem 1.25rem;
       border-radius: 8px;
@@ -529,20 +648,24 @@
       gap: 0.2rem;
       min-width: 140px;
     }
+
     .slot-pill.active {
       border-color: #10b981;
       background: rgba(16, 185, 129, 0.1);
       box-shadow: 0 0 15px rgba(16, 185, 129, 0.15);
     }
+
     .slot-pill.candidate {
       border-color: #6366f1;
       background: rgba(99, 102, 241, 0.1);
     }
+
     .data-table {
       width: 100%;
       border-collapse: collapse;
       font-size: 0.82rem;
     }
+
     .data-table th {
       text-align: left;
       padding: 0.65rem 0.85rem;
@@ -552,12 +675,16 @@
       letter-spacing: 0.05em;
       border-bottom: 1px solid var(--border);
     }
+
     .data-table td {
       padding: 0.75rem 0.85rem;
       border-bottom: 1px solid rgba(255, 255, 255, 0.04);
       color: var(--text);
     }
-    .data-table tr:hover td { background-color: var(--bg-card-hover); }
+
+    .data-table tr:hover td {
+      background-color: var(--bg-card-hover);
+    }
 
     /* ========================================================
        VIEW 4: R2 BACKUPS & SNAPSHOTS
@@ -566,6 +693,7 @@
       display: flex;
       gap: 1rem;
     }
+
     .summary-stat-box {
       flex: 1;
       background: var(--bg-card);
@@ -573,6 +701,7 @@
       border-radius: 8px;
       padding: 1rem;
     }
+
     .summary-stat-box .num {
       font-size: 1.5rem;
       font-weight: 700;
@@ -580,6 +709,7 @@
       font-family: var(--font-mono);
       margin-top: 0.25rem;
     }
+
     .summary-stat-box .label {
       font-size: 0.72rem;
       color: var(--text-muted);
@@ -596,13 +726,17 @@
       height: 100vh;
       background-color: var(--bg-sidebar);
       border-left: 1px solid var(--border);
-      box-shadow: -10px 0 30px rgba(0,0,0,0.6);
+      box-shadow: -10px 0 30px rgba(0, 0, 0, 0.6);
       transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
       z-index: 100;
       display: flex;
       flex-direction: column;
     }
-    .drawer.open { right: 0; }
+
+    .drawer.open {
+      right: 0;
+    }
+
     .drawer-header {
       padding: 1rem 1.25rem;
       border-bottom: 1px solid var(--border);
@@ -610,21 +744,40 @@
       justify-content: space-between;
       align-items: center;
     }
-    .drawer-title { font-size: 0.95rem; font-weight: 700; }
-    .drawer-close { background: none; border: none; color: var(--text-muted); font-size: 1.2rem; cursor: pointer; }
-    .drawer-body { flex: 1; overflow-y: auto; padding: 1.25rem; }
+
+    .drawer-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    .drawer-close {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 1.2rem;
+      cursor: pointer;
+    }
+
+    .drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.25rem;
+    }
 
     /* Trace Waterfall Gantt Styles */
     .drawer-tab {
       transition: all 0.15s ease;
     }
+
     .drawer-tab:hover {
       color: #fff !important;
     }
+
     .drawer-tab.active {
       color: #fff !important;
       border-bottom-color: var(--accent) !important;
     }
+
     .span-row {
       display: grid;
       grid-template-columns: 240px 1fr;
@@ -637,23 +790,28 @@
       transition: all 0.15s ease;
       gap: 0.75rem;
     }
+
     .span-row:hover {
       background: #0f172a;
       border-color: rgba(56, 189, 248, 0.3);
     }
+
     .span-row.is-error {
       border-color: rgba(244, 63, 94, 0.4);
       background: rgba(244, 63, 94, 0.05);
     }
+
     .span-row.is-error:hover {
       background: rgba(244, 63, 94, 0.1);
     }
+
     .span-meta {
       display: flex;
       flex-direction: column;
       gap: 0.15rem;
       overflow: hidden;
     }
+
     .span-name {
       font-size: 0.76rem;
       font-weight: 600;
@@ -662,6 +820,7 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+
     .span-service-tag {
       font-size: 0.68rem;
       color: var(--text-dim);
@@ -669,6 +828,7 @@
       align-items: center;
       gap: 0.35rem;
     }
+
     .span-gantt-track {
       position: relative;
       height: 22px;
@@ -678,6 +838,7 @@
       display: flex;
       align-items: center;
     }
+
     .span-gantt-bar {
       position: absolute;
       height: 14px;
@@ -695,10 +856,12 @@
       white-space: nowrap;
       transition: width 0.2s ease, left 0.2s ease;
     }
+
     .span-gantt-bar.bar-error {
       background: linear-gradient(90deg, #f43f5e, #e11d48);
       box-shadow: 0 0 10px rgba(244, 63, 94, 0.4);
     }
+
     .attr-row {
       display: grid;
       grid-template-columns: 200px 1fr 30px;
@@ -708,19 +871,23 @@
       font-family: var(--font-mono);
       font-size: 0.73rem;
     }
+
     .attr-row:last-child {
       border-bottom: none;
     }
+
     .attr-key {
       color: #94a3b8;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+
     .attr-val {
       color: #f1f5f9;
       word-break: break-all;
     }
+
     .correlated-log-row {
       display: grid;
       grid-template-columns: 85px 100px 50px 1fr;
@@ -730,9 +897,11 @@
       gap: 0.5rem;
       transition: background 0.1s ease;
     }
+
     .correlated-log-row:hover {
       background: rgba(255, 255, 255, 0.03);
     }
+
     .correlated-log-row.is-target {
       background: rgba(244, 63, 94, 0.15);
       border-left: 3px solid #f43f5e;
@@ -753,9 +922,10 @@
       color: var(--text);
       max-width: 480px;
       width: 90vw;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
       z-index: 200;
     }
+
     dialog.modal::backdrop {
       background: rgba(0, 0, 0, 0.7);
       backdrop-filter: blur(4px);
@@ -775,11 +945,13 @@
       white-space: nowrap;
       border: 0;
     }
+
     .fleet-gitops-kpi-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
       gap: 0.9rem;
     }
+
     .fleet-gitops-kpi {
       background: var(--bg-card);
       border: 1px solid var(--border);
@@ -789,6 +961,7 @@
       flex-direction: column;
       gap: 0.25rem;
     }
+
     .fleet-gitops-kpi .kpi-label {
       font-size: 0.72rem;
       color: var(--text-muted);
@@ -796,17 +969,20 @@
       letter-spacing: 0.05em;
       font-weight: 600;
     }
+
     .fleet-gitops-kpi .kpi-value {
       font-size: 1.45rem;
       font-weight: 700;
       font-family: var(--font-mono);
       color: #fff;
     }
+
     .fleet-gitops-kpi .kpi-sub {
       font-size: 0.72rem;
       color: var(--text-dim);
       font-family: var(--font-mono);
     }
+
     .env-pill-group {
       display: inline-flex;
       background: #080c15;
@@ -815,6 +991,7 @@
       padding: 0.2rem;
       gap: 0.2rem;
     }
+
     .env-pill {
       background: transparent;
       border: 1px solid transparent;
@@ -826,15 +1003,18 @@
       cursor: pointer;
       transition: all 0.15s ease;
     }
+
     .env-pill:hover {
       color: #fff;
       background: rgba(255, 255, 255, 0.04);
     }
+
     .env-pill.active {
       background: rgba(99, 102, 241, 0.2);
       border-color: rgba(99, 102, 241, 0.45);
       color: #fff;
     }
+
     .gitops-badge {
       display: inline-flex;
       align-items: center;
@@ -846,26 +1026,33 @@
       letter-spacing: 0.03em;
       white-space: nowrap;
     }
-    .gitops-badge.synced, .gitops-badge.healthy {
+
+    .gitops-badge.synced,
+    .gitops-badge.healthy {
       background: rgba(16, 185, 129, 0.15);
       border: 1px solid rgba(16, 185, 129, 0.35);
       color: #34d399;
     }
-    .gitops-badge.outofsync, .gitops-badge.degraded {
+
+    .gitops-badge.outofsync,
+    .gitops-badge.degraded {
       background: rgba(251, 191, 36, 0.15);
       border: 1px solid rgba(251, 191, 36, 0.35);
       color: #fbbf24;
     }
+
     .gitops-badge.missing {
       background: rgba(244, 63, 94, 0.15);
       border: 1px solid rgba(244, 63, 94, 0.35);
       color: #fb7185;
     }
+
     .gitops-badge.suspended {
       background: rgba(148, 163, 184, 0.14);
       border: 1px solid rgba(148, 163, 184, 0.3);
       color: #cbd5e1;
     }
+
     .fleet-gitops-table-wrap {
       container-type: inline-size;
       overflow: auto;
@@ -874,10 +1061,12 @@
       border-radius: 8px;
       background: #070b14;
     }
+
     .fleet-gitops-table-wrap:focus-visible {
       outline: 2px solid var(--border-focus);
       outline-offset: 2px;
     }
+
     .fleet-gitops-table {
       inline-size: 100%;
       border-collapse: separate;
@@ -891,6 +1080,7 @@
       --label-6: "Revision";
       --label-7: "Actions";
     }
+
     .fleet-gitops-table th,
     .fleet-gitops-table td {
       padding: 0.7rem 0.85rem;
@@ -898,12 +1088,14 @@
       border-block-end: 1px solid rgba(255, 255, 255, 0.05);
       vertical-align: middle;
     }
+
     .fleet-gitops-table thead {
       position: sticky;
       inset-block-start: 0;
       z-index: 2;
       background: #0b101d;
     }
+
     .fleet-gitops-table thead th {
       font-size: 0.72rem;
       text-transform: uppercase;
@@ -912,6 +1104,7 @@
       border-block-end: 1px solid var(--border);
       background: #0b101d;
     }
+
     .fleet-gitops-table tbody th[scope="row"] {
       position: sticky;
       inset-inline-start: 0;
@@ -921,25 +1114,30 @@
       color: #fff;
       border-inline-end: 1px solid rgba(255, 255, 255, 0.04);
     }
+
     .fleet-gitops-table thead th:first-child {
       position: sticky;
       inset-inline-start: 0;
       z-index: 3;
     }
+
     .fleet-gitops-table tbody tr:hover td,
     .fleet-gitops-table tbody tr:hover th[scope="row"] {
       background-color: var(--bg-card-hover);
     }
+
     @container (width < 680px) {
       .fleet-gitops-table thead {
         display: none;
       }
+
       .fleet-gitops-table tbody tr {
         display: grid;
         gap: 0.35rem;
         padding: 0.85rem;
         border-block-end: 2px solid var(--border);
       }
+
       .fleet-gitops-table tbody th[scope="row"] {
         position: sticky;
         inset-block-start: 0;
@@ -949,6 +1147,7 @@
         padding: 0.15rem 0 0.3rem 0;
         font-size: 0.92rem;
       }
+
       .fleet-gitops-table tbody td {
         display: flex;
         justify-content: space-between;
@@ -957,13 +1156,48 @@
         border: none;
         padding: 0.15rem 0;
       }
-      .fleet-gitops-table tbody td:nth-of-type(1)::before { content: var(--label-1) ": "; font-weight: 600; color: var(--text-dim); }
-      .fleet-gitops-table tbody td:nth-of-type(2)::before { content: var(--label-2) ": "; font-weight: 600; color: var(--text-dim); }
-      .fleet-gitops-table tbody td:nth-of-type(3)::before { content: var(--label-3) ": "; font-weight: 600; color: var(--text-dim); }
-      .fleet-gitops-table tbody td:nth-of-type(4)::before { content: var(--label-4) ": "; font-weight: 600; color: var(--text-dim); }
-      .fleet-gitops-table tbody td:nth-of-type(5)::before { content: var(--label-5) ": "; font-weight: 600; color: var(--text-dim); }
-      .fleet-gitops-table tbody td:nth-of-type(6)::before { content: var(--label-6) ": "; font-weight: 600; color: var(--text-dim); }
-      .fleet-gitops-table tbody td:nth-of-type(7)::before { content: var(--label-7) ": "; font-weight: 600; color: var(--text-dim); }
+
+      .fleet-gitops-table tbody td:nth-of-type(1)::before {
+        content: var(--label-1) ": ";
+        font-weight: 600;
+        color: var(--text-dim);
+      }
+
+      .fleet-gitops-table tbody td:nth-of-type(2)::before {
+        content: var(--label-2) ": ";
+        font-weight: 600;
+        color: var(--text-dim);
+      }
+
+      .fleet-gitops-table tbody td:nth-of-type(3)::before {
+        content: var(--label-3) ": ";
+        font-weight: 600;
+        color: var(--text-dim);
+      }
+
+      .fleet-gitops-table tbody td:nth-of-type(4)::before {
+        content: var(--label-4) ": ";
+        font-weight: 600;
+        color: var(--text-dim);
+      }
+
+      .fleet-gitops-table tbody td:nth-of-type(5)::before {
+        content: var(--label-5) ": ";
+        font-weight: 600;
+        color: var(--text-dim);
+      }
+
+      .fleet-gitops-table tbody td:nth-of-type(6)::before {
+        content: var(--label-6) ": ";
+        font-weight: 600;
+        color: var(--text-dim);
+      }
+
+      .fleet-gitops-table tbody td:nth-of-type(7)::before {
+        content: var(--label-7) ": ";
+        font-weight: 600;
+        color: var(--text-dim);
+      }
     }
 
     dialog.ota-dialog {
@@ -977,14 +1211,17 @@
       width: 92vw;
       box-shadow: 0 14px 44px rgba(0, 0, 0, 0.82);
     }
+
     dialog.ota-dialog[open] {
       display: flex;
       flex-direction: column;
       gap: 1rem;
     }
+
     dialog.ota-dialog:modal {
       overscroll-behavior: contain;
     }
+
     dialog.ota-dialog::backdrop {
       background: rgba(0, 0, 0, 0.72);
       backdrop-filter: blur(4px);
@@ -1017,30 +1254,36 @@
       gap: 0.22rem;
       margin-block-end: 0.85rem;
     }
-    .fleet-field > label {
+
+    .fleet-field>label {
       font-size: 0.76rem;
       font-weight: 600;
       color: var(--text);
     }
+
     .fleet-hint {
       display: block;
       font-size: 0.71rem;
       color: var(--text-muted);
       margin-block-end: 0.15rem;
     }
+
     .fleet-error-msg {
       display: none;
       color: #fb7185;
       font-size: 0.74rem;
       margin-block-start: 0.2rem;
     }
+
     #fleetServiceForm :is(:user-invalid, .user-invalid-fallback) {
       border-color: #f43f5e !important;
       background-color: rgba(244, 63, 94, 0.08) !important;
     }
-    #fleetServiceForm :is(:user-invalid, .user-invalid-fallback) + .fleet-error-msg {
+
+    #fleetServiceForm :is(:user-invalid, .user-invalid-fallback)+.fleet-error-msg {
       display: block;
     }
+
     #fleetServiceForm input:focus-visible,
     #fleetServiceForm select:focus-visible,
     #fleetServiceForm textarea:focus-visible,
@@ -1048,6 +1291,7 @@
       outline: 2px solid var(--border-focus);
       outline-offset: 2px;
     }
+
     .fleet-preset-bar {
       display: flex;
       flex-wrap: wrap;
@@ -1057,6 +1301,7 @@
       border: 1px solid var(--border);
       border-radius: 8px;
     }
+
     .fleet-rev-item {
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -1079,13 +1324,14 @@
       z-index: 150;
       pointer-events: none;
     }
+
     .toast-alert {
       background: #0f1523;
       border: 1px solid #f43f5e;
       color: #fff;
       padding: 0.75rem 1rem;
       border-radius: 6px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
       display: flex;
       align-items: center;
       gap: 0.75rem;
@@ -1095,12 +1341,21 @@
       transition: all 0.25s ease;
       animation: slideIn 0.2s ease-out;
     }
+
     @keyframes slideIn {
-      from { transform: translateX(100%); opacity: 0; }
-      to { transform: translateX(0); opacity: 1; }
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
     }
   </style>
 </head>
+
 <body>
 
   <!-- ========================================================
@@ -1122,17 +1377,31 @@
         <div class="nav-section-title">Telemetry & APM</div>
         <ul class="nav-items">
           <li class="nav-item active" data-view="logs" id="navLogs">
-            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            <svg viewBox="0 0 24 24">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
             <span>Logs Explorer</span>
             <span class="nav-badge live-dot" id="sidebarLogCount">Live</span>
           </li>
           <li class="nav-item" data-view="issues" id="navIssues">
-            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
             <span>Issues & Errors</span>
             <span class="nav-badge" id="sidebarIssueCount">0</span>
           </li>
           <li class="nav-item" data-view="lakehouse" id="navLakehouse">
-            <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+            <svg viewBox="0 0 24 24">
+              <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+              <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+              <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+            </svg>
             <span>Parquet Lakehouse</span>
             <span class="nav-badge" style="color:#10b981; background:rgba(16,185,129,0.15)">SQL</span>
           </li>
@@ -1143,28 +1412,53 @@
         <div class="nav-section-title">Infrastructure & GitOps</div>
         <ul class="nav-items">
           <li class="nav-item" data-view="fleet" id="navFleet">
-            <svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+            <svg viewBox="0 0 24 24">
+              <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+              <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+              <line x1="6" y1="6" x2="6.01" y2="6"></line>
+              <line x1="6" y1="18" x2="6.01" y2="18"></line>
+            </svg>
             <span>Fleet Nodes</span>
             <span class="nav-badge" id="sidebarNodeCount">1 Active</span>
           </li>
           <li class="nav-item" data-view="deployments" id="navDeployments">
-            <svg viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+            <svg viewBox="0 0 24 24">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+              <polyline points="2 17 12 22 22 17"></polyline>
+              <polyline points="2 12 12 17 22 12"></polyline>
+            </svg>
             <span>Services & Deployments</span>
             <span class="nav-badge" style="color:#10b981; background:rgba(16,185,129,0.15)">Live</span>
           </li>
           <li class="nav-item" data-view="gitops" id="navGitops">
-            <svg viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><path d="M13 6h3a2 2 0 0 1 2 2v7"></path><line x1="6" y1="9" x2="6" y2="21"></line></svg>
+            <svg viewBox="0 0 24 24">
+              <circle cx="18" cy="18" r="3"></circle>
+              <circle cx="6" cy="6" r="3"></circle>
+              <path d="M13 6h3a2 2 0 0 1 2 2v7"></path>
+              <line x1="6" y1="9" x2="6" y2="21"></line>
+            </svg>
             <span>Fleet GitOps & OTA</span>
-            <span class="nav-badge" id="sidebarGitopsBadge" style="color:#38bdf8; background:rgba(56,189,248,0.15)">Sync</span>
+            <span class="nav-badge" id="sidebarGitopsBadge"
+              style="color:#38bdf8; background:rgba(56,189,248,0.15)">Sync</span>
           </li>
           <li class="nav-item" data-view="backups" id="navBackups">
-            <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+            <svg viewBox="0 0 24 24">
+              <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+              <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+              <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+            </svg>
             <span>R2 Backups</span>
           </li>
           <li class="nav-item" data-view="mesh" id="navMesh">
-            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
+              </path>
+            </svg>
             <span>Zero-Trust Mesh</span>
-            <span class="nav-badge" id="sidebarMeshCount" style="color:#10b981; background:rgba(16,185,129,0.15)">Mesh</span>
+            <span class="nav-badge" id="sidebarMeshCount"
+              style="color:#10b981; background:rgba(16,185,129,0.15)">Mesh</span>
           </li>
         </ul>
       </div>
@@ -1173,11 +1467,15 @@
         <div class="nav-section-title">Control & Edge</div>
         <ul class="nav-items">
           <li class="nav-item" data-view="synthetics" id="navSynthetics">
-            <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+            <svg viewBox="0 0 24 24">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            </svg>
             <span>Synthetics & Uptime</span>
           </li>
           <li class="nav-item" data-view="flags" id="navFlags">
-            <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            <svg viewBox="0 0 24 24">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
             <span>Feature Flags</span>
           </li>
         </ul>
@@ -1206,7 +1504,9 @@
       </div>
 
       <div class="topbar-actions">
-        <div id="userBadge" class="user-badge" style="display:inline-flex; align-items:center; gap:6px; background:rgba(30, 41, 59, 0.7); padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid #334155; color:#94a3b8;" title="Checking authentication identity...">
+        <div id="userBadge" class="user-badge"
+          style="display:inline-flex; align-items:center; gap:6px; background:rgba(30, 41, 59, 0.7); padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid #334155; color:#94a3b8;"
+          title="Checking authentication identity...">
           <span id="userBadgeIcon">🛡️</span>
           <span id="userBadgeEmail">Loading...</span>
         </div>
@@ -1228,7 +1528,8 @@
          ======================================================== -->
     <section class="view-panel active" id="view-logs">
       <div class="logs-filter-bar">
-        <input type="text" id="searchInput" class="search-box" placeholder="Search logs or traces (e.g. error, web-api, trace_id)...">
+        <input type="text" id="searchInput" class="search-box"
+          placeholder="Search logs or traces (e.g. error, web-api, trace_id)...">
         <select id="envSelect" class="filter-select">
           <option value="">All Environments</option>
           <option value="production">production</option>
@@ -1253,7 +1554,8 @@
           <option value="info">INFO</option>
         </select>
         <button id="exportJsonBtn" class="btn">Export JSON</button>
-        <button id="sqlBtn" class="btn" style="background:#1e1b4b; border-color:#4338ca; color:#a5b4fc;">SQL Mode</button>
+        <button id="sqlBtn" class="btn" style="background:#1e1b4b; border-color:#4338ca; color:#a5b4fc;">SQL
+          Mode</button>
       </div>
 
       <!-- Histogram Timeline -->
@@ -1266,8 +1568,10 @@
         </div>
       </div>
 
-      <div id="sqlBar" style="display:none; background:#0b0f19; padding:0.5rem 1.25rem; border-bottom:1px solid var(--border); display:flex; gap:0.5rem;">
-        <input type="text" id="sqlInput" class="search-box" style="flex:1;" value="SELECT * FROM logs WHERE level = 'error'">
+      <div id="sqlBar"
+        style="display:none; background:#0b0f19; padding:0.5rem 1.25rem; border-bottom:1px solid var(--border); display:flex; gap:0.5rem;">
+        <input type="text" id="sqlInput" class="search-box" style="flex:1;"
+          value="SELECT * FROM logs WHERE level = 'error'">
         <button id="runSqlBtn" class="btn btn-primary">Run Query</button>
       </div>
 
@@ -1292,7 +1596,8 @@
           <div>
             <h2 style="font-size:1.15rem; font-weight:700;">Apache Parquet Lakehouse (In-Browser SQL)</h2>
             <p style="color:var(--text-muted); font-size:0.8rem; margin-top:0.25rem;">
-              Columnar query engine using <strong>hyparquet</strong> & <strong>squirreling</strong> over HTTP Range requests. Zero-egress ($0 egress fees), zero full downloads.
+              Columnar query engine using <strong>hyparquet</strong> & <strong>squirreling</strong> over HTTP Range
+              requests. Zero-egress ($0 egress fees), zero full downloads.
             </p>
           </div>
           <div style="display:flex; gap:0.6rem;">
@@ -1303,7 +1608,8 @@
         <div style="display:grid; grid-template-columns: 1fr 2fr; gap:1rem; margin-top:1rem;">
           <div class="card" style="padding:1rem;">
             <div class="card-title" style="margin-bottom:0.75rem;">1. Select Parquet Archive (Cloudflare R2)</div>
-            <select id="lakehouseFileSelect" class="form-input" style="width:100%; margin-bottom:0.75rem; font-family:var(--font-mono); font-size:0.75rem;">
+            <select id="lakehouseFileSelect" class="form-input"
+              style="width:100%; margin-bottom:0.75rem; font-family:var(--font-mono); font-size:0.75rem;">
               <option value="">Loading files...</option>
             </select>
             <div id="lakehouseFileMeta" style="font-size:0.75rem; color:var(--text-muted); margin-bottom:1rem;">
@@ -1312,13 +1618,16 @@
 
             <div class="card-title" style="margin-bottom:0.5rem;">Sample Queries</div>
             <div style="display:flex; flex-direction:column; gap:0.4rem;">
-              <button class="btn" style="font-size:0.72rem; text-align:left;" onclick="setSampleQuery('SELECT service, level, status, message FROM logs LIMIT 20')">
+              <button class="btn" style="font-size:0.72rem; text-align:left;"
+                onclick="setSampleQuery('SELECT service, level, status, message FROM logs LIMIT 20')">
                 📄 Preview first 20 records
               </button>
-              <button class="btn" style="font-size:0.72rem; text-align:left;" onclick="setSampleQuery('SELECT service, status, duration_ms, message FROM logs WHERE status >= 400')">
+              <button class="btn" style="font-size:0.72rem; text-align:left;"
+                onclick="setSampleQuery('SELECT service, status, duration_ms, message FROM logs WHERE status >= 400')">
                 🚨 Errors & 4xx/5xx requests
               </button>
-              <button class="btn" style="font-size:0.72rem; text-align:left;" onclick="setSampleQuery('SELECT service, COUNT(*) as count, AVG(duration_ms) as avg_latency FROM logs GROUP BY service')">
+              <button class="btn" style="font-size:0.72rem; text-align:left;"
+                onclick="setSampleQuery('SELECT service, COUNT(*) as count, AVG(duration_ms) as avg_latency FROM logs GROUP BY service')">
                 📊 Service latency aggregation
               </button>
             </div>
@@ -1329,8 +1638,11 @@
               <div class="card-title">2. SQL Query Editor (squirreling)</div>
               <button class="btn btn-primary" id="btnRunLakehouseQuery">⚡ Run In-Browser SQL</button>
             </div>
-            <textarea id="lakehouseSqlInput" class="form-input" style="width:100%; height:90px; font-family:var(--font-mono); font-size:0.8rem; line-height:1.4; resize:vertical; background:var(--bg);" placeholder="SELECT service, level, duration_ms, message FROM logs WHERE duration_ms > 10">SELECT service, level, status, duration_ms, message FROM logs WHERE status >= 400</textarea>
-            <div id="lakehouseQueryStatus" style="font-size:0.75rem; color:var(--text-muted); margin-top:0.5rem; display:flex; justify-content:space-between;">
+            <textarea id="lakehouseSqlInput" class="form-input"
+              style="width:100%; height:90px; font-family:var(--font-mono); font-size:0.8rem; line-height:1.4; resize:vertical; background:var(--bg);"
+              placeholder="SELECT service, level, duration_ms, message FROM logs WHERE duration_ms > 10">SELECT service, level, status, duration_ms, message FROM logs WHERE status >= 400</textarea>
+            <div id="lakehouseQueryStatus"
+              style="font-size:0.75rem; color:var(--text-muted); margin-top:0.5rem; display:flex; justify-content:space-between;">
               <span>Ready. Byte-range reads will stream directly from Cloudflare R2.</span>
               <span id="lakehouseExecTime" style="font-family:var(--font-mono); color:#10b981;"></span>
             </div>
@@ -1340,7 +1652,8 @@
         <div class="card" style="margin-top:1rem; overflow-x:auto;">
           <div class="card-header" style="display:flex; justify-content:space-between;">
             <div class="card-title">Query Results</div>
-            <span id="lakehouseResultCount" style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">0 rows</span>
+            <span id="lakehouseResultCount"
+              style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">0 rows</span>
           </div>
           <table class="data-table" id="lakehouseResultsTable">
             <thead>
@@ -1349,7 +1662,10 @@
               </tr>
             </thead>
             <tbody id="lakehouseResultsBody">
-              <tr><td style="text-align:center; color:var(--text-muted); padding:2rem;">Run a query above to execute SQL against R2 Parquet files via hyparquet and squirreling.</td></tr>
+              <tr>
+                <td style="text-align:center; color:var(--text-muted); padding:2rem;">Run a query above to execute SQL
+                  against R2 Parquet files via hyparquet and squirreling.</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -1364,20 +1680,24 @@
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <div>
             <h2 style="font-size:1.1rem; font-weight:700;">Enrolled Fleet Nodes</h2>
-            <p style="color:var(--text-muted); font-size:0.8rem; margin-top:0.2rem;">Real-time host metrics sampled every 15s by flarelens-agent</p>
+            <p style="color:var(--text-muted); font-size:0.8rem; margin-top:0.2rem;">Real-time host metrics sampled
+              every 15s by flarelens-agent</p>
           </div>
           <button class="btn btn-primary" id="btnRefreshFleet">Refresh Fleet</button>
         </div>
 
         <div class="node-grid" id="fleetNodeGrid">
           <!-- Loaded dynamically from /api/v1/control/nodes -->
-          <div class="card" style="text-align:center; padding:3.5rem 1.5rem; color:var(--text-muted); grid-column:1/-1;">
+          <div class="card"
+            style="text-align:center; padding:3.5rem 1.5rem; color:var(--text-muted); grid-column:1/-1;">
             <div style="font-size:2.5rem; margin-bottom:0.75rem;">📡</div>
             <h3 style="color:#fff; margin-bottom:0.5rem; font-size:1.15rem;">No Nodes Connected Yet</h3>
             <p style="max-width:480px; margin:0 auto 1.25rem; font-size:0.85rem; line-height:1.5;">
-              Run the 30-second bootstrap installer on your host to register your first node with real-time CPU, RAM, Docker, and Zero-Trust Sovereign Mesh (<code>100.64.0.0/10</code>) telemetry.
+              Run the 30-second bootstrap installer on your host to register your first node with real-time CPU, RAM,
+              Docker, and Zero-Trust Sovereign Mesh (<code>100.64.0.0/10</code>) telemetry.
             </p>
-            <code style="background:var(--bg); padding:0.55rem 1rem; border-radius:6px; font-size:0.8rem; border:1px solid var(--border); font-family:var(--font-mono); color:#10b981; display:inline-block; max-width:100%; word-break:break-all;">
+            <code
+              style="background:var(--bg); padding:0.55rem 1rem; border-radius:6px; font-size:0.8rem; border:1px solid var(--border); font-family:var(--font-mono); color:#10b981; display:inline-block; max-width:100%; word-break:break-all;">
               curl -fsSL https://control.flarelens.dev/install.sh | sudo bash
             </code>
           </div>
@@ -1431,7 +1751,10 @@
               </tr>
             </thead>
             <tbody id="servicesTableBody">
-              <tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:1.5rem;">Loading fleet services...</td></tr>
+              <tr>
+                <td colspan="8" style="text-align:center; color:var(--text-muted); padding:1.5rem;">Loading fleet
+                  services...</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -1444,7 +1767,8 @@
 
           <div class="slot-flipper-visual">
             <div class="slot-pill active" id="slotBlueCard">
-              <span style="font-size:0.7rem; font-weight:700; color:#10b981; text-transform:uppercase;">Slot Blue (Live)</span>
+              <span style="font-size:0.7rem; font-weight:700; color:#10b981; text-transform:uppercase;">Slot Blue
+                (Live)</span>
               <strong style="font-size:0.95rem; font-family:var(--font-mono);" id="slotBluePort">Port 8081</strong>
               <span style="font-size:0.72rem; color:var(--text-muted);">Serving live production traffic</span>
             </div>
@@ -1452,7 +1776,8 @@
             <div style="font-size:1.2rem; color:var(--text-dim);">⇄</div>
 
             <div class="slot-pill candidate" id="slotGreenCard">
-              <span style="font-size:0.7rem; font-weight:700; color:#a5b4fc; text-transform:uppercase;">Slot Green (Staging)</span>
+              <span style="font-size:0.7rem; font-weight:700; color:#a5b4fc; text-transform:uppercase;">Slot Green
+                (Staging)</span>
               <strong style="font-size:0.95rem; font-family:var(--font-mono);" id="slotGreenPort">Port 8082</strong>
               <span style="font-size:0.72rem; color:var(--text-muted);">Candidate pre-flight inspection</span>
             </div>
@@ -1487,7 +1812,10 @@
               </tr>
             </thead>
             <tbody id="previewsTableBody">
-              <tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:1rem;">No active PR preview environments</td></tr>
+              <tr>
+                <td colspan="8" style="text-align:center; color:var(--text-muted); padding:1rem;">No active PR preview
+                  environments</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -1527,11 +1855,13 @@
           <div>
             <h2 style="font-size:1.15rem; font-weight:700;">Declarative Fleet State, Revisions &amp; Host Agent OTA</h2>
             <p style="color:var(--text-muted); font-size:0.8rem; margin-top:0.25rem;">
-              Manage services directly in Cloudflare D1 &amp; R2 with immutable numbered revisions, 1-click UAT → Prod promotion, instant rollbacks, and zero-SSH <code>flarelensd</code> OTA updates — no Git repo required.
+              Manage services directly in Cloudflare D1 &amp; R2 with immutable numbered revisions, 1-click UAT → Prod
+              promotion, instant rollbacks, and zero-SSH <code>flarelensd</code> OTA updates — no Git repo required.
             </p>
           </div>
           <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-            <div class="env-pill-group" role="group" aria-label="Filter manifests by environment" id="gitopsEnvFilterGroup">
+            <div class="env-pill-group" role="group" aria-label="Filter manifests by environment"
+              id="gitopsEnvFilterGroup">
               <button type="button" class="env-pill active" data-gitops-env="">All</button>
               <button type="button" class="env-pill" data-gitops-env="infra">infra</button>
               <button type="button" class="env-pill" data-gitops-env="uat">uat</button>
@@ -1541,7 +1871,8 @@
             <button type="button" class="btn" id="btnOpenAllRevisions">🕘 Revisions</button>
             <button type="button" class="btn" id="btnExportFleetJson">⬇ Export</button>
             <button type="button" class="btn" id="btnImportFleetJson">⬆ Import</button>
-            <input type="file" id="fleetImportFileInput" accept=".json,application/json" class="visually-hidden" aria-label="Import Fleet JSON snapshot">
+            <input type="file" id="fleetImportFileInput" accept=".json,application/json" class="visually-hidden"
+              aria-label="Import Fleet JSON snapshot">
             <button type="button" class="btn" id="btnRefreshGitops">↻ Refresh</button>
           </div>
         </div>
@@ -1583,10 +1914,12 @@
                 <span>Declarative Fleet Manifests (Desired State vs. Live Telemetry)</span>
               </div>
               <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
-                Live CI image SHA overrides are preserved across topology syncs; <code>adopt_only</code> guards stateful singletons and <code>enabled: false</code> gates staged environments.
+                Live CI image SHA overrides are preserved across topology syncs; <code>adopt_only</code> guards stateful
+                singletons and <code>enabled: false</code> gates staged environments.
               </div>
             </div>
-            <span id="gitopsLastSyncedLabel" style="font-size:0.74rem; color:var(--text-dim); font-family:var(--font-mono);"></span>
+            <span id="gitopsLastSyncedLabel"
+              style="font-size:0.74rem; color:var(--text-dim); font-family:var(--font-mono);"></span>
           </div>
 
           <div tabindex="0" role="region" aria-labelledby="fleetGitopsTableCaption" class="fleet-gitops-table-wrap">
@@ -1606,7 +1939,8 @@
               </thead>
               <tbody id="fleetGitopsTableBody">
                 <tr>
-                  <td colspan="8" style="text-align:center; color:var(--text-muted); padding:1.75rem;">Loading declarative fleet manifests...</td>
+                  <td colspan="8" style="text-align:center; color:var(--text-muted); padding:1.75rem;">Loading
+                    declarative fleet manifests...</td>
                 </tr>
               </tbody>
             </table>
@@ -1621,7 +1955,8 @@
                 <span>Zero-SSH Host Agent OTA Rollouts (<code>flarelensd</code>)</span>
               </div>
               <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
-                Cryptographic SHA-256 verified binary upgrades streamed from Cloudflare R2 via the 15s node heartbeat channel.
+                Cryptographic SHA-256 verified binary upgrades streamed from Cloudflare R2 via the 15s node heartbeat
+                channel.
               </div>
             </div>
             <div style="display:flex; align-items:center; gap:0.5rem;">
@@ -1643,7 +1978,8 @@
             </thead>
             <tbody id="agentOtaNodesBody">
               <tr>
-                <td colspan="7" style="text-align:center; color:var(--text-muted); padding:1.5rem;">Loading enrolled host agents...</td>
+                <td colspan="7" style="text-align:center; color:var(--text-muted); padding:1.5rem;">Loading enrolled
+                  host agents...</td>
               </tr>
             </tbody>
           </table>
@@ -1720,7 +2056,8 @@
           <div>
             <h2 style="font-size:1.15rem; font-weight:700;">Zero-Trust Sovereign WireGuard Mesh</h2>
             <p style="color:var(--text-muted); font-size:0.8rem; margin-top:0.25rem;">
-              Kernel WireGuard mesh (<code>100.64.0.0/10</code>) coordinated serverlessly by Cloudflare Edge (<code>control.example.com</code>) with RFC 8628 Device Flow browser SSO.
+              Kernel WireGuard mesh (<code>100.64.0.0/10</code>) coordinated serverlessly by Cloudflare Edge
+              (<code>control.example.com</code>) with RFC 8628 Device Flow browser SSO.
             </p>
           </div>
           <div style="display:flex; gap:0.6rem;">
@@ -1749,66 +2086,87 @@
         </div>
 
         <!-- Mesh Access Control & OIDC Policy Card -->
-        <div class="card" style="margin-bottom:1.5rem; border:1px solid #1f2937; background:linear-gradient(180deg, #111827 0%, #0d131f 100%);">
-          <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <div class="card"
+          style="margin-bottom:1.5rem; border:1px solid #1f2937; background:linear-gradient(180deg, #111827 0%, #0d131f 100%);">
+          <div class="card-header"
+            style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
             <div>
               <div class="card-title" style="display:flex; align-items:center; gap:0.5rem; font-size:0.95rem;">
                 <span>🛡️</span> Mesh Access Control & SSO Policy
               </div>
               <p style="color:var(--text-muted); font-size:0.75rem; margin-top:0.2rem;">
-                Specify authorized corporate email domains (e.g. <code>my-orgtems.com</code>, <code>example.com</code>) and individual accounts permitted to authenticate via browser SSO (<code>flarelens-agent login</code>).
+                Specify authorized corporate email domains (e.g. <code>my-orgtems.com</code>, <code>example.com</code>)
+                and individual accounts permitted to authenticate via browser SSO (<code>flarelens-agent login</code>).
               </p>
             </div>
             <div style="display:flex; align-items:center; gap:0.5rem;">
-              <span class="status-badge healthy" id="meshPolicyStatusBadge" style="font-size:0.7rem;">Active: 2 Domains</span>
+              <span class="status-badge healthy" id="meshPolicyStatusBadge" style="font-size:0.7rem;">Active: 2
+                Domains</span>
             </div>
           </div>
 
           <form id="meshAccessPolicyForm" style="margin-top:1rem;">
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:1rem; margin-bottom:1rem;">
+            <div
+              style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:1rem; margin-bottom:1rem;">
               <div>
-                <label style="display:block; font-size:0.78rem; font-weight:600; color:var(--text); margin-bottom:0.35rem;">
+                <label
+                  style="display:block; font-size:0.78rem; font-weight:600; color:var(--text); margin-bottom:0.35rem;">
                   🏢 Allowed Corporate Email Domains
                 </label>
                 <div style="font-size:0.72rem; color:var(--text-muted); margin-bottom:0.4rem;">
-                  One domain per line or comma-separated (e.g. <code>my-orgtems.com</code>, <code>example.com</code>). Users authenticating with these domains will be permitted.
+                  One domain per line or comma-separated (e.g. <code>my-orgtems.com</code>, <code>example.com</code>).
+                  Users authenticating with these domains will be permitted.
                 </div>
-                <textarea id="policyAllowedDomainsInput" rows="3" placeholder="my-orgtems.com&#10;example.com" style="width:100%; padding:0.6rem; background:#070a12; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-mono); font-size:0.8rem; outline:none; resize:vertical;"></textarea>
+                <textarea id="policyAllowedDomainsInput" rows="3" placeholder="my-orgtems.com&#10;example.com"
+                  style="width:100%; padding:0.6rem; background:#070a12; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-mono); font-size:0.8rem; outline:none; resize:vertical;"></textarea>
               </div>
 
               <div>
-                <label style="display:block; font-size:0.78rem; font-weight:600; color:var(--text); margin-bottom:0.35rem;">
+                <label
+                  style="display:block; font-size:0.78rem; font-weight:600; color:var(--text); margin-bottom:0.35rem;">
                   👤 Allowed Specific Emails (Contractors / Partners)
                 </label>
                 <div style="font-size:0.72rem; color:var(--text-muted); margin-bottom:0.4rem;">
                   One email per line or comma-separated for external users outside the corporate domain.
                 </div>
-                <textarea id="policyAllowedEmailsInput" rows="3" placeholder="contractor@partner.com&#10;devops@external.io" style="width:100%; padding:0.6rem; background:#070a12; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-mono); font-size:0.8rem; outline:none; resize:vertical;"></textarea>
+                <textarea id="policyAllowedEmailsInput" rows="3"
+                  placeholder="contractor@partner.com&#10;devops@external.io"
+                  style="width:100%; padding:0.6rem; background:#070a12; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-mono); font-size:0.8rem; outline:none; resize:vertical;"></textarea>
               </div>
             </div>
 
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; padding-top:0.75rem; border-top:1px solid rgba(255,255,255,0.06);">
+            <div
+              style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; padding-top:0.75rem; border-top:1px solid rgba(255,255,255,0.06);">
               <div style="display:flex; align-items:center; gap:0.5rem;">
-                <input type="checkbox" id="policyAutoApproveCheckbox" checked style="accent-color:#0284c7; cursor:pointer;" />
-                <label for="policyAutoApproveCheckbox" style="font-size:0.78rem; color:var(--text-muted); cursor:pointer;">
+                <input type="checkbox" id="policyAutoApproveCheckbox" checked
+                  style="accent-color:#0284c7; cursor:pointer;" />
+                <label for="policyAutoApproveCheckbox"
+                  style="font-size:0.78rem; color:var(--text-muted); cursor:pointer;">
                   Auto-enroll verified domain users when authorized via SSO
                 </label>
               </div>
 
               <div style="display:flex; align-items:center; gap:0.75rem;">
-                <span id="policySaveStatus" style="font-size:0.75rem; color:#10b981; display:none;">✓ Policy saved</span>
-                <button type="submit" class="btn btn-primary" id="btnSaveMeshPolicy" style="padding:0.45rem 1rem; font-size:0.8rem;">
+                <span id="policySaveStatus" style="font-size:0.75rem; color:#10b981; display:none;">✓ Policy
+                  saved</span>
+                <button type="submit" class="btn btn-primary" id="btnSaveMeshPolicy"
+                  style="padding:0.45rem 1rem; font-size:0.8rem;">
                   💾 Save Policy to Edge KV
                 </button>
               </div>
             </div>
           </form>
 
-          <div style="margin-top:1.1rem; padding:0.75rem 1rem; background:rgba(2,132,199,0.08); border:1px solid rgba(2,132,199,0.2); border-radius:6px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
+          <div
+            style="margin-top:1.1rem; padding:0.75rem 1rem; background:rgba(2,132,199,0.08); border:1px solid rgba(2,132,199,0.2); border-radius:6px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
             <div style="font-size:0.75rem; color:var(--text-muted);">
-              <strong style="color:#38bdf8;">How Team Members Connect:</strong> Run <code style="color:#fff; background:rgba(0,0,0,0.4); padding:2px 6px; border-radius:4px;">flarelens-agent login</code> on any Mac, Linux, or Windows laptop. The browser will open SSO for instant zero-configuration peer enrollment.
+              <strong style="color:#38bdf8;">How Team Members Connect:</strong> Run <code
+                style="color:#fff; background:rgba(0,0,0,0.4); padding:2px 6px; border-radius:4px;">flarelens-agent login</code>
+              on any Mac, Linux, or Windows laptop. The browser will open SSO for instant zero-configuration peer
+              enrollment.
             </div>
-            <button type="button" class="btn btn-sm" id="btnCopyLoginCmd" style="font-size:0.72rem; padding:3px 8px; border-color:#0284c7; color:#38bdf8;">
+            <button type="button" class="btn btn-sm" id="btnCopyLoginCmd"
+              style="font-size:0.72rem; padding:3px 8px; border-color:#0284c7; color:#38bdf8;">
               📋 Copy Command
             </button>
           </div>
@@ -1838,43 +2196,62 @@
         </div>
 
         <!-- Edge Ingress & Cloudflare Tunnel Route Mapping -->
-        <div class="card" style="margin-top:1.5rem; border:1px solid #1f2937; background:linear-gradient(180deg, #111827 0%, #0b0f19 100%);">
-          <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
+        <div class="card"
+          style="margin-top:1.5rem; border:1px solid #1f2937; background:linear-gradient(180deg, #111827 0%, #0b0f19 100%);">
+          <div class="card-header"
+            style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
             <div>
               <div class="card-title" style="display:flex; align-items:center; gap:0.5rem; font-size:1rem;">
                 <span>🌐</span> Edge Ingress & Cloudflare Tunnel Route Topology
-                <span class="status-badge healthy" id="ingressActiveRoutesBadge" style="font-size:0.7rem;">10 Routes Active</span>
+                <span class="status-badge healthy" id="ingressActiveRoutesBadge" style="font-size:0.7rem;">10 Routes
+                  Active</span>
               </div>
               <p style="color:var(--text-muted); font-size:0.75rem; margin-top:0.2rem;">
-                Visual mapping of public customer domains (via <code>cloudflared</code> tunnel) & private operator endpoints routed to internal mesh nodes and container slots.
+                Visual mapping of public customer domains (via <code>cloudflared</code> tunnel) & private operator
+                endpoints routed to internal mesh nodes and container slots.
               </p>
             </div>
             <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
-              <div class="tab-pill-group" style="display:flex; background:#070a12; border:1px solid var(--border); border-radius:6px; padding:2px; gap:2px;">
-                <button type="button" class="btn btn-sm btn-ingress-filter active" data-filter="all" style="font-size:0.72rem; padding:3px 8px; border:none; background:rgba(2,132,199,0.2); color:#38bdf8; border-radius:4px;">All (10)</button>
-                <button type="button" class="btn btn-sm btn-ingress-filter" data-filter="public_edge" style="font-size:0.72rem; padding:3px 8px; border:none; background:transparent; color:var(--text-muted); border-radius:4px;">Public Web (5)</button>
-                <button type="button" class="btn btn-sm btn-ingress-filter" data-filter="sovereign_mesh" style="font-size:0.72rem; padding:3px 8px; border:none; background:transparent; color:var(--text-muted); border-radius:4px;">Private Mesh (4)</button>
+              <div class="tab-pill-group"
+                style="display:flex; background:#070a12; border:1px solid var(--border); border-radius:6px; padding:2px; gap:2px;">
+                <button type="button" class="btn btn-sm btn-ingress-filter active" data-filter="all"
+                  style="font-size:0.72rem; padding:3px 8px; border:none; background:rgba(2,132,199,0.2); color:#38bdf8; border-radius:4px;">All
+                  (10)</button>
+                <button type="button" class="btn btn-sm btn-ingress-filter" data-filter="public_edge"
+                  style="font-size:0.72rem; padding:3px 8px; border:none; background:transparent; color:var(--text-muted); border-radius:4px;">Public
+                  Web (5)</button>
+                <button type="button" class="btn btn-sm btn-ingress-filter" data-filter="sovereign_mesh"
+                  style="font-size:0.72rem; padding:3px 8px; border:none; background:transparent; color:var(--text-muted); border-radius:4px;">Private
+                  Mesh (4)</button>
               </div>
-              <button class="btn btn-sm" id="btnRefreshIngressRoutes" style="font-size:0.75rem; padding:4px 10px;">↻ Refresh Routes</button>
+              <button class="btn btn-sm" id="btnRefreshIngressRoutes" style="font-size:0.75rem; padding:4px 10px;">↻
+                Refresh Routes</button>
             </div>
           </div>
 
           <!-- Dual Pipeline Architecture Diagram -->
-          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:0.75rem; margin:1rem 0; font-size:0.75rem;">
-            <div style="background:rgba(2,132,199,0.06); border:1px solid rgba(2,132,199,0.2); border-radius:6px; padding:0.75rem;">
-              <div style="display:flex; align-items:center; gap:0.4rem; font-weight:600; color:#38bdf8; margin-bottom:0.35rem;">
+          <div
+            style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:0.75rem; margin:1rem 0; font-size:0.75rem;">
+            <div
+              style="background:rgba(2,132,199,0.06); border:1px solid rgba(2,132,199,0.2); border-radius:6px; padding:0.75rem;">
+              <div
+                style="display:flex; align-items:center; gap:0.4rem; font-weight:600; color:#38bdf8; margin-bottom:0.35rem;">
                 <span>🌍</span> Public Customer Ingress Flow (Zero Inbound Ports)
               </div>
               <div style="color:var(--text-muted); font-size:0.72rem; font-family:var(--font-mono); line-height:1.4;">
-                Public Web ➔ Cloudflare WAF/Edge ➔ <span style="color:#38bdf8;">cloudflared Tunnel</span> ➔ node-1 (Traefik:8080) ➔ <span style="color:#10b981;">Active Container Slot</span>
+                Public Web ➔ Cloudflare WAF/Edge ➔ <span style="color:#38bdf8;">cloudflared Tunnel</span> ➔ node-1
+                (Traefik:8080) ➔ <span style="color:#10b981;">Active Container Slot</span>
               </div>
             </div>
-            <div style="background:rgba(168,85,247,0.06); border:1px solid rgba(168,85,247,0.2); border-radius:6px; padding:0.75rem;">
-              <div style="display:flex; align-items:center; gap:0.4rem; font-weight:600; color:#c084fc; margin-bottom:0.35rem;">
+            <div
+              style="background:rgba(168,85,247,0.06); border:1px solid rgba(168,85,247,0.2); border-radius:6px; padding:0.75rem;">
+              <div
+                style="display:flex; align-items:center; gap:0.4rem; font-weight:600; color:#c084fc; margin-bottom:0.35rem;">
                 <span>🛡️</span> Private Operator Mesh Flow (Zero Cloudflare Hops)
               </div>
               <div style="color:var(--text-muted); font-size:0.72rem; font-family:var(--font-mono); line-height:1.4;">
-                Developer Laptop ➔ <span style="color:#c084fc;">WireGuard P2P (100.64.0.0/10)</span> ➔ node-1 (100.64.0.1) ➔ <span style="color:#a855f7;">Postgres / Redis / SSH</span>
+                Developer Laptop ➔ <span style="color:#c084fc;">WireGuard P2P (100.64.0.0/10)</span> ➔ node-1
+                (100.64.0.1) ➔ <span style="color:#a855f7;">Postgres / Redis / SSH</span>
               </div>
             </div>
           </div>
@@ -1906,7 +2283,8 @@
     <section class="view-panel" id="view-synthetics">
       <div class="panel-content">
         <h2 style="font-size:1.1rem; font-weight:700;">Synthetic Monitors & Endpoints</h2>
-        <p style="color:var(--text-muted); font-size:0.8rem;">Automated 1-minute HTTP probes with Telegram & WhatsApp emergency alerts</p>
+        <p style="color:var(--text-muted); font-size:0.8rem;">Automated 1-minute HTTP probes with Telegram & WhatsApp
+          emergency alerts</p>
 
         <div class="card">
           <table class="data-table">
@@ -1949,13 +2327,15 @@
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.5rem;">
           <div>
             <h2 style="font-size:1.1rem; font-weight:700;">Edge Feature Flags</h2>
-            <p style="color:var(--text-muted); font-size:0.8rem;">Real-time sync to edge KV, host daemon & container volumes</p>
+            <p style="color:var(--text-muted); font-size:0.8rem;">Real-time sync to edge KV, host daemon & container
+              volumes</p>
           </div>
           <div style="display:flex; gap:0.5rem;">
             <button class="btn" id="btnRefreshFlags" style="font-size:0.8rem; padding:0.4rem 0.75rem;">
               🔄 Refresh Flags
             </button>
-            <button class="btn btn-primary" id="btnOpenCreateFlagModal" style="font-size:0.8rem; padding:0.4rem 0.75rem;">
+            <button class="btn btn-primary" id="btnOpenCreateFlagModal"
+              style="font-size:0.8rem; padding:0.4rem 0.75rem;">
               + Create Feature Flag
             </button>
           </div>
@@ -1987,13 +2367,15 @@
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.5rem;">
           <div>
             <h2 style="font-size:1.1rem; font-weight:700;">Encrypted Secrets Vault (AES-256-GCM)</h2>
-            <p style="color:var(--text-muted); font-size:0.8rem;">Decrypted only in edge RAM during blue/green deploy & injected directly into container RAM</p>
+            <p style="color:var(--text-muted); font-size:0.8rem;">Decrypted only in edge RAM during blue/green deploy &
+              injected directly into container RAM</p>
           </div>
           <div style="display:flex; gap:0.5rem;">
             <button class="btn" id="btnRefreshVault" style="font-size:0.8rem; padding:0.4rem 0.75rem;">
               🔄 Refresh Vault
             </button>
-            <button class="btn btn-primary" id="btnOpenImportEnvModal" style="font-size:0.8rem; padding:0.4rem 0.75rem;">
+            <button class="btn btn-primary" id="btnOpenImportEnvModal"
+              style="font-size:0.8rem; padding:0.4rem 0.75rem;">
               📥 Import .env File
             </button>
           </div>
@@ -2033,15 +2415,19 @@
     </div>
     <form id="deployForm" style="display:flex; flex-direction:column; gap:0.85rem;">
       <div>
-        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Service Name</label>
+        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Service
+          Name</label>
         <input type="text" id="deployService" class="search-box" value="web-api" required style="width:100%;">
       </div>
       <div>
-        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Docker Image (Candidate)</label>
-        <input type="text" id="deployImage" class="search-box" value="ghcr.io/my-org/web-api:v2.2.0" required style="width:100%;">
+        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Docker Image
+          (Candidate)</label>
+        <input type="text" id="deployImage" class="search-box" value="ghcr.io/my-org/web-api:v2.2.0" required
+          style="width:100%;">
       </div>
       <div>
-        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Target Environment</label>
+        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Target
+          Environment</label>
         <select id="deployEnv" class="search-box" style="width:100%; background:var(--bg); color:#fff;">
           <option value="uat" selected>UAT (Staging)</option>
           <option value="production">Production</option>
@@ -2049,38 +2435,49 @@
         </select>
       </div>
       <div>
-        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Target Node or Cluster</label>
-        <input type="text" id="deployNodeId" list="fleetNodeList" class="search-box" value="auto" required style="width:100%;">
+        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Target Node or
+          Cluster</label>
+        <input type="text" id="deployNodeId" list="fleetNodeList" class="search-box" value="auto" required
+          style="width:100%;">
         <datalist id="fleetNodeList">
           <option value="auto">Auto (Smart Bin-Packing: Consolidates onto best node)</option>
           <option value="all-prod">All Production Fleet Nodes (Multi-Node Cluster Rollout)</option>
           <option value="all">All Registered Nodes</option>
           <option value="node-1">Primary Node (node-1)</option>
         </datalist>
-        <span style="font-size:0.7rem; color:var(--text-dim); display:block; margin-top:0.2rem;">Use 'auto' for intelligent bin-packing, or 'all-prod' to fan out across all nodes</span>
+        <span style="font-size:0.7rem; color:var(--text-dim); display:block; margin-top:0.2rem;">Use 'auto' for
+          intelligent bin-packing, or 'all-prod' to fan out across all nodes</span>
       </div>
       <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.25rem;">
         <input type="checkbox" id="deployPreBackup" checked>
-        <label for="deployPreBackup" style="font-size:0.8rem; color:var(--text);">Enforce Pre-Deploy R2 Backup Guardrail</label>
+        <label for="deployPreBackup" style="font-size:0.8rem; color:var(--text);">Enforce Pre-Deploy R2 Backup
+          Guardrail</label>
       </div>
       <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.25rem;">
         <input type="checkbox" id="deployRunMigrations" checked>
-        <label for="deployRunMigrations" style="font-size:0.8rem; color:var(--text);">Run Database Migrations (with auto-rollback on failure)</label>
+        <label for="deployRunMigrations" style="font-size:0.8rem; color:var(--text);">Run Database Migrations (with
+          auto-rollback on failure)</label>
       </div>
       <div>
-        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Migration Command</label>
+        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Migration
+          Command</label>
         <input type="text" id="deployMigrationCmd" class="search-box" value="migrate up" style="width:100%;">
       </div>
 
       <!-- GRADUAL CANARY TRAFFIC WEIGHTING (TRAEFIK WRR) -->
-      <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px; padding:0.75rem;">
+      <div
+        style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px; padding:0.75rem;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
           <label style="font-size:0.78rem; font-weight:600; color:var(--text);">Gradual Canary Traffic Weighting</label>
-          <span id="canaryWeightBadge" style="font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:12px; background:rgba(99,102,241,0.2); color:#818cf8;">0% (Direct Cutover)</span>
+          <span id="canaryWeightBadge"
+            style="font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:12px; background:rgba(99,102,241,0.2); color:#818cf8;">0%
+            (Direct Cutover)</span>
         </div>
         <div style="display:flex; align-items:center; gap:0.75rem;">
-          <input type="range" id="deployCanaryWeight" min="0" max="90" step="5" value="0" style="flex:1; accent-color:var(--primary); cursor:pointer;">
-          <input type="number" id="deployCanaryDuration" class="search-box" value="60" min="5" max="3600" style="width:70px; text-align:center;" title="Soak duration in seconds">
+          <input type="range" id="deployCanaryWeight" min="0" max="90" step="5" value="0"
+            style="flex:1; accent-color:var(--primary); cursor:pointer;">
+          <input type="number" id="deployCanaryDuration" class="search-box" value="60" min="5" max="3600"
+            style="width:70px; text-align:center;" title="Soak duration in seconds">
           <span style="font-size:0.75rem; color:var(--text-muted);">sec soak</span>
         </div>
         <span style="font-size:0.68rem; color:var(--text-dim); display:block; margin-top:0.3rem;">
@@ -2089,10 +2486,13 @@
       </div>
 
       <!-- EPHEMERAL PR PREVIEW ENVIRONMENT -->
-      <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px; padding:0.75rem;">
+      <div
+        style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px; padding:0.75rem;">
         <div style="display:flex; align-items:center; gap:0.5rem;">
           <input type="checkbox" id="deployIsPreview">
-          <label for="deployIsPreview" style="font-size:0.8rem; font-weight:600; color:var(--text); cursor:pointer;">Ephemeral PR Preview Environment</label>
+          <label for="deployIsPreview"
+            style="font-size:0.8rem; font-weight:600; color:var(--text); cursor:pointer;">Ephemeral PR Preview
+            Environment</label>
         </div>
         <div id="previewFields" style="display:none; margin-top:0.6rem; display:flex; gap:0.5rem;">
           <div style="flex:1;">
@@ -2100,8 +2500,10 @@
             <input type="number" id="deployPRNumber" class="search-box" placeholder="e.g. 42" style="width:100%;">
           </div>
           <div style="flex:2;">
-            <label style="font-size:0.7rem; color:var(--text-muted); display:block; margin-bottom:0.2rem;">Preview Domain</label>
-            <input type="text" id="deployPreviewDomain" class="search-box" placeholder="pr-42-web-api.example.com" style="width:100%;">
+            <label style="font-size:0.7rem; color:var(--text-muted); display:block; margin-bottom:0.2rem;">Preview
+              Domain</label>
+            <input type="text" id="deployPreviewDomain" class="search-box" placeholder="pr-42-web-api.example.com"
+              style="width:100%;">
           </div>
         </div>
         <span style="font-size:0.68rem; color:var(--text-dim); display:block; margin-top:0.3rem;">
@@ -2129,24 +2531,29 @@
     </p>
     <form id="restoreForm" style="display:flex; flex-direction:column; gap:0.85rem;">
       <div>
-        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Snapshot Key</label>
+        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Snapshot
+          Key</label>
         <input type="text" id="restoreKey" class="search-box" readonly style="width:100%; color:#a5b4fc;">
       </div>
       <div>
-        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Target Node</label>
+        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Target
+          Node</label>
         <input type="text" id="restoreNodeId" class="search-box" value="node-prod-1" required style="width:100%;">
       </div>
       <div>
-        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Target Database Name</label>
+        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Target Database
+          Name</label>
         <input type="text" id="restoreTargetDb" class="search-box" value="postgres" required style="width:100%;">
       </div>
       <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.25rem;">
         <input type="checkbox" id="restoreSafetyConfirm" required>
-        <label for="restoreSafetyConfirm" style="font-size:0.78rem; color:#fca5a5;">I confirm I want to overwrite active database tables with this snapshot</label>
+        <label for="restoreSafetyConfirm" style="font-size:0.78rem; color:#fca5a5;">I confirm I want to overwrite active
+          database tables with this snapshot</label>
       </div>
       <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
         <button type="button" class="btn" id="btnCancelRestore">Cancel</button>
-        <button type="submit" class="btn" style="background:#be123c; color:#fff; border-color:#9f1239;">Confirm Restore</button>
+        <button type="submit" class="btn" style="background:#be123c; color:#fff; border-color:#9f1239;">Confirm
+          Restore</button>
       </div>
     </form>
   </dialog>
@@ -2161,11 +2568,14 @@
     </div>
     <div style="font-size:0.82rem; color:var(--text); display:flex; flex-direction:column; gap:0.85rem;">
       <p style="color:var(--text-muted);">
-        Every time a new Docker image is published to GitHub Container Registry (GHCR) or a commit is pushed to <code>main</code>, FlareLens can automatically execute zero-downtime blue/green rollouts across your fleet with Vault secret injection.
+        Every time a new Docker image is published to GitHub Container Registry (GHCR) or a commit is pushed to
+        <code>main</code>, FlareLens can automatically execute zero-downtime blue/green rollouts across your fleet with
+        Vault secret injection.
       </p>
       <div class="card" style="background:var(--bg-card); padding:0.85rem; border:1px solid var(--border);">
         <strong style="color:#a5b4fc; display:block; margin-bottom:0.35rem;">Webhook URL</strong>
-        <code id="webhookUrlDisplay" style="word-break:break-all;">https://control.flarelens.dev/api/v1/control/deploy/webhook</code>
+        <code id="webhookUrlDisplay"
+          style="word-break:break-all;">https://control.flarelens.dev/api/v1/control/deploy/webhook</code>
         <div style="margin-top:0.5rem; display:flex; gap:1.5rem; font-size:0.75rem; color:var(--text-muted);">
           <span>Content type: <strong>application/json</strong></span>
           <span>Secret: <strong>WEBHOOK_SECRET</strong></span>
@@ -2174,7 +2584,8 @@
       </div>
       <div>
         <strong style="display:block; margin-bottom:0.35rem; color:#10b981;">GitHub Actions Workflow Snippet</strong>
-        <pre id="webhookSnippetDisplay" style="background:var(--bg); padding:0.75rem; border-radius:6px; font-size:0.72rem; overflow-x:auto;">- name: Trigger FlareLens GitOps Blue/Green Deploy
+        <pre id="webhookSnippetDisplay"
+          style="background:var(--bg); padding:0.75rem; border-radius:6px; font-size:0.72rem; overflow-x:auto;">- name: Trigger FlareLens GitOps Blue/Green Deploy
   run: |
     curl -X POST https://control.flarelens.dev/api/v1/control/deploy/webhook \
       -H "Content-Type: application/json" \
@@ -2199,16 +2610,19 @@
       <button class="drawer-close" id="btnCloseImportEnvModal">&times;</button>
     </div>
     <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:1rem;" id="importEnvModalDesc">
-      Paste or edit your environment variables. They will be encrypted with AES-256-GCM at the Cloudflare edge and injected directly into container memory during deployments.
+      Paste or edit your environment variables. They will be encrypted with AES-256-GCM at the Cloudflare edge and
+      injected directly into container memory during deployments.
     </p>
     <form id="importEnvForm" style="display:flex; flex-direction:column; gap:0.85rem;">
       <div style="display:flex; gap:1rem;">
         <div style="flex:1;">
-          <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Service Name</label>
+          <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Service
+            Name</label>
           <input type="text" id="importEnvService" class="search-box" value="web-api" required style="width:100%;">
         </div>
         <div style="width:140px;">
-          <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Environment</label>
+          <label
+            style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Environment</label>
           <select id="importEnvEnv" class="filter-select" style="width:100%;">
             <option value="production">production</option>
             <option value="uat">uat</option>
@@ -2216,12 +2630,17 @@
         </div>
       </div>
       <div>
-        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">.env Key=Value Content</label>
-        <textarea id="importEnvText" style="width:100%; height:180px; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-mono); font-size:0.78rem; padding:0.6rem; outline:none;" placeholder="DATABASE_URL=postgres://...&#10;REDIS_URL=redis://...&#10;STRIPE_KEY=sk_live_..."></textarea>
+        <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">.env Key=Value
+          Content</label>
+        <textarea id="importEnvText"
+          style="width:100%; height:180px; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-mono); font-size:0.78rem; padding:0.6rem; outline:none;"
+          placeholder="DATABASE_URL=postgres://...&#10;REDIS_URL=redis://...&#10;STRIPE_KEY=sk_live_..."></textarea>
       </div>
-      <div style="display:flex; align-items:center; gap:0.5rem; background:rgba(59,130,246,0.08); padding:0.5rem; border-radius:6px; border:1px solid rgba(59,130,246,0.2);">
+      <div
+        style="display:flex; align-items:center; gap:0.5rem; background:rgba(59,130,246,0.08); padding:0.5rem; border-radius:6px; border:1px solid rgba(59,130,246,0.2);">
         <input type="checkbox" id="importEnvAutoDeploy" checked style="width:1.1rem; height:1.1rem; cursor:pointer;">
-        <label for="importEnvAutoDeploy" style="margin:0; font-size:0.78rem; cursor:pointer; color:#f8fafc; font-weight:500;">
+        <label for="importEnvAutoDeploy"
+          style="margin:0; font-size:0.78rem; cursor:pointer; color:#f8fafc; font-weight:500;">
           🔄 Automatically trigger zero-downtime Blue/Green reload to apply new secrets to containers immediately
         </label>
       </div>
@@ -2244,8 +2663,10 @@
       <button class="drawer-close" id="btnCloseViewSecretsModal">&times;</button>
     </div>
 
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
-      <input type="text" id="viewSecretsSearch" class="search-box" placeholder="Filter keys..." style="flex:1; min-width:200px; font-size:0.8rem; padding:0.4rem 0.6rem;">
+    <div
+      style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+      <input type="text" id="viewSecretsSearch" class="search-box" placeholder="Filter keys..."
+        style="flex:1; min-width:200px; font-size:0.8rem; padding:0.4rem 0.6rem;">
       <div style="display:flex; gap:0.5rem;">
         <button class="btn" id="btnToggleMaskSecrets" style="font-size:0.75rem; padding:0.4rem 0.7rem;">
           👁️ Reveal All
@@ -2253,13 +2674,15 @@
         <button class="btn" id="btnCopyEnvSecrets" style="font-size:0.75rem; padding:0.4rem 0.7rem;">
           📋 Copy as .env
         </button>
-        <button class="btn btn-primary" id="btnEditFromViewSecrets" style="font-size:0.75rem; padding:0.4rem 0.7rem; background:#3b82f6;">
+        <button class="btn btn-primary" id="btnEditFromViewSecrets"
+          style="font-size:0.75rem; padding:0.4rem 0.7rem; background:#3b82f6;">
           ✏️ Edit .env
         </button>
       </div>
     </div>
 
-    <div style="max-height: 420px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; background:#05080e;">
+    <div
+      style="max-height: 420px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; background:#05080e;">
       <table class="data-table" style="margin:0;">
         <thead>
           <tr>
@@ -2288,20 +2711,27 @@
   <dialog class="modal" id="meshClientModal" style="max-width: 640px;">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
       <h3 style="font-size:1.1rem; font-weight:700;">Enroll Zero-Trust Sovereign Device</h3>
-      <button type="button" class="btn btn-sm" id="btnCancelMeshClientModal" style="padding:2px 8px; font-size:0.8rem;">✕</button>
+      <button type="button" class="btn btn-sm" id="btnCancelMeshClientModal"
+        style="padding:2px 8px; font-size:0.8rem;">✕</button>
     </div>
     <p style="color:var(--text-muted); font-size:0.8rem; margin-bottom:1.2rem; line-height:1.4;">
-      Enrolls a client device directly into the Sovereign Mesh (<code>https://control.flarelens.dev</code>). Allocates a Carrier-Grade NAT (<code>100.64.0.x</code>) IP with MagicDNS (<code>.flarelens.mesh</code>), direct WireGuard P2P encryption, and zero third-party dependencies.
+      Enrolls a client device directly into the Sovereign Mesh (<code>https://control.flarelens.dev</code>). Allocates a
+      Carrier-Grade NAT (<code>100.64.0.x</code>) IP with MagicDNS (<code>.flarelens.mesh</code>), direct WireGuard P2P
+      encryption, and zero third-party dependencies.
     </p>
     <form id="meshClientForm">
       <div style="display:grid; grid-template-columns: 2fr 1fr; gap:0.75rem; margin-bottom:1rem;">
         <div>
-          <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Device Name / Hostname *</label>
-          <input type="text" id="meshClientNameInput" placeholder="e.g. devops-macbook or mikrotik-office" required style="width:100%; padding:0.55rem; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-sans); font-size:0.82rem; outline:none;" />
+          <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Device Name /
+            Hostname *</label>
+          <input type="text" id="meshClientNameInput" placeholder="e.g. devops-macbook or mikrotik-office" required
+            style="width:100%; padding:0.55rem; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-sans); font-size:0.82rem; outline:none;" />
         </div>
         <div>
-          <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Device Role</label>
-          <select id="meshDeviceTypeSelect" style="width:100%; padding:0.55rem; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-sans); font-size:0.82rem; outline:none;">
+          <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Device
+            Role</label>
+          <select id="meshDeviceTypeSelect"
+            style="width:100%; padding:0.55rem; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-sans); font-size:0.82rem; outline:none;">
             <option value="client">Operator Client / Laptop</option>
             <option value="node">Fleet Host Node</option>
             <option value="router">Subnet Router / MikroTik</option>
@@ -2312,32 +2742,47 @@
 
       <div style="margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem;">
         <input type="checkbox" id="meshReusableKeyCheckbox" checked style="accent-color:#10b981;" />
-        <label for="meshReusableKeyCheckbox" style="font-size:0.78rem; color:var(--text-muted); cursor:pointer;">Reusable Key (allows re-authenticating after reboot)</label>
+        <label for="meshReusableKeyCheckbox"
+          style="font-size:0.78rem; color:var(--text-muted); cursor:pointer;">Reusable Key (allows re-authenticating
+          after reboot)</label>
       </div>
 
-      <div id="meshClientResult" style="display:none; margin-bottom:1rem; padding:0.9rem; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.3); border-radius:6px;">
-        <div style="color:#10b981; font-weight:600; font-size:0.85rem; margin-bottom:0.3rem;">✓ Device Enrolled & Mesh Profile Generated!</div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; font-size:0.78rem; color:var(--text-muted); margin-bottom:0.75rem;">
-          <div>Assigned CGNAT IP: <strong id="meshAllocatedIP" style="color:#fff; font-family:var(--font-mono);">100.64.0.100</strong></div>
-          <div>MagicDNS: <strong id="meshMagicDnsPreview" style="color:#38bdf8; font-family:var(--font-mono);">device.flarelens.mesh</strong></div>
+      <div id="meshClientResult"
+        style="display:none; margin-bottom:1rem; padding:0.9rem; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.3); border-radius:6px;">
+        <div style="color:#10b981; font-weight:600; font-size:0.85rem; margin-bottom:0.3rem;">✓ Device Enrolled & Mesh
+          Profile Generated!</div>
+        <div
+          style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; font-size:0.78rem; color:var(--text-muted); margin-bottom:0.75rem;">
+          <div>Assigned CGNAT IP: <strong id="meshAllocatedIP"
+              style="color:#fff; font-family:var(--font-mono);">100.64.0.100</strong></div>
+          <div>MagicDNS: <strong id="meshMagicDnsPreview"
+              style="color:#38bdf8; font-family:var(--font-mono);">device.flarelens.mesh</strong></div>
         </div>
 
         <div style="margin-bottom:0.6rem;">
-          <label style="display:block; font-size:0.72rem; color:var(--text-muted); margin-bottom:0.25rem;">FlareLens Agent 1-Line Connect Command (Mac, Linux, Windows)</label>
+          <label style="display:block; font-size:0.72rem; color:var(--text-muted); margin-bottom:0.25rem;">FlareLens
+            Agent 1-Line Connect Command (Mac, Linux, Windows)</label>
           <div style="display:flex; gap:0.4rem;">
-            <input type="text" id="meshTailscaleCmdInput" readonly style="flex:1; padding:0.45rem; background:#07090e; border:1px solid var(--border); border-radius:4px; font-family:var(--font-mono); font-size:0.72rem; color:#10b981;" />
-            <button type="button" class="btn btn-sm" id="btnCopyTailscaleCmd" style="font-size:0.72rem; padding:0 0.6rem;">📋 Copy</button>
+            <input type="text" id="meshTailscaleCmdInput" readonly
+              style="flex:1; padding:0.45rem; background:#07090e; border:1px solid var(--border); border-radius:4px; font-family:var(--font-mono); font-size:0.72rem; color:#10b981;" />
+            <button type="button" class="btn btn-sm" id="btnCopyTailscaleCmd"
+              style="font-size:0.72rem; padding:0 0.6rem;">📋 Copy</button>
           </div>
         </div>
 
         <div style="display:flex; gap:0.4rem; margin-top:0.75rem;">
-          <button type="button" id="btnShowAgentCli" class="btn btn-sm" style="font-size:0.72rem; padding:3px 8px; border-color:#0284c7; color:#38bdf8;">💻 FlareLens CLI</button>
-          <button type="button" id="btnToggleConfPreview" class="btn btn-sm" style="font-size:0.72rem; padding:3px 8px;">📥 WireGuard .conf</button>
-          <button type="button" id="btnShowMikroTikGuide" class="btn btn-sm" style="font-size:0.72rem; padding:3px 8px;">📶 MikroTik RouterOS</button>
-          <button type="button" id="btnShowLinuxGuide" class="btn btn-sm" style="font-size:0.72rem; padding:3px 8px;">🐧 WireGuard Quick</button>
+          <button type="button" id="btnShowAgentCli" class="btn btn-sm"
+            style="font-size:0.72rem; padding:3px 8px; border-color:#0284c7; color:#38bdf8;">💻 FlareLens CLI</button>
+          <button type="button" id="btnToggleConfPreview" class="btn btn-sm"
+            style="font-size:0.72rem; padding:3px 8px;">📥 WireGuard .conf</button>
+          <button type="button" id="btnShowMikroTikGuide" class="btn btn-sm"
+            style="font-size:0.72rem; padding:3px 8px;">📶 MikroTik RouterOS</button>
+          <button type="button" id="btnShowLinuxGuide" class="btn btn-sm" style="font-size:0.72rem; padding:3px 8px;">🐧
+            WireGuard Quick</button>
         </div>
 
-        <pre id="meshConfPreview" style="display:none; margin-top:0.6rem; max-height:150px; overflow-y:auto; font-size:0.72rem; background:#07090e; padding:0.6rem; border-radius:4px; font-family:var(--font-mono); color:#cbd5e1;"></pre>
+        <pre id="meshConfPreview"
+          style="display:none; margin-top:0.6rem; max-height:150px; overflow-y:auto; font-size:0.72rem; background:#07090e; padding:0.6rem; border-radius:4px; font-family:var(--font-mono); color:#cbd5e1;"></pre>
       </div>
 
       <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.8rem;">
@@ -2351,42 +2796,55 @@
   <dialog class="modal" id="flagModal" style="max-width: 540px;">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
       <h3 style="font-size:1.1rem; font-weight:700;" id="flagModalTitle">Create Feature Flag</h3>
-      <button type="button" class="btn btn-sm" id="btnCloseFlagModal" style="padding:2px 8px; font-size:0.8rem;">✕</button>
+      <button type="button" class="btn btn-sm" id="btnCloseFlagModal"
+        style="padding:2px 8px; font-size:0.8rem;">✕</button>
     </div>
     <form id="flagForm">
       <div style="margin-bottom:0.9rem;">
-        <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Flag Key *</label>
-        <input type="text" id="flagKeyInput" placeholder="e.g. checkout_v2 or new_invoicing_flow" required style="width:100%; padding:0.55rem; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-mono); font-size:0.82rem; outline:none;" />
-        <small style="color:var(--text-muted); font-size:0.72rem; display:block; margin-top:0.25rem;">Unique key evaluated by apps, SDKs & containers</small>
+        <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Flag Key
+          *</label>
+        <input type="text" id="flagKeyInput" placeholder="e.g. checkout_v2 or new_invoicing_flow" required
+          style="width:100%; padding:0.55rem; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-mono); font-size:0.82rem; outline:none;" />
+        <small style="color:var(--text-muted); font-size:0.72rem; display:block; margin-top:0.25rem;">Unique key
+          evaluated by apps, SDKs & containers</small>
       </div>
 
       <div style="margin-bottom:0.9rem;">
-        <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Description</label>
-        <input type="text" id="flagDescInput" placeholder="Purpose or context of this feature flag" style="width:100%; padding:0.55rem; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-sans); font-size:0.82rem; outline:none;" />
+        <label
+          style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Description</label>
+        <input type="text" id="flagDescInput" placeholder="Purpose or context of this feature flag"
+          style="width:100%; padding:0.55rem; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-sans); font-size:0.82rem; outline:none;" />
       </div>
 
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:0.9rem;">
         <div>
-          <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Rollout Percentage</label>
+          <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Rollout
+            Percentage</label>
           <div style="display:flex; align-items:center; gap:0.4rem;">
-            <input type="number" id="flagRolloutInput" min="0" max="100" value="100" style="width:100%; padding:0.55rem; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-sans); font-size:0.82rem; outline:none;" />
+            <input type="number" id="flagRolloutInput" min="0" max="100" value="100"
+              style="width:100%; padding:0.55rem; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-sans); font-size:0.82rem; outline:none;" />
             <span style="color:var(--text-muted); font-size:0.85rem;">%</span>
           </div>
         </div>
 
         <div>
-          <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Active Status</label>
+          <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Active
+            Status</label>
           <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem;">
             <input type="checkbox" id="flagEnabledInput" checked style="width:1.2rem; height:1.2rem; cursor:pointer;" />
-            <label for="flagEnabledInput" style="margin:0; cursor:pointer; font-size:0.85rem; font-weight:600; color:#fff;">Enabled (Active)</label>
+            <label for="flagEnabledInput"
+              style="margin:0; cursor:pointer; font-size:0.85rem; font-weight:600; color:#fff;">Enabled (Active)</label>
           </div>
         </div>
       </div>
 
       <div style="margin-bottom:1.2rem;">
-        <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Target Environments</label>
-        <input type="text" id="flagEnvsInput" placeholder="production, uat, staging (leave blank for all)" style="width:100%; padding:0.55rem; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-sans); font-size:0.82rem; outline:none;" />
-        <small style="color:var(--text-muted); font-size:0.72rem; display:block; margin-top:0.25rem;">Comma-separated environments (e.g. production, uat)</small>
+        <label style="display:block; font-size:0.75rem; color:var(--text-muted); margin-bottom:0.35rem;">Target
+          Environments</label>
+        <input type="text" id="flagEnvsInput" placeholder="production, uat, staging (leave blank for all)"
+          style="width:100%; padding:0.55rem; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-sans); font-size:0.82rem; outline:none;" />
+        <small style="color:var(--text-muted); font-size:0.72rem; display:block; margin-top:0.25rem;">Comma-separated
+          environments (e.g. production, uat)</small>
       </div>
 
       <div id="flagModalMsg" style="display:none; margin-bottom:0.8rem; font-size:0.8rem;"></div>
@@ -2403,17 +2861,22 @@
     <div>
       <h3 id="otaConfirmTitle" style="font-size:1.05rem; font-weight:700;">Confirm Zero-SSH Agent OTA Upgrade</h3>
       <p style="font-size:0.8rem; color:var(--text-muted); margin-top:0.35rem; line-height:1.45;">
-        Dispatches a signed <code>self_update</code> command over the 15s heartbeat channel. The host daemon verifies the SHA-256 digest before atomic binary swap and service restart.
+        Dispatches a signed <code>self_update</code> command over the 15s heartbeat channel. The host daemon verifies
+        the SHA-256 digest before atomic binary swap and service restart.
       </p>
     </div>
     <form method="dialog" id="otaConfirmForm" style="display:flex; flex-direction:column; gap:0.85rem;">
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.65rem;">
         <div>
-          <label for="otaTargetNodeInput" style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:0.25rem;">Target Node</label>
+          <label for="otaTargetNodeInput"
+            style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:0.25rem;">Target
+            Node</label>
           <input type="text" id="otaTargetNodeInput" class="search-box" value="all" readonly style="width:100%;">
         </div>
         <div>
-          <label for="otaTargetArchSelect" style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:0.25rem;">Platform Target</label>
+          <label for="otaTargetArchSelect"
+            style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:0.25rem;">Platform
+            Target</label>
           <select id="otaTargetArchSelect" class="filter-select" style="width:100%;">
             <option value="linux-amd64" selected>linux-amd64</option>
             <option value="linux-arm64">linux-arm64</option>
@@ -2421,15 +2884,19 @@
         </div>
       </div>
       <div>
-        <label for="otaTargetVersionInput" style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:0.25rem;">Target Release Version (blank uses latest in R2)</label>
+        <label for="otaTargetVersionInput"
+          style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:0.25rem;">Target Release
+          Version (blank uses latest in R2)</label>
         <input type="text" id="otaTargetVersionInput" class="search-box" placeholder="e.g. 0.4.0" style="width:100%;">
       </div>
-      <div id="otaReleaseSummaryBox" style="background:#070b14; border:1px solid var(--border); border-radius:6px; padding:0.65rem 0.8rem; font-size:0.74rem; font-family:var(--font-mono); color:var(--text-muted); word-break:break-all;">
+      <div id="otaReleaseSummaryBox"
+        style="background:#070b14; border:1px solid var(--border); border-radius:6px; padding:0.65rem 0.8rem; font-size:0.74rem; font-family:var(--font-mono); color:var(--text-muted); word-break:break-all;">
         Checking published R2 agent release metadata...
       </div>
       <div style="display:flex; align-items:center; gap:0.5rem;">
         <input type="checkbox" id="otaForceCheckbox" style="width:1rem; height:1rem; cursor:pointer;">
-        <label for="otaForceCheckbox" style="font-size:0.78rem; color:var(--text); cursor:pointer;">Force reinstall even if node already reports this version</label>
+        <label for="otaForceCheckbox" style="font-size:0.78rem; color:var(--text); cursor:pointer;">Force reinstall even
+          if node already reports this version</label>
       </div>
       <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.35rem;">
         <button value="cancel" autofocus class="btn">Cancel</button>
@@ -2443,22 +2910,42 @@
     <div>
       <h3 id="rebootConfirmTitle" style="font-size:1.05rem; font-weight:700;">Confirm Drain-Locked Host Reboot</h3>
       <p style="font-size:0.8rem; color:var(--text-muted); margin-top:0.35rem; line-height:1.45;">
-        Queues a <code>reboot_node</code> command over the 15s heartbeat channel. The host agent waits for active deployments and database backups to drain, confirms command <code>ACK</code> first to prevent reboot loops, and executes a clean <code>systemctl reboot</code>.
+        Queues a <code>reboot_node</code> command over the 15s heartbeat channel. The host agent waits for active
+        deployments and database backups to drain, confirms command <code>ACK</code> first to prevent reboot loops, and
+        executes a clean <code>systemctl reboot</code>.
       </p>
     </div>
     <form method="dialog" id="rebootConfirmForm" style="display:flex; flex-direction:column; gap:0.85rem;">
       <div>
-        <label for="rebootTargetNodeInput" style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:0.25rem;">Target Node</label>
+        <label for="rebootTargetNodeInput"
+          style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:0.25rem;">Target Node</label>
         <input type="text" id="rebootTargetNodeInput" class="search-box" value="" readonly style="width:100%;">
       </div>
       <div>
-        <label for="rebootReasonInput" style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:0.25rem;">Maintenance Reason</label>
-        <input type="text" id="rebootReasonInput" class="search-box" value="Apply pending Linux kernel security update" style="width:100%;">
+        <label for="rebootReasonInput"
+          style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:0.25rem;">Maintenance
+          Reason</label>
+        <input type="text" id="rebootReasonInput" class="search-box" value="Apply pending Linux kernel security update"
+          style="width:100%;">
       </div>
       <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.35rem;">
         <button value="cancel" autofocus class="btn">Cancel</button>
         <button value="confirm" class="btn btn-primary" id="btnConfirmRebootSubmit">🔁 Queue Graceful Reboot</button>
       </div>
+    </form>
+  </dialog>
+
+  <!-- MODAL: CONFIRM NODE CORDON & DRAIN -->
+  <dialog id="drainNodeConfirmDialog" class="ota-dialog" aria-labelledby="drainNodeConfirmTitle" closedby="any">
+    <div>
+      <h3 id="drainNodeConfirmTitle" style="font-size:1.05rem; font-weight:700; color:#fbbf24;">Cordon &amp; Drain Host Node?</h3>
+      <p id="drainNodeConfirmDesc" style="font-size:0.8rem; color:var(--text-muted); margin-top:0.35rem; line-height:1.45;">
+        Marks this node unschedulable, reschedules stateless Blue/Green replicas onto healthy WireGuard peers, and fences local stateful database volumes so no persistent data is wiped.
+      </p>
+    </div>
+    <form method="dialog" style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.5rem;">
+      <button value="cancel" autofocus class="btn">Cancel</button>
+      <button value="drain" class="btn" style="background:#d97706; color:#fff; border-color:#b45309;">💧 Cordon &amp; Drain</button>
     </form>
   </dialog>
 
@@ -2472,50 +2959,50 @@
         </p>
       </div>
       <div style="display:flex; gap:0.4rem; align-items:center;">
-        <button type="button" class="btn" id="btnToggleFleetJsonMode" aria-pressed="false" style="font-size:0.73rem; padding:0.3rem 0.65rem;">{ } JSON Editor</button>
-        <button type="button" class="btn" id="btnCloseFleetServiceTop" aria-label="Close service dialog" style="padding:0.3rem 0.6rem;">✕</button>
+        <button type="button" class="btn" id="btnToggleFleetJsonMode" aria-pressed="false"
+          style="font-size:0.73rem; padding:0.3rem 0.65rem;">{ } JSON Editor</button>
+        <button type="button" class="btn" id="btnCloseFleetServiceTop" aria-label="Close service dialog"
+          style="padding:0.3rem 0.6rem;">✕</button>
       </div>
     </div>
 
     <div class="fleet-preset-bar" role="group" aria-label="One-click service templates">
-      <span style="font-size:0.72rem; color:var(--text-dim); align-self:center; margin-inline-end:0.25rem;">Templates:</span>
-      <button type="button" class="btn" data-fleet-preset="web" style="font-size:0.72rem; padding:0.24rem 0.55rem;">⚡ Blue/Green App</button>
-      <button type="button" class="btn" data-fleet-preset="postgres" style="font-size:0.72rem; padding:0.24rem 0.55rem;">🐘 PostgreSQL 18</button>
-      <button type="button" class="btn" data-fleet-preset="dragonfly" style="font-size:0.72rem; padding:0.24rem 0.55rem;">🐉 Dragonfly</button>
-      <button type="button" class="btn" data-fleet-preset="traefik" style="font-size:0.72rem; padding:0.24rem 0.55rem;">🔀 Traefik v3</button>
-      <button type="button" class="btn" data-fleet-preset="cloudflared" style="font-size:0.72rem; padding:0.24rem 0.55rem;">☁️ Cloudflared</button>
+      <span
+        style="font-size:0.72rem; color:var(--text-dim); align-self:center; margin-inline-end:0.25rem;">Templates:</span>
+      <button type="button" class="btn" data-fleet-preset="web" style="font-size:0.72rem; padding:0.24rem 0.55rem;">⚡
+        Blue/Green App</button>
+      <button type="button" class="btn" data-fleet-preset="postgres"
+        style="font-size:0.72rem; padding:0.24rem 0.55rem;">🐘 PostgreSQL 18</button>
+      <button type="button" class="btn" data-fleet-preset="dragonfly"
+        style="font-size:0.72rem; padding:0.24rem 0.55rem;">🐉 Dragonfly</button>
+      <button type="button" class="btn" data-fleet-preset="traefik"
+        style="font-size:0.72rem; padding:0.24rem 0.55rem;">🔀 Traefik v3</button>
+      <button type="button" class="btn" data-fleet-preset="cloudflared"
+        style="font-size:0.72rem; padding:0.24rem 0.55rem;">☁️ Cloudflared</button>
     </div>
 
-    <form id="fleetServiceForm" action="/api/v1/control/fleet/manifests" method="post" aria-labelledby="fleetServiceDialogTitle" novalidate>
+    <form id="fleetServiceForm" action="/api/v1/control/fleet/manifests" method="post"
+      aria-labelledby="fleetServiceDialogTitle" novalidate>
       <div id="fleetStructuredFieldsPane">
         <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:0.75rem;">
           <div class="fleet-field">
             <label for="fleetSvcNameInput">Service Name <span aria-hidden="true">*</span></label>
-            <span id="fleetSvcNameHint" class="fleet-hint">Lowercase letters, numbers, and hyphens (e.g. billing-api).</span>
-            <input
-              type="text"
-              id="fleetSvcNameInput"
-              name="service"
-              class="search-box"
-              required
-              autofocus
-              pattern="[a-z0-9-]+"
-              autocorrect="off"
-              autocapitalize="none"
-              spellcheck="false"
-              aria-describedby="fleetSvcNameHint"
-              data-error="fleetSvcNameError"
-              style="width:100%;"
-            >
+            <span id="fleetSvcNameHint" class="fleet-hint">Lowercase letters, numbers, and hyphens (e.g.
+              billing-api).</span>
+            <input type="text" id="fleetSvcNameInput" name="service" class="search-box" required autofocus
+              pattern="[a-z0-9-]+" autocorrect="off" autocapitalize="none" spellcheck="false"
+              aria-describedby="fleetSvcNameHint" data-error="fleetSvcNameError" style="width:100%;">
             <div id="fleetSvcNameError" class="fleet-error-msg">
-              <span role="img" aria-label="Error">❌</span> Enter a lowercase service slug using only a-z, 0-9, and hyphens.
+              <span role="img" aria-label="Error">❌</span> Enter a lowercase service slug using only a-z, 0-9, and
+              hyphens.
             </div>
           </div>
 
           <div class="fleet-field">
             <label for="fleetSvcEnvSelect">Environment <span aria-hidden="true">*</span></label>
             <span id="fleetSvcEnvHint" class="fleet-hint">Target isolation tier.</span>
-            <select id="fleetSvcEnvSelect" name="env" class="filter-select" aria-describedby="fleetSvcEnvHint" style="width:100%; height:36px;">
+            <select id="fleetSvcEnvSelect" name="env" class="filter-select" aria-describedby="fleetSvcEnvHint"
+              style="width:100%; height:36px;">
               <option value="uat">uat</option>
               <option value="prod">prod</option>
               <option value="infra">infra</option>
@@ -2525,74 +3012,100 @@
           </div>
         </div>
 
-        <fieldset style="border:1px solid var(--border); border-radius:8px; padding:0.6rem 0.85rem; margin-block-end:0.85rem;">
-          <legend style="font-size:0.74rem; font-weight:600; color:var(--text-muted); padding:0 0.35rem;">Workload Orchestration Mode</legend>
+        <fieldset
+          style="border:1px solid var(--border); border-radius:8px; padding:0.6rem 0.85rem; margin-block-end:0.85rem;">
+          <legend style="font-size:0.74rem; font-weight:600; color:var(--text-muted); padding:0 0.35rem;">Workload
+            Orchestration Mode</legend>
           <div style="display:flex; gap:1.25rem; flex-wrap:wrap; margin-block-start:0.2rem;">
             <div style="display:flex; align-items:center; gap:0.4rem;">
-              <input type="radio" id="fleetModeBlueGreen" name="workload_mode" value="blue_green" checked style="accent-color:#3b82f6;">
-              <label for="fleetModeBlueGreen" style="font-size:0.8rem; cursor:pointer;">Blue/Green Rolling Web Service</label>
+              <input type="radio" id="fleetModeBlueGreen" name="workload_mode" value="blue_green" checked
+                style="accent-color:#3b82f6;">
+              <label for="fleetModeBlueGreen" style="font-size:0.8rem; cursor:pointer;">Blue/Green Rolling Web
+                Service</label>
             </div>
             <div style="display:flex; align-items:center; gap:0.4rem;">
-              <input type="radio" id="fleetModeSingleton" name="workload_mode" value="singleton" style="accent-color:#3b82f6;">
-              <label for="fleetModeSingleton" style="font-size:0.8rem; cursor:pointer;">Singleton / Stateful Container</label>
+              <input type="radio" id="fleetModeSingleton" name="workload_mode" value="singleton"
+                style="accent-color:#3b82f6;">
+              <label for="fleetModeSingleton" style="font-size:0.8rem; cursor:pointer;">Singleton / Stateful
+                Container</label>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset style="border:1px solid var(--border); border-radius:8px; padding:0.6rem 0.85rem; margin-block-end:0.85rem;">
+          <legend style="font-size:0.74rem; font-weight:600; color:var(--text-muted); padding:0 0.35rem;">Multi-Node Placement Strategy</legend>
+          <div style="display:flex; gap:1.15rem; flex-wrap:wrap; margin-block-start:0.2rem; margin-block-end:0.65rem;">
+            <div style="display:flex; align-items:center; gap:0.4rem;">
+              <input type="radio" id="fleetStrategySpread" name="placement_strategy" value="spread" checked style="accent-color:#10b981;">
+              <label for="fleetStrategySpread" style="font-size:0.79rem; cursor:pointer;">Spread (HA Anti-Affinity)</label>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.4rem;">
+              <input type="radio" id="fleetStrategyBinpack" name="placement_strategy" value="binpack" style="accent-color:#10b981;">
+              <label for="fleetStrategyBinpack" style="font-size:0.79rem; cursor:pointer;">Bin-Pack (Consolidate RAM)</label>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.4rem;">
+              <input type="radio" id="fleetStrategyPinned" name="placement_strategy" value="pinned" style="accent-color:#10b981;">
+              <label for="fleetStrategyPinned" style="font-size:0.79rem; cursor:pointer;">Pinned (Anchor to Host)</label>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.6rem;">
+            <div class="fleet-field" id="fleetReplicasFieldWrap" style="margin-block-end:0;">
+              <label for="fleetReplicasInput">Replicas (1–32)</label>
+              <input type="text" id="fleetReplicasInput" name="replicas" inputmode="numeric" pattern="[0-9]*" class="search-box" value="1" style="width:100%;">
+            </div>
+            <div class="fleet-field" style="margin-block-end:0;">
+              <label for="fleetMemoryMbInput">Memory Reserve (MB)</label>
+              <input type="text" id="fleetMemoryMbInput" name="memory_mb" inputmode="numeric" pattern="[0-9]*" class="search-box" value="256" style="width:100%;">
+            </div>
+            <div class="fleet-field" style="margin-block-end:0;">
+              <label for="fleetTargetNodeInput">Target Host (<code>auto</code> or ID)</label>
+              <input type="text" id="fleetTargetNodeInput" name="node_id" class="search-box" value="auto" autocorrect="off" autocapitalize="none" spellcheck="false" style="width:100%;">
             </div>
           </div>
         </fieldset>
 
         <div class="fleet-field">
           <label for="fleetSvcImageInput">Container Image <span aria-hidden="true">*</span></label>
-          <span id="fleetSvcImageHint" class="fleet-hint">Fully qualified OCI image and tag (e.g. ghcr.io/org/app:v1.2.0 or postgres:18).</span>
-          <input
-            type="text"
-            id="fleetSvcImageInput"
-            name="image"
-            class="search-box"
-            required
-            autocorrect="off"
-            autocapitalize="none"
-            spellcheck="false"
-            aria-describedby="fleetSvcImageHint"
-            data-error="fleetSvcImageError"
-            style="width:100%;"
-          >
+          <span id="fleetSvcImageHint" class="fleet-hint">Fully qualified OCI image and tag (e.g. ghcr.io/org/app:v1.2.0
+            or postgres:18).</span>
+          <input type="text" id="fleetSvcImageInput" name="image" class="search-box" required autocorrect="off"
+            autocapitalize="none" spellcheck="false" aria-describedby="fleetSvcImageHint"
+            data-error="fleetSvcImageError" style="width:100%;">
           <div id="fleetSvcImageError" class="fleet-error-msg">
-            <span role="img" aria-label="Error">❌</span> Enter a container image reference such as ghcr.io/org/app:latest.
+            <span role="img" aria-label="Error">❌</span> Enter a container image reference such as
+            ghcr.io/org/app:latest.
           </div>
         </div>
 
         <div id="fleetBgFieldsGroup">
           <div class="fleet-field">
             <label for="fleetSvcDomainsInput">Public / Internal Domains</label>
-            <span id="fleetSvcDomainsHint" class="fleet-hint">Comma-separated hostnames routed by Traefik (e.g. api.example.com, auth.example.com).</span>
-            <input
-              type="text"
-              id="fleetSvcDomainsInput"
-              name="domains"
-              class="search-box"
-              autocorrect="off"
-              autocapitalize="none"
-              spellcheck="false"
-              aria-describedby="fleetSvcDomainsHint"
-              style="width:100%;"
-            >
+            <span id="fleetSvcDomainsHint" class="fleet-hint">Comma-separated hostnames routed by Traefik (e.g.
+              api.example.com, auth.example.com).</span>
+            <input type="text" id="fleetSvcDomainsInput" name="domains" class="search-box" autocorrect="off"
+              autocapitalize="none" spellcheck="false" aria-describedby="fleetSvcDomainsHint" style="width:100%;">
           </div>
 
           <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.6rem;">
             <div class="fleet-field">
               <label for="fleetContainerPortInput">Container Port</label>
-              <input type="text" id="fleetContainerPortInput" name="container_port" inputmode="numeric" pattern="[0-9]*" class="search-box" value="8080" style="width:100%;">
+              <input type="text" id="fleetContainerPortInput" name="container_port" inputmode="numeric" pattern="[0-9]*"
+                class="search-box" value="8080" style="width:100%;">
             </div>
             <div class="fleet-field">
               <label for="fleetBluePortInput">Blue Port</label>
-              <input type="text" id="fleetBluePortInput" name="host_port_blue" inputmode="numeric" pattern="[0-9]*" class="search-box" value="8081" style="width:100%;">
+              <input type="text" id="fleetBluePortInput" name="host_port_blue" inputmode="numeric" pattern="[0-9]*"
+                class="search-box" value="8081" style="width:100%;">
             </div>
             <div class="fleet-field">
               <label for="fleetGreenPortInput">Green Port</label>
-              <input type="text" id="fleetGreenPortInput" name="host_port_green" inputmode="numeric" pattern="[0-9]*" class="search-box" value="8082" style="width:100%;">
+              <input type="text" id="fleetGreenPortInput" name="host_port_green" inputmode="numeric" pattern="[0-9]*"
+                class="search-box" value="8082" style="width:100%;">
             </div>
             <div class="fleet-field">
               <label for="fleetHealthPathInput">Health Path</label>
-              <input type="text" id="fleetHealthPathInput" name="health_path" class="search-box" value="/health" autocorrect="off" autocapitalize="none" spellcheck="false" style="width:100%;">
+              <input type="text" id="fleetHealthPathInput" name="health_path" class="search-box" value="/health"
+                autocorrect="off" autocapitalize="none" spellcheck="false" style="width:100%;">
             </div>
           </div>
         </div>
@@ -2601,39 +3114,23 @@
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.75rem;">
             <div class="fleet-field">
               <label for="fleetContainerNameInput">Container Name</label>
-              <span id="fleetContainerNameHint" class="fleet-hint">Explicit singleton container name (e.g. app-uat-postgres).</span>
-              <input
-                type="text"
-                id="fleetContainerNameInput"
-                name="container_name"
-                class="search-box"
-                autocorrect="off"
-                autocapitalize="none"
-                spellcheck="false"
-                aria-describedby="fleetContainerNameHint"
-                style="width:100%;"
-              >
+              <span id="fleetContainerNameHint" class="fleet-hint">Explicit singleton container name (e.g.
+                app-uat-postgres).</span>
+              <input type="text" id="fleetContainerNameInput" name="container_name" class="search-box" autocorrect="off"
+                autocapitalize="none" spellcheck="false" aria-describedby="fleetContainerNameHint" style="width:100%;">
             </div>
             <div class="fleet-field">
               <label for="fleetPortsListInput">Host Port Bindings</label>
               <span id="fleetPortsListHint" class="fleet-hint">Comma-separated (e.g. 127.0.0.1:5432:5432).</span>
-              <input
-                type="text"
-                id="fleetPortsListInput"
-                name="ports"
-                class="search-box"
-                autocorrect="off"
-                autocapitalize="none"
-                spellcheck="false"
-                aria-describedby="fleetPortsListHint"
-                style="width:100%;"
-              >
+              <input type="text" id="fleetPortsListInput" name="ports" class="search-box" autocorrect="off"
+                autocapitalize="none" spellcheck="false" aria-describedby="fleetPortsListHint" style="width:100%;">
             </div>
           </div>
           <div style="display:flex; align-items:center; gap:0.5rem; margin-block-end:0.85rem;">
             <input type="checkbox" id="fleetAdoptOnlyCheckbox" name="adopt_only" style="accent-color:#10b981;">
             <label for="fleetAdoptOnlyCheckbox" style="font-size:0.79rem; cursor:pointer;">
-              Adopt existing container without restarting (<code>adopt_only: true</code> — recommended for Postgres, Dragonfly, Traefik)
+              Adopt existing container without restarting (<code>adopt_only: true</code> — recommended for Postgres,
+              Dragonfly, Traefik)
             </label>
           </div>
         </div>
@@ -2641,66 +3138,62 @@
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.75rem;">
           <div class="fleet-field">
             <label for="fleetNetworksInput">Docker Networks</label>
-            <span id="fleetNetworksHint" class="fleet-hint">Comma-separated (e.g. app-uat, flarelens-edge or host).</span>
-            <input type="text" id="fleetNetworksInput" name="networks" class="search-box" value="flarelens-edge" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="fleetNetworksHint" style="width:100%;">
+            <span id="fleetNetworksHint" class="fleet-hint">Comma-separated (e.g. app-uat, flarelens-edge or
+              host).</span>
+            <input type="text" id="fleetNetworksInput" name="networks" class="search-box" value="flarelens-edge"
+              autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="fleetNetworksHint"
+              style="width:100%;">
           </div>
           <div class="fleet-field">
             <label for="fleetAliasesInput">Docker DNS Aliases</label>
             <span id="fleetAliasesHint" class="fleet-hint">Optional internal aliases (e.g. api, postgres).</span>
-            <input type="text" id="fleetAliasesInput" name="aliases" class="search-box" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="fleetAliasesHint" style="width:100%;">
+            <input type="text" id="fleetAliasesInput" name="aliases" class="search-box" autocorrect="off"
+              autocapitalize="none" spellcheck="false" aria-describedby="fleetAliasesHint" style="width:100%;">
           </div>
         </div>
 
         <div class="fleet-field">
           <label for="fleetEnvVarsTextarea">Declarative Environment Overrides (<code>KEY=VALUE</code>)</label>
-          <span id="fleetEnvVarsHint" class="fleet-hint">Merged onto encrypted Vault bundle at deploy time (also initializes Vault bundle if missing).</span>
-          <textarea
-            id="fleetEnvVarsTextarea"
-            name="env_vars"
-            rows="3"
-            autocorrect="off"
-            autocapitalize="none"
-            spellcheck="false"
-            aria-describedby="fleetEnvVarsHint"
-            style="width:100%; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-mono); font-size:0.76rem; padding:0.55rem;"
-          ></textarea>
+          <span id="fleetEnvVarsHint" class="fleet-hint">Merged onto encrypted Vault bundle at deploy time (also
+            initializes Vault bundle if missing).</span>
+          <textarea id="fleetEnvVarsTextarea" name="env_vars" rows="3" autocorrect="off" autocapitalize="none"
+            spellcheck="false" aria-describedby="fleetEnvVarsHint"
+            style="width:100%; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#fff; font-family:var(--font-mono); font-size:0.76rem; padding:0.55rem;"></textarea>
         </div>
       </div>
 
       <div id="fleetRawJsonPane" hidden>
         <div class="fleet-field">
           <label for="fleetRawJsonTextarea">Full Service Manifest JSON</label>
-          <span id="fleetRawJsonHint" class="fleet-hint">Validated against <code>/schemas/fleet.schema.json</code> on save.</span>
-          <textarea
-            id="fleetRawJsonTextarea"
-            name="raw_manifest_json"
-            rows="14"
-            autocorrect="off"
-            autocapitalize="none"
-            spellcheck="false"
-            aria-describedby="fleetRawJsonHint"
-            style="width:100%; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#e2e8f0; font-family:var(--font-mono); font-size:0.76rem; padding:0.65rem;"
-          ></textarea>
+          <span id="fleetRawJsonHint" class="fleet-hint">Validated against <code>/schemas/fleet.schema.json</code> on
+            save.</span>
+          <textarea id="fleetRawJsonTextarea" name="raw_manifest_json" rows="14" autocorrect="off" autocapitalize="none"
+            spellcheck="false" aria-describedby="fleetRawJsonHint"
+            style="width:100%; background:#05080e; border:1px solid var(--border); border-radius:6px; color:#e2e8f0; font-family:var(--font-mono); font-size:0.76rem; padding:0.65rem;"></textarea>
         </div>
       </div>
 
       <div class="fleet-field">
         <label for="fleetChangeReasonInput">Revision Note</label>
-        <input type="text" id="fleetChangeReasonInput" name="reason" class="search-box" placeholder="e.g. Bump image tag or add auth domain" style="width:100%;">
+        <input type="text" id="fleetChangeReasonInput" name="reason" class="search-box"
+          placeholder="e.g. Bump image tag or add auth domain" style="width:100%;">
       </div>
 
       <div style="display:flex; gap:1.25rem; flex-wrap:wrap; margin-block:0.4rem 0.9rem;">
         <div style="display:flex; align-items:center; gap:0.45rem;">
           <input type="checkbox" id="fleetEnabledCheckbox" name="enabled" checked style="accent-color:#10b981;">
-          <label for="fleetEnabledCheckbox" style="font-size:0.8rem; cursor:pointer; font-weight:600;">Enabled (Active)</label>
+          <label for="fleetEnabledCheckbox" style="font-size:0.8rem; cursor:pointer; font-weight:600;">Enabled
+            (Active)</label>
         </div>
         <div style="display:flex; align-items:center; gap:0.45rem;">
           <input type="checkbox" id="fleetReconcileNowCheckbox" name="reconcile" checked style="accent-color:#3b82f6;">
-          <label for="fleetReconcileNowCheckbox" style="font-size:0.8rem; cursor:pointer;">Reconcile on target node immediately</label>
+          <label for="fleetReconcileNowCheckbox" style="font-size:0.8rem; cursor:pointer;">Reconcile on target node
+            immediately</label>
         </div>
       </div>
 
-      <div id="fleetServiceFormStatus" role="status" style="font-size:0.78rem; color:#fb7185; margin-block-end:0.65rem; min-height:1.1rem;"></div>
+      <div id="fleetServiceFormStatus" role="status"
+        style="font-size:0.78rem; color:#fb7185; margin-block-end:0.65rem; min-height:1.1rem;"></div>
 
       <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
         <button type="button" class="btn" id="btnCancelFleetServiceDialog">Cancel</button>
@@ -2710,10 +3203,12 @@
   </dialog>
 
   <!-- MODAL: IMMUTABLE REVISION TIMELINE & 1-CLICK ROLLBACK -->
-  <dialog id="fleetRevisionsDialog" class="ota-dialog fleet-wide-dialog" aria-labelledby="fleetRevisionsDialogTitle" closedby="any">
+  <dialog id="fleetRevisionsDialog" class="ota-dialog fleet-wide-dialog" aria-labelledby="fleetRevisionsDialogTitle"
+    closedby="any">
     <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem;">
       <div>
-        <h3 id="fleetRevisionsDialogTitle" style="font-size:1.08rem; font-weight:700;">Immutable Fleet Revisions &amp; Rollback</h3>
+        <h3 id="fleetRevisionsDialogTitle" style="font-size:1.08rem; font-weight:700;">Immutable Fleet Revisions &amp;
+          Rollback</h3>
         <p id="fleetRevisionsDialogSub" style="font-size:0.77rem; color:var(--text-muted); margin-top:0.2rem;">
           Stored in Cloudflare D1 + R2 state snapshots. Roll back to any revision in 1 click.
         </p>
@@ -2722,7 +3217,8 @@
         <button value="close" autofocus class="btn" style="padding:0.3rem 0.7rem;">Close</button>
       </form>
     </div>
-    <div id="fleetRevisionsListContainer" style="display:flex; flex-direction:column; gap:0.65rem; max-block-size:62vh; overflow-y:auto;">
+    <div id="fleetRevisionsListContainer"
+      style="display:flex; flex-direction:column; gap:0.65rem; max-block-size:62vh; overflow-y:auto;">
       <div style="text-align:center; color:var(--text-muted); padding:1.5rem;">Loading revisions...</div>
     </div>
   </dialog>
@@ -2730,14 +3226,18 @@
   <!-- MODAL: CONFIRM DELETE FLEET MANIFEST -->
   <dialog id="fleetDeleteConfirmDialog" class="ota-dialog" aria-labelledby="fleetDeleteConfirmTitle" closedby="any">
     <div>
-      <h3 id="fleetDeleteConfirmTitle" style="font-size:1.05rem; font-weight:700; color:#fb7185;">Remove Service Manifest?</h3>
-      <p id="fleetDeleteConfirmDesc" style="font-size:0.8rem; color:var(--text-muted); margin-top:0.35rem; line-height:1.45;">
-        Removes this manifest from active reconciliation while recording a recoverable revision in D1 &amp; R2 so you can roll it back anytime.
+      <h3 id="fleetDeleteConfirmTitle" style="font-size:1.05rem; font-weight:700; color:#fb7185;">Remove Service
+        Manifest?</h3>
+      <p id="fleetDeleteConfirmDesc"
+        style="font-size:0.8rem; color:var(--text-muted); margin-top:0.35rem; line-height:1.45;">
+        Removes this manifest from active reconciliation while recording a recoverable revision in D1 &amp; R2 so you
+        can roll it back anytime.
       </p>
     </div>
     <form method="dialog" style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.5rem;">
       <button value="cancel" autofocus class="btn">Cancel</button>
-      <button value="delete" class="btn" style="background:#be123c; color:#fff; border-color:#9f1239;">Delete Manifest</button>
+      <button value="delete" class="btn" style="background:#be123c; color:#fff; border-color:#9f1239;">Delete
+        Manifest</button>
     </form>
   </dialog>
 
@@ -2746,48 +3246,70 @@
     <div class="drawer-header" style="background:#090d18; border-bottom:1px solid var(--border); padding:1rem 1.25rem;">
       <div style="display:flex; flex-direction:column; gap:0.35rem; width:calc(100% - 35px);">
         <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-          <span id="drawerStatusBadge" class="badge" style="font-size:0.7rem; font-weight:700; padding:3px 8px; border-radius:4px;">ERROR 500</span>
-          <span id="drawerServiceBadge" class="badge badge-info" style="font-size:0.7rem; font-weight:600;">web-api</span>
-          <span id="drawerEnvBadge" style="font-size:0.68rem; color:var(--text-muted); background:rgba(255,255,255,0.06); padding:2px 6px; border-radius:4px; font-weight:600; text-transform:uppercase;">UAT</span>
-          <span id="drawerDurationBadge" style="font-size:0.7rem; color:#38bdf8; font-family:var(--font-mono); margin-left:auto;">124.5 ms</span>
+          <span id="drawerStatusBadge" class="badge"
+            style="font-size:0.7rem; font-weight:700; padding:3px 8px; border-radius:4px;">ERROR 500</span>
+          <span id="drawerServiceBadge" class="badge badge-info"
+            style="font-size:0.7rem; font-weight:600;">web-api</span>
+          <span id="drawerEnvBadge"
+            style="font-size:0.68rem; color:var(--text-muted); background:rgba(255,255,255,0.06); padding:2px 6px; border-radius:4px; font-weight:600; text-transform:uppercase;">UAT</span>
+          <span id="drawerDurationBadge"
+            style="font-size:0.7rem; color:#38bdf8; font-family:var(--font-mono); margin-left:auto;">124.5 ms</span>
         </div>
         <div style="display:flex; align-items:center; gap:0.5rem;">
-          <div id="drawerTraceId" style="font-family:var(--font-mono); font-size:0.72rem; color:var(--trace-color); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:480px;">Trace ID: -</div>
-          <button id="btnCopyTraceId" title="Copy Trace ID" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:0.75rem; padding:2px 4px;">📋</button>
+          <div id="drawerTraceId"
+            style="font-family:var(--font-mono); font-size:0.72rem; color:var(--trace-color); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:480px;">
+            Trace ID: -</div>
+          <button id="btnCopyTraceId" title="Copy Trace ID"
+            style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:0.75rem; padding:2px 4px;">📋</button>
         </div>
       </div>
       <button class="drawer-close" id="drawerClose" style="font-size:1.5rem; line-height:1;">&times;</button>
     </div>
 
     <!-- Root Cause / Error Alert Banner -->
-    <div id="drawerErrorBanner" style="display:none; background:rgba(244,63,94,0.1); border-bottom:1px solid rgba(244,63,94,0.3); padding:0.75rem 1.25rem;">
+    <div id="drawerErrorBanner"
+      style="display:none; background:rgba(244,63,94,0.1); border-bottom:1px solid rgba(244,63,94,0.3); padding:0.75rem 1.25rem;">
       <div style="display:flex; align-items:flex-start; gap:0.5rem;">
         <span style="font-size:1rem; line-height:1.2;">⚠️</span>
         <div style="flex:1;">
-          <div style="font-size:0.72rem; font-weight:700; color:#f43f5e; text-transform:uppercase; letter-spacing:0.05em;">Root Cause Exception / Error Event</div>
-          <div id="drawerErrorMessage" style="font-family:var(--font-mono); font-size:0.78rem; color:#fff; margin-top:0.25rem; word-break:break-all; white-space:pre-wrap;"></div>
+          <div
+            style="font-size:0.72rem; font-weight:700; color:#f43f5e; text-transform:uppercase; letter-spacing:0.05em;">
+            Root Cause Exception / Error Event</div>
+          <div id="drawerErrorMessage"
+            style="font-family:var(--font-mono); font-size:0.78rem; color:#fff; margin-top:0.25rem; word-break:break-all; white-space:pre-wrap;">
+          </div>
         </div>
       </div>
     </div>
 
     <!-- Navigation Tabs inside Drawer -->
     <div style="display:flex; background:#070a13; border-bottom:1px solid var(--border); padding:0 1.25rem; gap:1rem;">
-      <button class="drawer-tab active" data-dtab="waterfall" style="background:none; border:none; border-bottom:2px solid var(--accent); color:#fff; font-size:0.78rem; font-weight:600; padding:0.65rem 0.2rem; cursor:pointer;">⚡ Waterfall Timeline</button>
-      <button class="drawer-tab" data-dtab="correlated" style="background:none; border:none; border-bottom:2px solid transparent; color:var(--text-muted); font-size:0.78rem; font-weight:600; padding:0.65rem 0.2rem; cursor:pointer;">🪵 Correlated Logs (±5s)</button>
-      <button class="drawer-tab" data-dtab="attributes" style="background:none; border:none; border-bottom:2px solid transparent; color:var(--text-muted); font-size:0.78rem; font-weight:600; padding:0.65rem 0.2rem; cursor:pointer;">🏷️ Span Attributes</button>
-      <button class="drawer-tab" data-dtab="raw" style="background:none; border:none; border-bottom:2px solid transparent; color:var(--text-muted); font-size:0.78rem; font-weight:600; padding:0.65rem 0.2rem; cursor:pointer;">{ } Raw JSON</button>
+      <button class="drawer-tab active" data-dtab="waterfall"
+        style="background:none; border:none; border-bottom:2px solid var(--accent); color:#fff; font-size:0.78rem; font-weight:600; padding:0.65rem 0.2rem; cursor:pointer;">⚡
+        Waterfall Timeline</button>
+      <button class="drawer-tab" data-dtab="correlated"
+        style="background:none; border:none; border-bottom:2px solid transparent; color:var(--text-muted); font-size:0.78rem; font-weight:600; padding:0.65rem 0.2rem; cursor:pointer;">🪵
+        Correlated Logs (±5s)</button>
+      <button class="drawer-tab" data-dtab="attributes"
+        style="background:none; border:none; border-bottom:2px solid transparent; color:var(--text-muted); font-size:0.78rem; font-weight:600; padding:0.65rem 0.2rem; cursor:pointer;">🏷️
+        Span Attributes</button>
+      <button class="drawer-tab" data-dtab="raw"
+        style="background:none; border:none; border-bottom:2px solid transparent; color:var(--text-muted); font-size:0.78rem; font-weight:600; padding:0.65rem 0.2rem; cursor:pointer;">{
+        } Raw JSON</button>
     </div>
 
     <!-- Drawer Body Panels -->
     <div class="drawer-body" style="padding:1.25rem; flex:1; overflow-y:auto;">
       <!-- Tab 1: Waterfall -->
       <div id="dtab-waterfall" class="dtab-panel">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; font-size:0.72rem; color:var(--text-muted);">
+        <div
+          style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; font-size:0.72rem; color:var(--text-muted);">
           <span>Distributed Span Execution (OpenTelemetry OTLP)</span>
           <span id="waterfallSpanCount">5 Spans</span>
         </div>
         <!-- Time Ruler -->
-        <div id="waterfallRuler" style="display:grid; grid-template-columns: 240px 1fr; margin-bottom:0.5rem; font-family:var(--font-mono); font-size:0.65rem; color:var(--text-dim); border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:0.3rem;">
+        <div id="waterfallRuler"
+          style="display:grid; grid-template-columns: 240px 1fr; margin-bottom:0.5rem; font-family:var(--font-mono); font-size:0.65rem; color:var(--text-dim); border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:0.3rem;">
           <div>Service & Operation</div>
           <div style="display:flex; justify-content:space-between; padding:0 4px;">
             <span>0ms</span>
@@ -2804,7 +3326,9 @@
         <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:0.75rem;">
           Cross-service telemetry logs recorded within <strong>±5 seconds</strong> of this event:
         </div>
-        <div id="correlatedLogsContainer" style="display:flex; flex-direction:column; gap:0.25rem; font-family:var(--font-mono); font-size:0.74rem;"></div>
+        <div id="correlatedLogsContainer"
+          style="display:flex; flex-direction:column; gap:0.25rem; font-family:var(--font-mono); font-size:0.74rem;">
+        </div>
       </div>
 
       <!-- Tab 3: Attributes & Tags -->
@@ -2812,16 +3336,19 @@
         <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:0.75rem;">
           Metadata, OpenTelemetry Resource Attributes, and HTTP Context:
         </div>
-        <div id="attributesTableContainer" style="background:#090d18; border:1px solid var(--border); border-radius:6px; overflow:hidden;"></div>
+        <div id="attributesTableContainer"
+          style="background:#090d18; border:1px solid var(--border); border-radius:6px; overflow:hidden;"></div>
       </div>
 
       <!-- Tab 4: Raw JSON -->
       <div id="dtab-raw" class="dtab-panel" style="display:none;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
           <span style="font-size:0.75rem; color:var(--text-muted);">Uncompressed Log / Telemetry Record:</span>
-          <button id="btnCopyRawJson" class="btn btn-sm" style="padding:2px 8px; font-size:0.7rem;">Copy JSON 📋</button>
+          <button id="btnCopyRawJson" class="btn btn-sm" style="padding:2px 8px; font-size:0.7rem;">Copy JSON
+            📋</button>
         </div>
-        <pre id="rawJsonViewer" style="background:#05070d; border:1px solid var(--border); border-radius:6px; padding:1rem; font-family:var(--font-mono); font-size:0.72rem; color:#94a3b8; overflow-x:auto; max-height:500px; white-space:pre-wrap;"></pre>
+        <pre id="rawJsonViewer"
+          style="background:#05070d; border:1px solid var(--border); border-radius:6px; padding:1rem; font-family:var(--font-mono); font-size:0.72rem; color:#94a3b8; overflow-x:auto; max-height:500px; white-space:pre-wrap;"></pre>
       </div>
     </div>
   </div>
@@ -3017,7 +3544,7 @@
             }
             if (currentView === 'issues') renderIssues();
           }
-        } catch (e) {}
+        } catch (e) { }
       };
     }
 
@@ -3064,7 +3591,7 @@
           }
           if (currentView === 'issues') renderIssues();
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // ----------------------------------------------------
@@ -3107,8 +3634,9 @@
           const ramUsedGb = ((metrics.ram_used_bytes || 1.8e9) / 1e9).toFixed(1);
           const ramTotGb = ((metrics.ram_total_bytes || (node.specs?.ram_total_bytes) || 8.0e9) / 1e9).toFixed(1);
           const containers = telem.containers || [];
-          const status = node.status || 'Healthy';
-          const statusClass = status === 'Healthy' ? 'healthy' : (status === 'Warning' ? 'warning' : 'failed');
+          const isCordoned = node.schedulable === false || node.status === 'Draining';
+          const status = isCordoned ? 'Draining (Cordoned)' : (node.status || 'Healthy');
+          const statusClass = status === 'Healthy' ? 'healthy' : ((status === 'Warning' || isCordoned) ? 'warning' : 'failed');
 
           // Zero-Trust Sovereign Mesh metadata
           const mesh = node.mesh || {};
@@ -3171,9 +3699,13 @@
               </div>
             </div>
             <div style="border-top:1px solid var(--border); padding-top:0.75rem; display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; gap:0.5rem; flex-wrap:wrap;">
-              <span style="color:var(--text-muted);">Docker Daemon: <strong style="color:#10b981;">Online</strong> · v${escapeHtml(node.version || '0.2.5')}</span>
-              <span style="display:flex; align-items:center; gap:0.45rem;">
+              <span style="color:var(--text-muted);">Docker Daemon: <strong style="color:#10b981;">Online</strong> · v${escapeHtml(node.version || '0.2.6')}</span>
+              <span style="display:flex; align-items:center; gap:0.45rem; flex-wrap:wrap;">
                 ${metrics.reboot_required ? `<button type="button" class="btn btn-sm btn-reboot-node" data-node="${escapeHtml(node.node_id)}" style="padding:2px 8px; font-size:0.68rem; border-color:rgba(245,158,11,0.5); color:#fbbf24;" title="Pending OS/kernel reboot detected">🔁 Reboot Pending</button>` : ''}
+                ${isCordoned
+                  ? `<button type="button" class="btn btn-sm btn-uncordon-node" data-node="${escapeHtml(node.node_id)}" style="padding:2px 8px; font-size:0.68rem; border-color:rgba(16,185,129,0.5); color:#34d399;" title="Restore node to active multi-server scheduling">✅ Uncordon</button>`
+                  : `<button type="button" class="btn btn-sm btn-drain-node" data-node="${escapeHtml(node.node_id)}" style="padding:2px 8px; font-size:0.68rem; border-color:rgba(245,158,11,0.45); color:#fbbf24;" title="Cordon host & reschedule stateless replicas to peer nodes">💧 Drain Node</button>`
+                }
                 <span style="color:var(--text-muted);">Active Containers: <strong style="color:#fff;">${containers.length || 5}</strong></span>
               </span>
             </div>
@@ -3181,7 +3713,7 @@
           fleetNodeGrid.appendChild(card);
         });
 
-        // Wire copy & reboot buttons
+        // Wire copy, reboot, drain & uncordon buttons
         fleetNodeGrid.querySelectorAll('.btn-reboot-node').forEach(btn => {
           btn.addEventListener('click', () => {
             const targetNode = btn.getAttribute('data-node');
@@ -3191,6 +3723,18 @@
               rebootNodeInput.value = targetNode;
               rebootDialog.showModal();
             }
+          });
+        });
+        fleetNodeGrid.querySelectorAll('.btn-drain-node').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const targetNode = btn.getAttribute('data-node');
+            if (targetNode) openDrainNodeDialog(targetNode);
+          });
+        });
+        fleetNodeGrid.querySelectorAll('.btn-uncordon-node').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const targetNode = btn.getAttribute('data-node');
+            if (targetNode) triggerUncordonNode(targetNode, btn);
           });
         });
         fleetNodeGrid.querySelectorAll('.btn-copy-mesh-ip').forEach(btn => {
@@ -3204,7 +3748,7 @@
             }
           });
         });
-      } catch (e) {}
+      } catch (e) { }
     }
 
     document.getElementById('btnRefreshFleet')?.addEventListener('click', fetchFleetNodes);
@@ -3409,8 +3953,8 @@
           const slotLabel = d.is_preview
             ? `<span style="color:#a78bfa; font-weight:700;">pr-${d.pr_number || ''}</span>`
             : (d.canary_weight && d.canary_weight > 0
-                ? `<span style="color:#38bdf8; font-weight:700;">${d.canary_weight}% Canary</span>`
-                : `<strong style="color:${d.active_slot === 'green' ? '#38bdf8' : '#10b981'};">${d.active_slot || 'blue'}</strong>`);
+              ? `<span style="color:#38bdf8; font-weight:700;">${d.canary_weight}% Canary</span>`
+              : `<strong style="color:${d.active_slot === 'green' ? '#38bdf8' : '#10b981'};">${d.active_slot || 'blue'}</strong>`);
 
           tr.innerHTML = `
             <td><code>${escapeHtml(d.deployment_id || '')}</code></td>
@@ -3427,7 +3971,7 @@
           `;
           deploymentsTableBody.appendChild(tr);
         });
-      } catch (e) {}
+      } catch (e) { }
     }
 
     document.getElementById('btnRefreshDeployments')?.addEventListener('click', () => {
@@ -3546,7 +4090,7 @@
           });
         });
 
-      } catch (e) {}
+      } catch (e) { }
     }
 
     document.getElementById('btnRefreshServices')?.addEventListener('click', fetchServices);
@@ -3674,7 +4218,7 @@
 
           backupsTableBody.appendChild(tr);
         });
-      } catch (e) {}
+      } catch (e) { }
     }
 
     document.getElementById('btnRefreshBackups')?.addEventListener('click', () => {
@@ -4289,7 +4833,7 @@
         gain.connect(audioCtx.destination);
         osc.start();
         osc.stop(audioCtx.currentTime + 0.25);
-      } catch (e) {}
+      } catch (e) { }
     }
 
     function showLiveToast(entry) {
@@ -4460,7 +5004,7 @@
         flags.forEach(f => {
           const tr = document.createElement('tr');
           const isEnabled = f.enabled;
-          const envs = f.environments && f.environments.length > 0 
+          const envs = f.environments && f.environments.length > 0
             ? f.environments.map(e => `<span class="badge" style="background:#1e293b; color:#94a3b8; font-size:0.7rem; padding:2px 6px; border-radius:4px; margin-right:4px;">${escapeHtml(e)}</span>`).join('')
             : '<span style="color:var(--text-muted); font-size:0.75rem;">All</span>';
 
@@ -4571,7 +5115,7 @@
 
           vaultTableBody.appendChild(tr);
         });
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // View Secrets Modal Controller
@@ -5136,7 +5680,7 @@
         const resp = await fetch('/api/v1/control/mesh/access-policy');
         if (!resp.ok) return;
         const data = await resp.json();
-        
+
         const domains = data.allowed_domains || [];
         const emails = data.allowed_emails || [];
         policyAllowedDomainsInput.value = domains.join('\n');
@@ -5302,9 +5846,17 @@
         svcMeta.style.color = 'var(--text-dim)';
         svcMeta.style.fontFamily = 'var(--font-mono)';
         const modeParts = [s.mode === 'singleton' ? 'singleton' : 'blue/green'];
+        if (s.desired_replicas && s.desired_replicas > 1) {
+          modeParts.push(`${s.ready_replicas ?? 0}/${s.desired_replicas} replicas`);
+        }
+        if (s.placement_strategy && s.mode !== 'singleton') {
+          modeParts.push(s.placement_strategy);
+        }
         if (s.adopt_only) modeParts.push('adopt_only');
+        if (s.fenced) modeParts.push('🔒 fenced');
         if (s.target_node) modeParts.push(s.target_node);
         svcMeta.textContent = modeParts.join(' · ');
+        if (s.fenced) svcMeta.style.color = '#fbbf24';
         th.append(svcTitle, svcMeta);
 
         // 2. Env
@@ -5339,8 +5891,8 @@
         const healthNorm = s.health_status === 'Healthy'
           ? 'healthy'
           : (s.health_status === 'Suspended'
-              ? 'suspended'
-              : (s.health_status === 'Missing' ? 'missing' : 'degraded'));
+            ? 'suspended'
+            : (s.health_status === 'Missing' ? 'missing' : 'degraded'));
         tdHealth.appendChild(createGitopsBadge(s.health_status || 'Unknown', healthNorm));
 
         // 5. Desired Image
@@ -5745,7 +6297,7 @@
           }
           updateOtaReleaseSummaryBox();
         }
-      } catch {}
+      } catch { }
     });
 
     if (otaConfirmDialog) {
@@ -5872,10 +6424,13 @@
     const fleetRevisionsListContainer = document.getElementById('fleetRevisionsListContainer');
     const fleetDeleteConfirmDialog = document.getElementById('fleetDeleteConfirmDialog');
     const fleetDeleteConfirmDesc = document.getElementById('fleetDeleteConfirmDesc');
+    const drainNodeConfirmDialog = document.getElementById('drainNodeConfirmDialog');
+    const drainNodeConfirmDesc = document.getElementById('drainNodeConfirmDesc');
 
     let isFleetJsonEditorOpen = false;
     let currentEditingBaseManifest = null;
     let pendingDeleteTarget = null;
+    let pendingDrainNodeId = null;
 
     function attachDialogLightDismissFallback(dialogEl) {
       if (!dialogEl || ('closedBy' in HTMLDialogElement.prototype)) return;
@@ -5885,10 +6440,10 @@
         return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
       };
       dialogEl.addEventListener('pointerdown', (e) => {
-        pointerDownOutside = e.target === dialogEl && outsideRect(e);
+        pointerDownOutside = outsideRect(e);
       });
       dialogEl.addEventListener('pointerup', (e) => {
-        if (pointerDownOutside && e.target === dialogEl && outsideRect(e)) {
+        if (pointerDownOutside && outsideRect(e)) {
           dialogEl.close();
         }
         pointerDownOutside = false;
@@ -5897,6 +6452,70 @@
 
     attachDialogLightDismissFallback(fleetRevisionsDialog);
     attachDialogLightDismissFallback(fleetDeleteConfirmDialog);
+    attachDialogLightDismissFallback(drainNodeConfirmDialog);
+
+    function openDrainNodeDialog(nodeId) {
+      if (!drainNodeConfirmDialog || typeof drainNodeConfirmDialog.showModal !== 'function') return;
+      pendingDrainNodeId = nodeId;
+      if (drainNodeConfirmDesc) {
+        drainNodeConfirmDesc.textContent =
+          `Cordons ${nodeId} (schedulable: false), automatically reschedules stateless Blue/Green replicas onto healthy WireGuard peers, and fences local stateful database volumes so no persistent data is wiped.`;
+      }
+      drainNodeConfirmDialog.returnValue = '';
+      drainNodeConfirmDialog.showModal();
+    }
+
+    async function triggerUncordonNode(nodeId, btnEl) {
+      if (btnEl) btnEl.disabled = true;
+      try {
+        const resp = await fetch(`/api/v1/control/nodes/${encodeURIComponent(nodeId)}/uncordon`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          showToast(`Uncordon failed: ${data.error || resp.statusText}`, true);
+          return;
+        }
+        showToast(`Uncordoned ${nodeId} — schedulable restored (${data.reconciled_count || 0} pending workload(s) reconciled)!`);
+        fetchFleetNodes();
+        fetchFleetGitopsAndOta();
+      } catch (err) {
+        showToast(`Uncordon network error: ${err.message}`, true);
+      } finally {
+        if (btnEl) btnEl.disabled = false;
+      }
+    }
+
+    if (drainNodeConfirmDialog) {
+      drainNodeConfirmDialog.addEventListener('close', async () => {
+        const decision = drainNodeConfirmDialog.returnValue;
+        drainNodeConfirmDialog.returnValue = '';
+        const targetNode = pendingDrainNodeId;
+        pendingDrainNodeId = null;
+        if (decision !== 'drain' || !targetNode) return;
+
+        try {
+          const resp = await fetch(`/api/v1/control/nodes/${encodeURIComponent(targetNode)}/drain`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: 'Cordoned & drained from Fleet Dashboard' }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok) {
+            showToast(`Drain failed: ${data.error || resp.statusText}`, true);
+            return;
+          }
+          const fencedInfo = data.fenced_count ? `, ${data.fenced_count} stateful DB volume(s) safely fenced` : '';
+          showToast(`Drained ${targetNode}: ${data.migrated_count || 0} stateless service(s) rescheduled${fencedInfo}.`);
+          fetchFleetNodes();
+          fetchFleetGitopsAndOta();
+        } catch (err) {
+          showToast(`Drain network error: ${err.message}`, true);
+        }
+      });
+    }
 
     function parseCsvTokens(raw) {
       return String(raw || '')
@@ -5931,6 +6550,11 @@
       const modeSingleton = document.getElementById('fleetModeSingleton')?.checked;
       if (fleetBgFieldsGroup) fleetBgFieldsGroup.hidden = Boolean(modeSingleton);
       if (fleetSingletonFieldsGroup) fleetSingletonFieldsGroup.hidden = !modeSingleton;
+      const repInput = document.getElementById('fleetReplicasInput');
+      if (repInput) {
+        repInput.disabled = Boolean(modeSingleton);
+        if (modeSingleton) repInput.value = '1';
+      }
     }
 
     document.getElementById('fleetModeBlueGreen')?.addEventListener('change', syncWorkloadModeVisibility);
@@ -5952,6 +6576,25 @@
       base.image = image;
       base.mode = isSingleton ? 'singleton' : 'blue_green';
       base.enabled = enabled;
+
+      const selectedStrategy = document.querySelector('input[name="placement_strategy"]:checked')?.value || 'spread';
+      base.placement_strategy = selectedStrategy;
+
+      const memMb = Number(document.getElementById('fleetMemoryMbInput')?.value);
+      if (Number.isInteger(memMb) && memMb >= 32) base.memory_mb = memMb;
+      else delete base.memory_mb;
+
+      const rawNodeId = document.getElementById('fleetTargetNodeInput')?.value.trim();
+      if (rawNodeId && rawNodeId !== 'auto') base.node_id = rawNodeId;
+      else delete base.node_id;
+
+      if (isSingleton) {
+        delete base.replicas;
+      } else {
+        const rep = Number(document.getElementById('fleetReplicasInput')?.value);
+        if (Number.isInteger(rep) && rep >= 1) base.replicas = rep;
+        else delete base.replicas;
+      }
 
       const networks = parseCsvTokens(document.getElementById('fleetNetworksInput')?.value);
       if (networks.length > 0) base.networks = networks;
@@ -6008,7 +6651,7 @@
 
     function populateFormFromManifest(m) {
       currentEditingBaseManifest = m ? JSON.parse(JSON.stringify(m)) : null;
-      const isSingleton = m?.mode === 'singleton';
+      const isSingleton = m?.mode === 'singleton' || (Boolean(m?.container_name) && !m?.host_port_blue && !m?.host_port_green);
 
       const svcInput = document.getElementById('fleetSvcNameInput');
       const envSel = document.getElementById('fleetSvcEnvSelect');
@@ -6022,6 +6665,21 @@
       if (modeBg) modeBg.checked = !isSingleton;
       if (modeSg) modeSg.checked = Boolean(isSingleton);
       syncWorkloadModeVisibility();
+
+      const strat = m?.placement_strategy || (m?.node_id && m.node_id !== 'auto' ? 'pinned' : 'spread');
+      const stratSpread = document.getElementById('fleetStrategySpread');
+      const stratBinpack = document.getElementById('fleetStrategyBinpack');
+      const stratPinned = document.getElementById('fleetStrategyPinned');
+      if (stratSpread) stratSpread.checked = strat === 'spread';
+      if (stratBinpack) stratBinpack.checked = strat === 'binpack';
+      if (stratPinned) stratPinned.checked = strat === 'pinned';
+
+      const repInput = document.getElementById('fleetReplicasInput');
+      const memInput = document.getElementById('fleetMemoryMbInput');
+      const nodeInput = document.getElementById('fleetTargetNodeInput');
+      if (repInput) repInput.value = String(isSingleton ? 1 : (m?.replicas ?? 1));
+      if (memInput) memInput.value = String(m?.memory_mb ?? (isSingleton ? 512 : 256));
+      if (nodeInput) nodeInput.value = m?.node_id || 'auto';
 
       const domList = Array.isArray(m?.domains) && m.domains.length > 0
         ? m.domains
@@ -6179,7 +6837,7 @@
     });
 
     // Accessible validation-after-interaction sync (WCAG 3.3.1 / 4.1.3)
-    let resetFleetFormValidationState = () => {};
+    let resetFleetFormValidationState = () => { };
     if (fleetServiceForm) {
       const validatedFields = Array.from(fleetServiceForm.querySelectorAll('[data-error]'));
       const liveAnnouncer = document.createElement('div');
@@ -6693,7 +7351,7 @@
           emailSpan.textContent = data.email;
           badge.title = 'Authenticated (' + data.provider + ')';
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // ----------------------------------------------------
@@ -6736,14 +7394,14 @@
       if (!select || !meta) return;
       const file = lakehouseFiles.find(f => f.key === select.value);
       if (file) {
-        meta.innerHTML = `<strong>File:</strong> ${file.key}<br><strong>Size:</strong> ${(file.size/1024).toFixed(1)} KB<br><strong>Uploaded:</strong> ${new Date(file.uploaded).toLocaleString()}`;
+        meta.innerHTML = `<strong>File:</strong> ${file.key}<br><strong>Size:</strong> ${(file.size / 1024).toFixed(1)} KB<br><strong>Uploaded:</strong> ${new Date(file.uploaded).toLocaleString()}`;
       }
     }
 
     document.getElementById('lakehouseFileSelect')?.addEventListener('change', updateLakehouseMeta);
     document.getElementById('btnRefreshLakehouseFiles')?.addEventListener('click', fetchLakehouseFiles);
 
-    window.setSampleQuery = function(sql) {
+    window.setSampleQuery = function (sql) {
       const input = document.getElementById('lakehouseSqlInput');
       if (input) input.value = sql;
     };
@@ -6860,4 +7518,5 @@
     }
   </script>
 </body>
+
 </html>

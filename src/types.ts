@@ -108,6 +108,9 @@ export interface DeployRequestPayload {
   canary_duration?: number;
   is_preview?: boolean;
   pr_number?: number;
+  mesh_port?: number;
+  extra_hosts?: string[];
+  remote_upstreams?: string[];
 }
 
 export interface PreviewTeardownPayload {
@@ -138,10 +141,15 @@ export interface DeploymentRecord {
 export interface NodeRecord extends NodeRegistrationPayload {
   enrolled_at: string;
   updated_at: string;
+  public_ip?: string;
+  schedulable?: boolean;
+  cordoned_reason?: string;
+  cordoned_at?: string;
   latest_telemetry?: NodeTelemetryHeartbeat;
   mesh?: {
     tailscale_ip: string;
     magic_dns: string;
+    public_key?: string;
     connection_type: 'direct_p2p' | 'derp_relay';
     status: 'connected' | 'offline';
   };
@@ -246,6 +254,32 @@ export interface AgentReleaseMetadata {
   commit_sha?: string;
   published_by?: string;
   published_at: string;
+}
+
+export interface SingletonReconcilePayload {
+  deployment_id?: string;
+  node_id: string;
+  service: string;
+  env: string;
+  image: string;
+  container_name: string;
+  restart?: string;
+  networks?: string[];
+  aliases?: string[];
+  volumes?: string[];
+  ports?: string[];
+  command?: string[];
+  entrypoint?: string[];
+  healthcheck?: {
+    test: string[];
+    interval?: string;
+    timeout?: string;
+    retries?: number;
+  };
+  secrets?: Record<string, string>;
+  force_recreate_stateful?: boolean;
+  mesh_port?: number;
+  extra_hosts?: string[];
 }
 
 export interface AlertRule {

@@ -17,7 +17,8 @@ FlareLens is an open-source platform for managing infrastructure across cloud, b
 ## Key Capabilities
 
 - **Zero-Git Declarative Fleet Engine & Immutable Revisions** — Create, edit, enable/suspend, and reconcile Blue/Green web services or stateful singletons (`postgres`, `dragonfly`, `traefik`, `cloudflared`) directly from the Dashboard UI. Every change is saved as an immutable numbered revision (`rev-1`, `rev-2`, …) in Cloudflare D1 + R2 (`state/revisions/rev-N.json`) with **1-click UAT → Prod promotion**, **1-click rollback** (even for deleted services), portable JSON export/import, and optional CI/Git sync (`POST /api/v1/control/fleet/sync`).
-- **`$0` Cloudflare D1 + Piggybacked 15s Control Plane** — Stores node state, command queues, mesh peers, feature flags, and fleet revisions in Cloudflare D1 free tier (`5M` reads/day, `100K` writes/day). Pending commands and flag version hashes piggyback directly onto the 15-second `/api/v1/ingest` heartbeat (`0` R2 `list()` Class A polling calls).
+- **Multi-Server Placement, WireGuard Service Mesh & Auto-Failover** — Schedule multi-replica stateless apps across a server pool (`placement_strategy`: `spread` HA anti-affinity, `binpack` RAM consolidation, or `pinned` host affinity) with capacity-aware RAM reservations (`memory_mb`) and `required_tags`. `flarelensd` binds deterministic WireGuard overlay ports (`100.64.0.x:<mesh_port>`), injects cross-node service aliases (`ExtraHosts`), configures multi-node Traefik HTTP load-balancing with health checks, cordons/drains hosts cleanly (`POST /api/v1/control/nodes/:id/drain`), **fences stateful DB volumes** so persistent data is never auto-wiped, and automatically reschedules stateless replicas off dead nodes.
+- **`$0` Cloudflare D1 + Piggybacked 15s Control Plane** — Stores node state, placement leases, command queues, mesh peers, feature flags, and fleet revisions in Cloudflare D1 free tier (`5M` reads/day, `100K` writes/day). Pending commands, WireGuard mesh peers, cluster service endpoints, and flag version hashes piggyback directly onto the 15-second `/api/v1/ingest` heartbeat (`0` R2 `list()` Class A polling calls).
 - **Zero-SSH Over-The-Air (`self_update`) & Host Maintenance** — SHA-256 verified binary upgrades, allowlisted systemd unit retirement (`retire_systemd_units`), and drain-locked graceful OS reboots (`reboot_node`) with pre-reboot command `ACK` verification so reboot loops cannot occur.
 - **Zero-Plaintext Secrets Vault & RAM Secret Files** — AES-256-GCM encrypted secrets in Cloudflare KV injected strictly in memory (`-e KEY=VAL`) or materialized into ephemeral `/dev/shm` `tmpfs` directories (`__FLARELENS_FILE__`) for TLS/JWT/SAML certificates.
 - **Direct Peer-to-Peer WireGuard Mesh** — Coordinates Curve25519 peer discovery at the edge while keeping all private server-to-server and operator traffic 100% P2P over UDP (`100.64.0.0/10` / `10.42.0.0/16`) — private data never traverses Cloudflare.
@@ -78,6 +79,9 @@ Want IDE validation or optional CI sync? Every FlareLens Worker serves its canon
   "env": "prod",
   "domains": ["api.example.com", "auth.example.com"],
   "image": "ghcr.io/acme/billing-api:1.4.0",
+  "replicas": 2,
+  "memory_mb": 512,
+  "placement_strategy": "spread",
   "container_port": 8080,
   "host_port_blue": 9080,
   "host_port_green": 9081,

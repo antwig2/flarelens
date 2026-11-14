@@ -58,7 +58,23 @@ import {
   recordFleetRevision,
   listFleetRevisions,
   getFleetRevision,
+  type FleetPlacementRecord,
+  listFleetPlacements,
+  saveServicePlacements,
+  deleteServicePlacements,
+  updatePlacementRuntimePort,
 } from './control/db';
+import {
+  type ClusterEndpoint,
+  isStatefulVolumeManifest,
+  computeDeterministicMeshPort,
+  resolveNodeMeshIP,
+  isNodeSchedulable,
+  scheduleManifestPlacements,
+  buildClusterEndpoints,
+  computeExtraHostsForNode,
+  computeRemoteUpstreamsForNode,
+} from './control/scheduler';
 import { encryptSecrets, decryptSecrets, parseEnvContent, getVaultLookupKeys, resolveVaultSecrets } from './control/vault';
 import { verifyGitHubSignature, parseDeployWebhook, reportGitHubStatus, resolveWebhookDeployPayload, getServiceDeclarativeDefaults } from './control/webhook';
 import { isGitHubOidcToken, verifyGitHubOidcToken } from './control/github_oidc';
@@ -297,6 +313,14 @@ export default {
       const nodeId = url.pathname.replace('/api/v1/control/nodes/', '').replace('/retire-units', '').replace(/\/+$/, '').trim();
       if (nodeId) return handleTriggerRetireSystemdUnits(nodeId, request, env);
     }
+    if (url.pathname.startsWith('/api/v1/control/nodes/') && url.pathname.endsWith('/drain') && request.method === 'POST') {
+      const nodeId = url.pathname.replace('/api/v1/control/nodes/', '').replace('/drain', '').replace(/\/+$/, '').trim();
+      if (nodeId) return handleDrainNode(nodeId, request, env, ctx);
+    }
+    if (url.pathname.startsWith('/api/v1/control/nodes/') && url.pathname.endsWith('/uncordon') && request.method === 'POST') {
+      const nodeId = url.pathname.replace('/api/v1/control/nodes/', '').replace('/uncordon', '').replace(/\/+$/, '').trim();
+      if (nodeId) return handleUncordonNode(nodeId, request, env, ctx);
+    }
     if (url.pathname.startsWith('/api/v1/control/nodes/') && request.method === 'GET') {
       const nodeId = url.pathname.replace('/api/v1/control/nodes/', '').trim();
       if (nodeId) {
@@ -332,6 +356,12 @@ export default {
     // 7c. ArgoCD-style Declarative Fleet Drift Status, Zero-Git CRUD, Revisions, Rollback & Promotion
     if (url.pathname === '/api/v1/control/fleet/status' && request.method === 'GET') {
       return handleFleetStatus(env, url);
+    }
+    if (url.pathname === '/api/v1/control/fleet/placements' && request.method === 'GET') {
+      return handleListFleetPlacementsApi(env, url);
+    }
+    if (url.pathname === '/api/v1/control/fleet/failover-check' && request.method === 'POST') {
+      return handleFleetFailoverCheck(request, env, ctx);
     }
     if (url.pathname === '/api/v1/control/fleet/reconcile' && request.method === 'POST') {
       return handleFleetReconcile(request, env, ctx);
@@ -679,91 +709,117 @@ async function notifyUptimeFailure(url: string, error: string, latencyMs: number
 }
 
 /**
- * Automated Failover & Self-Healing: Detects crashed/unresponsive nodes and auto-reschedules workloads
+ * Automated Failover & Self-Healing: Detects crashed/unresponsive nodes, migrates stateless replicas
+ * across healthy servers, and fences stateful database volumes so local disk data is never wiped.
  */
-async function handleNodeCrashFailover(env: Env, ctx: ExecutionContext): Promise<void> {
+async function handleNodeCrashFailover(
+  env: Env,
+  ctx: ExecutionContext,
+  opts?: { staleThresholdMs?: number }
+): Promise<{
+  checked_nodes: number;
+  dead_nodes: string[];
+  migrated: Array<{ env: string; service: string; nodes: string[]; evicted_nodes: string[] }>;
+  fenced: Array<{ env: string; service: string; node_id: string; reason: string }>;
+}> {
+  const summary = {
+    checked_nodes: 0,
+    dead_nodes: [] as string[],
+    migrated: [] as Array<{ env: string; service: string; nodes: string[]; evicted_nodes: string[] }>,
+    fenced: [] as Array<{ env: string; service: string; node_id: string; reason: string }>,
+  };
+
   try {
     const nodeResp = await handleListNodes(env);
     const nodeData = (await nodeResp.json()) as { nodes: NodeRecord[] };
     const nodes = nodeData.nodes || [];
-    if (nodes.length <= 1) return; // Need at least 2 nodes to failover workloads
+    summary.checked_nodes = nodes.length;
+    if (nodes.length <= 1) return summary;
 
     const now = Date.now();
-    const deadNodes: NodeRecord[] = [];
+    const thresholdMs = Math.max(15_000, Number(opts?.staleThresholdMs || 90_000));
+    const newlyDeadNodes: NodeRecord[] = [];
+    const allDeadNodeIds = new Set<string>();
     const healthyNodes: NodeRecord[] = [];
 
     for (const node of nodes) {
-      const lastHbMs = node.last_heartbeat ? (node.last_heartbeat < 10_000_000_000 ? node.last_heartbeat * 1000 : node.last_heartbeat) : 0;
-      const isUnresponsive = lastHbMs > 0 && (now - lastHbMs > 90_000);
-      if (isUnresponsive && node.status !== 'dead') {
-        deadNodes.push(node);
-      } else if (!isUnresponsive && node.status !== 'dead') {
+      const lastHbMs = node.last_heartbeat
+        ? node.last_heartbeat < 10_000_000_000
+          ? node.last_heartbeat * 1000
+          : node.last_heartbeat
+        : 0;
+      const isUnresponsive = lastHbMs > 0 && now - lastHbMs > thresholdMs;
+      if (isUnresponsive || node.status === 'dead') {
+        allDeadNodeIds.add(node.node_id);
+        if (node.status !== 'dead') {
+          newlyDeadNodes.push(node);
+        }
+      } else if (node.schedulable !== false && node.status !== 'Draining') {
         healthyNodes.push(node);
       }
     }
 
-    if (deadNodes.length === 0 || healthyNodes.length === 0) return;
-
-    // Load active services to see what was running on the dead nodes
-    const svcResp = await handleListServices(env);
-    const svcData = (await svcResp.json()) as { services: any[] };
-    const allServices = svcData.services || [];
-
-    for (const deadNode of deadNodes) {
-      console.warn(`[FAILOVER ALARM] Node ${deadNode.node_id} is unresponsive (>90s). Initiating failover.`);
-
-      // 1. Mark node as dead
+    for (const deadNode of newlyDeadNodes) {
+      console.warn(`[FAILOVER ALARM] Node ${deadNode.node_id} is unresponsive (>${thresholdMs}ms). Marking dead.`);
       deadNode.status = 'dead';
+      deadNode.updated_at = new Date().toISOString();
       fleetNodes.set(deadNode.node_id, deadNode);
+      await upsertNodeRecord(env, deadNode, { forceWrite: true });
       if (env.FLEET_KV) {
         ctx.waitUntil(safeKvPut(env.FLEET_KV, `node:${deadNode.node_id}`, JSON.stringify(deadNode)));
       }
+    }
 
-      // 2. Find services hosted on this dead node
-      const servicesToMigrate = allServices.filter((s) => s.node_id === deadNode.node_id && s.image);
+    summary.dead_nodes = Array.from(allDeadNodeIds);
+    if (allDeadNodeIds.size === 0 || healthyNodes.length === 0) return summary;
 
-      for (const svc of servicesToMigrate) {
-        const targetNode = await selectBestNodeForService(svc.name, env);
-        if (targetNode === deadNode.node_id) continue;
+    if (env.FLEET_KV) {
+      const [allManifests, allPlacements] = await Promise.all([
+        listFleetManifests(env.FLEET_KV),
+        listFleetPlacements(env),
+      ]);
 
-        console.log(`[FAILOVER ACTION] Migrating ${svc.name} (${svc.image}) from dead node ${deadNode.node_id} to ${targetNode}`);
+      const affectedManifests = allManifests.filter((m) => {
+        if (m.enabled === false) return false;
+        if (m.node_id && allDeadNodeIds.has(m.node_id)) return true;
+        const normEnv = normalizeFleetEnv(m.env);
+        return allPlacements.some(
+          (p) =>
+            p.env.toLowerCase() === normEnv &&
+            p.service.toLowerCase() === m.service.toLowerCase() &&
+            p.status === 'placed' &&
+            allDeadNodeIds.has(p.node_id)
+        );
+      });
 
-        const deployReq = new Request('https://internal/api/v1/control/deploy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            service: svc.name,
-            image: svc.image,
-            node_id: targetNode,
-            env: svc.env || 'production',
-          }),
+      if (affectedManifests.length > 0) {
+        const recOut = await reconcileManifestsWithScheduler(env, ctx, affectedManifests, {
+          onlyDispatchChangedNodes: true,
+          commandPrefix: 'failover',
         });
-
-        ctx.waitUntil(handleTriggerDeploy(deployReq, env, ctx));
-
-        const failoverLog: LogRecord = {
-          id: `log_failover_${Date.now()}_${svc.name}`,
-          timestamp: new Date().toISOString(),
-          time_iso: new Date().toISOString(),
-          level: 'error',
-          service: 'flarelens-orchestrator',
-          environment: svc.env || 'production',
-          message: `🚨 [HIGH AVAILABILITY FAILOVER] Host ${deadNode.node_id} crashed. Service ${svc.name} automatically migrated & deployed to healthy node ${targetNode}.`,
-          attributes: {
-            from_node: deadNode.node_id,
-            to_node: targetNode,
-            service: svc.name,
-            image: svc.image,
-          },
-        };
-        ringBuffer.push(failoverLog);
-        if (ringBuffer.length > RING_BUFFER_MAX) ringBuffer.shift();
-        broadcastSSE(failoverLog);
+        for (const r of recOut.reconciled) {
+          if (r.fenced) {
+            summary.fenced.push({
+              env: r.env,
+              service: r.service,
+              node_id: r.fenced_node || '',
+              reason: r.fence_reason || 'Stateful volume fenced on dead host',
+            });
+          } else if ((r.dispatched_nodes && r.dispatched_nodes.length > 0) || (r.evicted_nodes && r.evicted_nodes.length > 0)) {
+            summary.migrated.push({
+              env: r.env,
+              service: r.service,
+              nodes: r.nodes,
+              evicted_nodes: r.evicted_nodes || [],
+            });
+          }
+        }
       }
     }
   } catch (err) {
     console.error('Failed to execute handleNodeCrashFailover:', err);
   }
+  return summary;
 }
 
 
@@ -969,7 +1025,12 @@ async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): 
 
         if (node) {
           const prevStatus = node.status;
-          node.status = telem.status || node.status;
+          if (node.schedulable === false || node.status === 'Draining') {
+            node.status = 'Draining';
+            node.schedulable = false;
+          } else {
+            node.status = telem.status || (node.status === 'dead' ? 'Healthy' : node.status);
+          }
           node.last_heartbeat = Date.now();
           node.updated_at = now.toISOString();
           node.latest_telemetry = telem;
@@ -1077,23 +1138,79 @@ async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): 
 
     let piggybackedCommands: any[] | undefined;
     let piggybackedFlagsVersion: string | undefined;
+    let piggybackedOverlayIp: string | undefined;
+    let piggybackedMeshPeers: MeshPeerRecord[] | undefined;
+    let piggybackedClusterEndpoints: ClusterEndpoint[] | undefined;
     if (heartbeatNodeId) {
-      const [dbCmds, flagsVer] = await Promise.all([
+      const [dbCmds, flagsVer, allNodes, meshPeers, placements, manifests] = await Promise.all([
         listPendingCommandsD1(env, heartbeatNodeId),
         getFlagsVersion(env),
+        loadAllNodesMerged(env),
+        loadAllMeshPeers(env),
+        listFleetPlacements(env),
+        env.FLEET_KV ? listFleetManifests(env.FLEET_KV) : Promise.resolve([]),
       ]);
       const merged = new Map<string, any>();
       for (const c of dbCmds) if (c?.id) merged.set(c.id, c);
       for (const c of inMemoryCommands.get(heartbeatNodeId) || []) if (c?.id) merged.set(c.id, c);
       piggybackedCommands = Array.from(merged.values());
       piggybackedFlagsVersion = flagsVer;
+      const resolvedOverlay = resolveNodeMeshIP(heartbeatNodeId, allNodes, meshPeers);
+      if (resolvedOverlay) piggybackedOverlayIp = resolvedOverlay;
+      const peerByKey = new Map<string, any>();
+      for (const p of meshPeers) {
+        if (p.id === heartbeatNodeId || p.name === heartbeatNodeId) continue;
+        const ip = p.overlay_ip || p.tailscale_ip;
+        if (p.public_key && ip) {
+          peerByKey.set(p.public_key, {
+            id: p.id,
+            name: p.name,
+            public_key: p.public_key,
+            overlay_ip: ip,
+            endpoint: p.endpoint || '',
+            listen_port: p.listen_port || 51820,
+          });
+        }
+      }
+      for (const n of allNodes) {
+        if (n.node_id === heartbeatNodeId) continue;
+        const pub = n.mesh?.public_key;
+        const ip = n.mesh?.tailscale_ip;
+        if (pub && ip && !peerByKey.has(pub)) {
+          peerByKey.set(pub, {
+            id: n.node_id,
+            name: n.hostname || n.node_id,
+            public_key: pub,
+            overlay_ip: ip,
+            endpoint: n.public_ip ? `${n.public_ip}:51820` : '',
+            listen_port: 51820,
+          });
+        }
+      }
+      if (peerByKey.size > 0) piggybackedMeshPeers = Array.from(peerByKey.values());
+      if (placements.length > 0) {
+        piggybackedClusterEndpoints = buildClusterEndpoints({
+          manifests,
+          placements,
+          nodes: allNodes,
+          meshPeers,
+        });
+      }
     }
 
     return new Response(
       JSON.stringify({
         status: 'ok',
         count: normalizedLogs.length,
-        ...(heartbeatNodeId ? { commands: piggybackedCommands, flags_version: piggybackedFlagsVersion } : {}),
+        ...(heartbeatNodeId
+          ? {
+              commands: piggybackedCommands,
+              flags_version: piggybackedFlagsVersion,
+              ...(piggybackedOverlayIp ? { overlay_ip: piggybackedOverlayIp } : {}),
+              ...(piggybackedMeshPeers ? { mesh_peers: piggybackedMeshPeers } : {}),
+              ...(piggybackedClusterEndpoints ? { cluster_endpoints: piggybackedClusterEndpoints } : {}),
+            }
+          : {}),
       }),
       {
         status: 202,
@@ -1408,9 +1525,15 @@ async function handleEnroll(request: Request, env: Env, ctx: ExecutionContext): 
     }
 
     const nowIso = new Date().toISOString();
+    const prevNode = fleetNodes.get(payload.node_id) || (await getNodeRecordD1(env, payload.node_id));
+    const isCordoned = prevNode?.schedulable === false;
     const record: NodeRecord = {
       ...payload,
-      enrolled_at: nowIso,
+      status: isCordoned ? 'Draining' : payload.status || 'Healthy',
+      schedulable: isCordoned ? false : true,
+      ...(prevNode?.cordoned_reason ? { cordoned_reason: prevNode.cordoned_reason } : {}),
+      ...(prevNode?.cordoned_at ? { cordoned_at: prevNode.cordoned_at } : {}),
+      enrolled_at: prevNode?.enrolled_at || nowIso,
       updated_at: nowIso,
     };
 
@@ -1731,18 +1854,48 @@ async function handleTriggerDeploy(request: Request, env: Env, ctx: ExecutionCon
       });
     }
 
-    if (!payload.node_id || payload.node_id === 'auto' || payload.node_id === 'smart') {
-      payload.node_id = await selectBestNodeForService(payload.service, env);
-    }
-
-    const targetNodes = await resolveFleetNodes(payload.node_id, env, payload.service);
-    const nowIso = new Date().toISOString();
-
-    // 0a. Auto-inject declarative Blue/Green defaults if omitted
+    const isAutoNode = !payload.node_id || payload.node_id === 'auto' || payload.node_id === 'smart';
     const targetEnv = payload.env || (payload.is_preview ? 'preview' : 'production');
+    const normTargetEnv = normalizeFleetEnv(targetEnv);
     const manifest = env.FLEET_KV && !payload.is_preview
       ? await getFleetManifest(env.FLEET_KV, targetEnv, payload.service)
       : null;
+    const [allPlacements, allManifests, enrolledNodes, meshPeers] = await Promise.all([
+      listFleetPlacements(env),
+      env.FLEET_KV ? listFleetManifests(env.FLEET_KV) : Promise.resolve([]),
+      loadAllNodesMerged(env),
+      loadAllMeshPeers(env),
+    ]);
+
+    let targetNodes: string[] = [];
+    if (manifest && !payload.is_preview && isAutoNode) {
+      const existingSvcPlacements = allPlacements.filter(
+        (p) => p.env.toLowerCase() === normTargetEnv && p.service.toLowerCase() === manifest.service.toLowerCase()
+      );
+      const otherPlacements = allPlacements.filter(
+        (p) => !(p.env.toLowerCase() === normTargetEnv && p.service.toLowerCase() === manifest.service.toLowerCase())
+      );
+      const sched = scheduleManifestPlacements({
+        manifest,
+        desiredImage: payload.image,
+        nodes: enrolledNodes,
+        meshPeers,
+        existingServicePlacements: existingSvcPlacements,
+        otherClusterPlacements: otherPlacements,
+      });
+      await saveServicePlacements(env, normTargetEnv, manifest.service, sched.placements);
+      targetNodes = sched.activeNodeIds.length > 0
+        ? sched.activeNodeIds
+        : await resolveFleetNodes(manifest.node_id || 'auto', env, payload.service);
+    } else {
+      if (isAutoNode) {
+        payload.node_id = await selectBestNodeForService(payload.service, env);
+      }
+      targetNodes = await resolveFleetNodes(payload.node_id, env, payload.service);
+    }
+    const nowIso = new Date().toISOString();
+
+    // 0a. Auto-inject declarative Blue/Green defaults if omitted
     const defaults = getServiceDeclarativeDefaults(payload.service, payload.env || 'uat');
     if (!payload.domain && (manifest?.domain || defaults.domain)) payload.domain = manifest?.domain || defaults.domain;
     if (!payload.domains && (manifest?.domains || defaults.domains)) payload.domains = manifest?.domains || defaults.domains;
@@ -1784,6 +1937,17 @@ async function handleTriggerDeploy(request: Request, env: Env, ctx: ExecutionCon
       payload.secrets = { ...(payload.secrets || {}), ...manifest.env_vars };
     }
 
+    const latestPlacements = await listFleetPlacements(env);
+    const clusterEndpoints = latestPlacements.length > 0
+      ? buildClusterEndpoints({
+          manifests: allManifests,
+          placements: latestPlacements,
+          nodes: enrolledNodes,
+          meshPeers,
+        })
+      : [];
+    const meshPort = computeDeterministicMeshPort(normTargetEnv, payload.service, manifest || undefined);
+
     const createdDeployments: DeploymentRecord[] = [];
 
     for (const targetNode of targetNodes) {
@@ -1791,7 +1955,20 @@ async function handleTriggerDeploy(request: Request, env: Env, ctx: ExecutionCon
         ? `dep_${Date.now()}_${targetNode}_${Math.random().toString(36).substring(2, 6)}`
         : (payload.deployment_id || `dep_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`);
 
-      const nodePayload = { ...payload, node_id: targetNode, deployment_id: deployID };
+      const extraHosts =
+        payload.extra_hosts || computeExtraHostsForNode(targetNode, normTargetEnv, clusterEndpoints);
+      const remoteUpstreams =
+        payload.remote_upstreams ||
+        computeRemoteUpstreamsForNode(targetNode, normTargetEnv, payload.service, clusterEndpoints);
+
+      const nodePayload = {
+        ...payload,
+        node_id: targetNode,
+        deployment_id: deployID,
+        mesh_port: payload.mesh_port || meshPort,
+        ...(extraHosts.length > 0 ? { extra_hosts: extraHosts } : {}),
+        ...(remoteUpstreams.length > 0 ? { remote_upstreams: remoteUpstreams } : {}),
+      };
 
       const record: DeploymentRecord = {
         deployment_id: deployID,
@@ -1883,6 +2060,9 @@ async function handleTriggerDeploy(request: Request, env: Env, ctx: ExecutionCon
         migration_cmd: payload.migration_cmd,
         is_preview: payload.is_preview,
         pr_number: payload.pr_number,
+        mesh_port: nodePayload.mesh_port,
+        ...(nodePayload.extra_hosts ? { extra_hosts: nodePayload.extra_hosts } : {}),
+        ...(nodePayload.remote_upstreams ? { remote_upstreams: nodePayload.remote_upstreams } : {}),
         timestamp: nowIso,
       };
 
@@ -2404,6 +2584,17 @@ async function handleUpdateDeployStatus(request: Request, env: Env, ctx: Executi
 
     if (env.FLEET_KV) {
       ctx.waitUntil(safeKvPut(env.FLEET_KV, `deployment:${update.deployment_id}`, JSON.stringify(record)));
+    }
+
+    if (record.node_id && record.service && update.status === 'success' && update.active_port) {
+      await updatePlacementRuntimePort(
+        env,
+        record.node_id,
+        normalizeFleetEnv(record.env),
+        record.service,
+        update.active_port,
+        'placed'
+      );
     }
 
     // Broadcast status change
@@ -4150,32 +4341,221 @@ async function handleTriggerRetireSystemdUnits(nodeId: string, request: Request,
   );
 }
 
-async function reconcileManifestList(
-  manifests: FleetServiceManifest[],
+interface ReconciledServiceSummary {
+  service: string;
+  env: string;
+  mode: 'blue_green' | 'singleton';
+  strategy: string;
+  image: string;
+  nodes: string[];
+  placed_nodes?: string[];
+  dispatched_nodes: string[];
+  adopted_nodes?: string[];
+  evicted_nodes?: string[];
+  mesh_port?: number;
+  fenced?: boolean;
+  fenced_node?: string;
+  fence_reason?: string;
+  placements: FleetPlacementRecord[];
+}
+
+async function reconcileManifestsWithScheduler(
   env: Env,
-  opts?: { overrideImage?: boolean; forceRecreateStateful?: boolean }
+  ctx: ExecutionContext,
+  targetManifests: FleetServiceManifest[],
+  opts?: {
+    forceRecreateStateful?: boolean;
+    forceRelocateStateful?: boolean;
+    ignoreLiveImageOverride?: boolean;
+    onlyDispatchChangedNodes?: boolean;
+    commandPrefix?: string;
+  }
 ): Promise<{
-  reconciled: Array<{ service: string; env: string; mode: string; image: string; nodes: string[]; adopted_nodes?: string[] }>;
+  reconciled: ReconciledServiceSummary[];
   skipped: Array<{ service: string; env: string; reason: string }>;
 }> {
   const masterKey = env.VAULT_MASTER_KEY || env.INGEST_SECRET || 'flarelens-default-vault-key';
-  const enrolledNodes = await loadAllNodesMerged(env);
+  const [enrolledNodes, meshPeers, allStoredManifests, initialPlacements] = await Promise.all([
+    loadAllNodesMerged(env),
+    loadAllMeshPeers(env),
+    env.FLEET_KV ? listFleetManifests(env.FLEET_KV) : Promise.resolve([]),
+    listFleetPlacements(env),
+  ]);
   const nodeById = new Map(enrolledNodes.map((n) => [n.node_id, n]));
-  const reconciled: Array<{ service: string; env: string; mode: string; image: string; nodes: string[]; adopted_nodes?: string[] }> = [];
+
+  const mergedManifestMap = new Map<string, FleetServiceManifest>();
+  for (const m of allStoredManifests) {
+    mergedManifestMap.set(`${normalizeFleetEnv(m.env)}:${m.service.toLowerCase()}`, m);
+  }
+  for (const m of targetManifests) {
+    mergedManifestMap.set(`${normalizeFleetEnv(m.env)}:${m.service.toLowerCase()}`, m);
+  }
+
+  const orderedManifests = [...targetManifests].sort((a, b) => {
+    const aPriority = isSingletonManifest(a) || normalizeFleetEnv(a.env) === 'infra' ? 0 : 1;
+    const bPriority = isSingletonManifest(b) || normalizeFleetEnv(b.env) === 'infra' ? 0 : 1;
+    return aPriority - bPriority || a.service.localeCompare(b.service);
+  });
+
+  let workingPlacements = [...initialPlacements];
+  const scheduledPlan: Array<{
+    manifest: FleetServiceManifest;
+    normEnv: string;
+    effectiveImage: string;
+    prevPlacedNodes: Set<string>;
+    placements: FleetPlacementRecord[];
+    activeNodeIds: string[];
+    evictedNodeIds: string[];
+    fenced: boolean;
+  }> = [];
   const skipped: Array<{ service: string; env: string; reason: string }> = [];
 
-  for (const m of manifests) {
+  for (const m of orderedManifests) {
     const normEnv = normalizeFleetEnv(m.env);
+    const svcLower = m.service.toLowerCase();
+    const existingForSvc = workingPlacements.filter(
+      (p) => p.env.toLowerCase() === normEnv && p.service.toLowerCase() === svcLower
+    );
+    const otherPlacements = workingPlacements.filter(
+      (p) => !(p.env.toLowerCase() === normEnv && p.service.toLowerCase() === svcLower)
+    );
+
     if (m.enabled === false) {
+      if (existingForSvc.length > 0) {
+        await deleteServicePlacements(env, normEnv, m.service);
+        workingPlacements = otherPlacements;
+        if (!isStatefulVolumeManifest(m)) {
+          for (const prev of existingForSvc) {
+            if (!prev.node_id || prev.status !== 'placed') continue;
+            const decomId = `decom_${Date.now()}_${m.service}_${prev.node_id}`;
+            const domains = Array.from(
+              new Set([m.domain, ...(m.domains || [])].filter((d): d is string => Boolean(d && d.trim())))
+            );
+            await enqueueFleetCommand(
+              prev.node_id,
+              {
+                id: decomId,
+                type: 'decommission_service',
+                deployment_id: decomId,
+                node_id: prev.node_id,
+                service: m.service,
+                env: normEnv,
+                container_name: m.container_name,
+                domains,
+                health_path: m.health_path,
+                drain_seconds: m.drain_seconds || 10,
+              },
+              env
+            );
+          }
+        }
+      }
       skipped.push({ service: m.service, env: normEnv, reason: 'disabled' });
       continue;
     }
 
-    const liveImg = !opts?.overrideImage && env.FLEET_KV
-      ? await getLiveServiceImage(env.FLEET_KV, normEnv, m.service)
-      : null;
+    const liveImg =
+      !opts?.ignoreLiveImageOverride && env.FLEET_KV
+        ? await getLiveServiceImage(env.FLEET_KV, normEnv, m.service)
+        : null;
     const effectiveImage = liveImg || m.image;
-    const targetNodes = await resolveFleetNodes(m.node_id || 'auto', env, m.service);
+
+    const prevPlacedNodes = new Set(
+      existingForSvc.filter((p) => p.node_id && p.status === 'placed').map((p) => p.node_id)
+    );
+
+    const sched = scheduleManifestPlacements({
+      manifest: m,
+      desiredImage: effectiveImage,
+      nodes: enrolledNodes,
+      meshPeers,
+      existingServicePlacements: existingForSvc,
+      otherClusterPlacements: otherPlacements,
+      forceRelocateStateful: opts?.forceRelocateStateful,
+    });
+
+    await saveServicePlacements(env, normEnv, m.service, sched.placements);
+    workingPlacements = [...otherPlacements, ...sched.placements];
+
+    scheduledPlan.push({
+      manifest: m,
+      normEnv,
+      effectiveImage,
+      prevPlacedNodes,
+      placements: sched.placements,
+      activeNodeIds: sched.activeNodeIds,
+      evictedNodeIds: sched.evictedNodeIds,
+      fenced: sched.fenced,
+    });
+  }
+
+  const clusterEndpoints = buildClusterEndpoints({
+    manifests: Array.from(mergedManifestMap.values()),
+    placements: workingPlacements,
+    nodes: enrolledNodes,
+    meshPeers,
+  });
+
+  const reconciled: ReconciledServiceSummary[] = [];
+  const prefix = opts?.commandPrefix || 'reconcile';
+
+  for (const item of scheduledPlan) {
+    const { manifest: m, normEnv, effectiveImage, prevPlacedNodes, placements, activeNodeIds, evictedNodeIds, fenced } = item;
+    const mode: 'blue_green' | 'singleton' = isSingletonManifest(m) ? 'singleton' : 'blue_green';
+    const meshPort = computeDeterministicMeshPort(normEnv, m.service, m);
+    const strategy = placements[0]?.strategy || m.placement_strategy || 'spread';
+
+    if (fenced) {
+      const fencedRec = placements.find((p) => p.status === 'fenced');
+      reconciled.push({
+        service: m.service,
+        env: normEnv,
+        mode,
+        strategy,
+        image: effectiveImage,
+        nodes: [],
+        dispatched_nodes: [],
+        mesh_port: meshPort,
+        fenced: true,
+        fenced_node: fencedRec?.node_id || '',
+        fence_reason: fencedRec?.reason || 'Stateful volume fenced',
+        placements,
+      });
+      continue;
+    }
+
+    if (evictedNodeIds.length > 0 && (!isStatefulVolumeManifest(m) || opts?.forceRelocateStateful)) {
+      const domains = Array.from(
+        new Set([m.domain, ...(m.domains || [])].filter((d): d is string => Boolean(d && d.trim())))
+      );
+      for (const evictedNode of evictedNodeIds) {
+        const decomId = `decom_${Date.now()}_${m.service}_${evictedNode}`;
+        const remoteUpstreams = computeRemoteUpstreamsForNode(
+          evictedNode,
+          normEnv,
+          m.service,
+          clusterEndpoints
+        );
+        await enqueueFleetCommand(
+          evictedNode,
+          {
+            id: decomId,
+            type: 'decommission_service',
+            deployment_id: decomId,
+            node_id: evictedNode,
+            service: m.service,
+            env: normEnv,
+            container_name: m.container_name,
+            domains,
+            health_path: m.health_path,
+            ...(remoteUpstreams.length > 0 ? { remote_upstreams: remoteUpstreams } : {}),
+            drain_seconds: m.drain_seconds || 10,
+            ...(opts?.forceRelocateStateful ? { force_remove_stateful: true } : {}),
+          },
+          env
+        );
+      }
+    }
 
     let resolvedSecrets = m.secrets;
     if (!resolvedSecrets && env.FLEET_KV) {
@@ -4188,20 +4568,25 @@ async function reconcileManifestList(
       resolvedSecrets = { ...(resolvedSecrets || {}), ...m.env_vars };
     }
 
-    if (isSingletonManifest(m)) {
+    const nodesToDispatch = opts?.onlyDispatchChangedNodes
+      ? activeNodeIds.filter((nid) => !prevPlacedNodes.has(nid))
+      : activeNodeIds;
+
+    if (mode === 'singleton') {
       const containerName = m.container_name || `${m.service}-${normEnv}`;
-      const enqueuedNodes: string[] = [];
+      const dispatchedNodes: string[] = [];
       const adoptedNodes: string[] = [];
 
-      for (const nodeId of targetNodes) {
+      for (const nodeId of nodesToDispatch) {
         if (m.adopt_only && !opts?.forceRecreateStateful && isContainerRunningOnNode(nodeById.get(nodeId), containerName)) {
           adoptedNodes.push(nodeId);
           continue;
         }
+        const extraHosts = computeExtraHostsForNode(nodeId, normEnv, clusterEndpoints);
         const cmd = {
           id: `sing_${Date.now()}_${m.service}_${nodeId}`,
           type: 'reconcile_singleton',
-          deployment_id: `sing_${Date.now()}_${m.service}`,
+          deployment_id: `sing_${Date.now()}_${m.service}_${nodeId}`,
           node_id: nodeId,
           service: m.service,
           env: normEnv,
@@ -4216,27 +4601,43 @@ async function reconcileManifestList(
           entrypoint: normalizeCommandArray(m.entrypoint),
           healthcheck: m.healthcheck
             ? {
-              ...m.healthcheck,
-              test: Array.isArray(m.healthcheck.test) ? m.healthcheck.test : ['CMD-SHELL', String(m.healthcheck.test)],
-            }
+                ...m.healthcheck,
+                test: Array.isArray(m.healthcheck.test) ? m.healthcheck.test : ['CMD-SHELL', String(m.healthcheck.test)],
+              }
             : undefined,
           secrets: resolvedSecrets,
           force_recreate_stateful: Boolean(opts?.forceRecreateStateful),
+          mesh_port: meshPort,
+          ...(extraHosts.length > 0 ? { extra_hosts: extraHosts } : {}),
         };
         await enqueueFleetCommand(nodeId, cmd, env);
-        enqueuedNodes.push(nodeId);
+        dispatchedNodes.push(nodeId);
       }
       reconciled.push({
         service: m.service,
         env: normEnv,
         mode: 'singleton',
+        strategy,
         image: effectiveImage,
-        nodes: enqueuedNodes,
+        nodes: dispatchedNodes,
+        placed_nodes: activeNodeIds,
+        dispatched_nodes: dispatchedNodes,
         ...(adoptedNodes.length > 0 ? { adopted_nodes: adoptedNodes } : {}),
+        ...(evictedNodeIds.length > 0 ? { evicted_nodes: evictedNodeIds } : {}),
+        mesh_port: meshPort,
+        placements,
       });
     } else {
-      for (const nodeId of targetNodes) {
-        const deployId = `sync_${Date.now()}_${m.service}_${nodeId}`;
+      const dispatchedNodes: string[] = [];
+      for (const nodeId of nodesToDispatch) {
+        const deployId = `${prefix}_${Date.now()}_${m.service}_${nodeId}`;
+        const extraHosts = computeExtraHostsForNode(nodeId, normEnv, clusterEndpoints);
+        const remoteUpstreams = computeRemoteUpstreamsForNode(
+          nodeId,
+          normEnv,
+          m.service,
+          clusterEndpoints
+        );
         const cmd = {
           id: deployId,
           type: 'deploy',
@@ -4263,10 +4664,25 @@ async function reconcileManifestList(
           run_migrations: m.run_migrations,
           migration_cmd: m.migration_cmd,
           secrets: resolvedSecrets,
+          mesh_port: meshPort,
+          ...(extraHosts.length > 0 ? { extra_hosts: extraHosts } : {}),
+          ...(remoteUpstreams.length > 0 ? { remote_upstreams: remoteUpstreams } : {}),
         };
         await enqueueFleetCommand(nodeId, cmd, env);
+        dispatchedNodes.push(nodeId);
       }
-      reconciled.push({ service: m.service, env: normEnv, mode: 'blue_green', image: effectiveImage, nodes: targetNodes });
+      reconciled.push({
+        service: m.service,
+        env: normEnv,
+        mode: 'blue_green',
+        strategy,
+        image: effectiveImage,
+        nodes: activeNodeIds,
+        dispatched_nodes: dispatchedNodes,
+        ...(evictedNodeIds.length > 0 ? { evicted_nodes: evictedNodeIds } : {}),
+        mesh_port: meshPort,
+        placements,
+      });
     }
   }
 
@@ -4346,9 +4762,10 @@ async function handleFleetSync(request: Request, env: Env, ctx: ExecutionContext
   let reconciled: any[] = [];
   let skipped: any[] = [];
   if (body.reconcile !== false) {
-    const res = await reconcileManifestList(body.manifests, env, {
-      overrideImage: Boolean(body.override_image),
+    const res = await reconcileManifestsWithScheduler(env, ctx, body.manifests, {
+      ignoreLiveImageOverride: Boolean(body.override_image),
       forceRecreateStateful: Boolean(body.force_recreate_stateful),
+      commandPrefix: 'sync',
     });
     reconciled = res.reconciled;
     skipped = res.skipped;
@@ -4372,8 +4789,11 @@ async function handleFleetSync(request: Request, env: Env, ctx: ExecutionContext
 
 async function handleFleetStatus(env: Env, url: URL): Promise<Response> {
   const envFilter = url.searchParams.get('env') || undefined;
-  const manifests = env.FLEET_KV ? await listFleetManifests(env.FLEET_KV, envFilter) : [];
-  const nodes = await loadAllNodesMerged(env);
+  const [manifests, nodes, placements] = await Promise.all([
+    env.FLEET_KV ? listFleetManifests(env.FLEET_KV, envFilter) : Promise.resolve([]),
+    loadAllNodesMerged(env),
+    listFleetPlacements(env, envFilter ? { env: normalizeFleetEnv(envFilter) } : undefined),
+  ]);
 
   const liveImages: Record<string, string> = {};
   if (env.FLEET_KV) {
@@ -4384,7 +4804,7 @@ async function handleFleetStatus(env: Env, url: URL): Promise<Response> {
     }
   }
 
-  const statuses = computeFleetDriftStatus(manifests, nodes, liveImages);
+  const statuses = computeFleetDriftStatus(manifests, nodes, liveImages, placements);
   const summary = {
     total: statuses.length,
     synced: statuses.filter((s) => s.sync_status === 'Synced').length,
@@ -4392,6 +4812,7 @@ async function handleFleetStatus(env: Env, url: URL): Promise<Response> {
     suspended: statuses.filter((s) => s.sync_status === 'Suspended').length,
     healthy: statuses.filter((s) => s.health_status === 'Healthy').length,
     degraded: statuses.filter((s) => s.health_status === 'Degraded' || s.health_status === 'Missing').length,
+    fenced: statuses.filter((s) => Boolean(s.fenced)).length,
   };
 
   return new Response(
@@ -4438,8 +4859,9 @@ async function handleFleetReconcile(
     manifests = await listFleetManifests(env.FLEET_KV, body.env);
   }
 
-  const { reconciled, skipped } = await reconcileManifestList(manifests, env, {
+  const { reconciled, skipped } = await reconcileManifestsWithScheduler(env, ctx, manifests, {
     forceRecreateStateful: Boolean(body.force_recreate_stateful),
+    commandPrefix: 'reconcile',
   });
 
   return new Response(
@@ -4484,7 +4906,7 @@ async function seedMissingVaultBundleFromEnvVars(
       list.push(vaultSvc);
       await safeKvPut(env.FLEET_KV, 'fleet:vault:services', JSON.stringify(list));
     }
-  } catch {}
+  } catch { }
 }
 
 async function handleListOrGetFleetManifests(env: Env, url: URL): Promise<Response> {
@@ -4611,6 +5033,8 @@ async function handleSaveSingleFleetManifest(
     });
     const recResp = await handleFleetReconcile(recReq, env, ctx);
     reconcileResult = await recResp.json().catch(() => null);
+  } else if (body.reconcile !== false && cleanManifest.enabled === false && prev && prev.enabled !== false) {
+    reconcileResult = await reconcileManifestsWithScheduler(env, ctx, [cleanManifest]);
   }
 
   return new Response(
@@ -4671,7 +5095,38 @@ async function handleDeleteFleetManifest(
     });
   }
 
+  const prevPlacements = await listFleetPlacements(env, { env: normEnv, service: prev.service });
   const deleted = await deleteFleetManifest(env.FLEET_KV, normEnv, prev.service);
+  await deleteServicePlacements(env, normEnv, prev.service);
+
+  const decommissionedNodes: string[] = [];
+  if (!isStatefulVolumeManifest(prev)) {
+    for (const p of prevPlacements) {
+      if (!p.node_id || p.status !== 'placed') continue;
+      const decomId = `decom_${Date.now()}_${prev.service}_${p.node_id}`;
+      const domains = Array.from(
+        new Set([prev.domain, ...(prev.domains || [])].filter((d): d is string => Boolean(d && d.trim())))
+      );
+      await enqueueFleetCommand(
+        p.node_id,
+        {
+          id: decomId,
+          type: 'decommission_service',
+          deployment_id: decomId,
+          node_id: p.node_id,
+          service: prev.service,
+          env: normEnv,
+          container_name: prev.container_name,
+          domains,
+          health_path: prev.health_path,
+          drain_seconds: prev.drain_seconds || 10,
+        },
+        env
+      );
+      decommissionedNodes.push(p.node_id);
+    }
+  }
+
   const actor = resolveDashboardActor(request, env);
   const rev = await recordFleetRevision(
     env,
@@ -5054,5 +5509,253 @@ async function handleImportFleetManifests(
     }
   );
 }
+
+/**
+ * GET /api/v1/control/fleet/placements
+ */
+async function handleListFleetPlacementsApi(env: Env, url: URL): Promise<Response> {
+  const envParam = url.searchParams.get('env') || undefined;
+  const serviceParam = url.searchParams.get('service') || undefined;
+  const nodeParam = url.searchParams.get('node_id') || undefined;
+
+  const [placements, nodes, meshPeers, manifests] = await Promise.all([
+    listFleetPlacements(env, {
+      env: envParam ? normalizeFleetEnv(envParam) : undefined,
+      service: serviceParam,
+      node_id: nodeParam,
+    }),
+    loadAllNodesMerged(env),
+    loadAllMeshPeers(env),
+    env.FLEET_KV ? listFleetManifests(env.FLEET_KV) : Promise.resolve([]),
+  ]);
+
+  const clusterEndpoints = buildClusterEndpoints({
+    manifests,
+    placements,
+    nodes,
+    meshPeers,
+  });
+
+  return new Response(
+    JSON.stringify({
+      count: placements.length,
+      placements,
+      cluster_endpoints: clusterEndpoints,
+    }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+/**
+ * POST /api/v1/control/nodes/:id/drain
+ */
+async function handleDrainNode(
+  nodeId: string,
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext
+): Promise<Response> {
+  const existing = fleetNodes.get(nodeId) || (await getNodeRecordD1(env, nodeId));
+  if (!existing) {
+    return new Response(JSON.stringify({ error: `Node ${nodeId} not found` }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
+    reason?: string;
+    force_relocate_stateful?: boolean;
+  };
+  const nowIso = new Date().toISOString();
+  const actor = resolveDashboardActor(request, env);
+  const reason = (body.reason || `Cordoned & drained by ${actor}`).trim();
+
+  existing.schedulable = false;
+  existing.status = 'Draining';
+  existing.cordoned_reason = reason;
+  existing.cordoned_at = nowIso;
+  existing.updated_at = nowIso;
+
+  fleetNodes.set(nodeId, existing);
+  await upsertNodeRecord(env, existing, { forceWrite: true });
+  if (env.FLEET_KV) {
+    await safeKvPut(env.FLEET_KV, `node:${nodeId}`, JSON.stringify(existing));
+  }
+
+  let migrated: ReconciledServiceSummary[] = [];
+  let fenced: Array<{ env: string; service: string; node_id: string; reason: string }> = [];
+
+  if (env.FLEET_KV) {
+    const [allManifests, currentPlacements] = await Promise.all([
+      listFleetManifests(env.FLEET_KV),
+      listFleetPlacements(env, { node_id: nodeId }),
+    ]);
+
+    const affectedManifests = allManifests.filter((m) => {
+      if (m.enabled === false) return false;
+      if (m.node_id === nodeId) return true;
+      const normEnv = normalizeFleetEnv(m.env);
+      return currentPlacements.some(
+        (p) => p.env.toLowerCase() === normEnv && p.service.toLowerCase() === m.service.toLowerCase()
+      );
+    });
+
+    if (affectedManifests.length > 0) {
+      const recOut = await reconcileManifestsWithScheduler(env, ctx, affectedManifests, {
+        onlyDispatchChangedNodes: true,
+        forceRelocateStateful: Boolean(body.force_relocate_stateful),
+        commandPrefix: 'drain',
+      });
+      migrated = recOut.reconciled.filter((r) => !r.fenced);
+      fenced = recOut.reconciled
+        .filter((r) => Boolean(r.fenced))
+        .map((r) => ({
+          env: r.env,
+          service: r.service,
+          node_id: r.fenced_node || nodeId,
+          reason: r.fence_reason || 'Stateful volume fenced',
+        }));
+    }
+  }
+
+  const drainLog: LogRecord = {
+    id: `log_drain_${Date.now()}_${nodeId}`,
+    timestamp: nowIso,
+    time_iso: nowIso,
+    level: 'warn',
+    service: 'flarelens-orchestrator',
+    environment: env.ENVIRONMENT || 'production',
+    message: `Node ${nodeId} cordoned & drained (${reason}): ${migrated.length} stateless service(s) rescheduled, ${fenced.length} stateful volume(s) fenced.`,
+    attributes: {
+      node_id: nodeId,
+      actor,
+      reason,
+      migrated_count: migrated.length,
+      fenced_count: fenced.length,
+    },
+  };
+  ringBuffer.push(drainLog);
+  if (ringBuffer.length > RING_BUFFER_MAX) ringBuffer.shift();
+  broadcastSSE(drainLog);
+  broadcastTelemetry({ type: 'node_drained', node: existing, migrated, fenced });
+
+  return new Response(
+    JSON.stringify({
+      status: 'draining',
+      node_id: nodeId,
+      schedulable: false,
+      reason,
+      migrated_count: migrated.length,
+      fenced_count: fenced.length,
+      migrated,
+      fenced,
+    }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+/**
+ * POST /api/v1/control/nodes/:id/uncordon
+ */
+async function handleUncordonNode(
+  nodeId: string,
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext
+): Promise<Response> {
+  const existing = fleetNodes.get(nodeId) || (await getNodeRecordD1(env, nodeId));
+  if (!existing) {
+    return new Response(JSON.stringify({ error: `Node ${nodeId} not found` }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const nowIso = new Date().toISOString();
+  existing.schedulable = true;
+  existing.status = 'Healthy';
+  delete existing.cordoned_reason;
+  delete existing.cordoned_at;
+  existing.updated_at = nowIso;
+
+  fleetNodes.set(nodeId, existing);
+  await upsertNodeRecord(env, existing, { forceWrite: true });
+  if (env.FLEET_KV) {
+    await safeKvPut(env.FLEET_KV, `node:${nodeId}`, JSON.stringify(existing));
+  }
+
+  let reconciled: ReconciledServiceSummary[] = [];
+  if (env.FLEET_KV) {
+    const [allManifests, allPlacements] = await Promise.all([
+      listFleetManifests(env.FLEET_KV),
+      listFleetPlacements(env),
+    ]);
+    const pendingManifests = allManifests.filter((m) => {
+      if (m.enabled === false) return false;
+      const normEnv = normalizeFleetEnv(m.env);
+      return allPlacements.some(
+        (p) =>
+          p.env.toLowerCase() === normEnv &&
+          p.service.toLowerCase() === m.service.toLowerCase() &&
+          (p.status === 'unscheduled' || (p.status === 'fenced' && p.node_id === nodeId))
+      );
+    });
+    if (pendingManifests.length > 0) {
+      const recOut = await reconcileManifestsWithScheduler(env, ctx, pendingManifests, {
+        onlyDispatchChangedNodes: true,
+        commandPrefix: 'uncordon',
+      });
+      reconciled = recOut.reconciled;
+    }
+  }
+
+  broadcastTelemetry({ type: 'node_uncordoned', node: existing, reconciled });
+
+  return new Response(
+    JSON.stringify({
+      status: 'uncordoned',
+      node_id: nodeId,
+      schedulable: true,
+      reconciled_count: reconciled.length,
+      reconciled,
+    }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+/**
+ * POST /api/v1/control/fleet/failover-check
+ */
+async function handleFleetFailoverCheck(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext
+): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as { stale_threshold_ms?: number };
+  const result = await handleNodeCrashFailover(env, ctx, {
+    staleThresholdMs: body.stale_threshold_ms,
+  });
+  return new Response(
+    JSON.stringify({
+      status: 'checked',
+      ...result,
+    }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
 
 

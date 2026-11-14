@@ -60,6 +60,25 @@ const SCHEMA_STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_fleet_revisions_seq ON fleet_revisions(seq DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_fleet_revisions_service ON fleet_revisions(env, service, seq DESC)`,
+  `CREATE TABLE IF NOT EXISTS fleet_placements (
+    placement_id TEXT PRIMARY KEY,
+    env TEXT NOT NULL,
+    service TEXT NOT NULL,
+    replica_index INTEGER NOT NULL DEFAULT 0,
+    node_id TEXT NOT NULL,
+    mode TEXT NOT NULL DEFAULT 'blue_green',
+    strategy TEXT NOT NULL DEFAULT 'spread',
+    memory_mb INTEGER NOT NULL DEFAULT 256,
+    mesh_ip TEXT NOT NULL DEFAULT '',
+    mesh_port INTEGER NOT NULL DEFAULT 0,
+    active_port INTEGER NOT NULL DEFAULT 0,
+    desired_image TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'placed',
+    reason TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_fleet_placements_node ON fleet_placements(node_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_fleet_placements_service ON fleet_placements(env, service, replica_index ASC)`,
 ];
 
 const initializedDbs = new WeakSet<object>();
@@ -942,4 +961,246 @@ export async function getFleetRevision(env: Env, revId: string): Promise<FleetRe
   }
 
   return null;
+}
+
+// ============================================================================
+// Multi-Node Fleet Placements Registry (D1 primary, KV fallback)
+// ============================================================================
+
+export interface FleetPlacementRecord {
+  placement_id: string;
+  env: string;
+  service: string;
+  replica_index: number;
+  node_id: string;
+  mode: 'blue_green' | 'singleton';
+  strategy: 'spread' | 'binpack' | 'pinned';
+  memory_mb: number;
+  mesh_ip: string;
+  mesh_port: number;
+  active_port: number;
+  desired_image: string;
+  status: 'placed' | 'fenced' | 'unscheduled' | 'evicting';
+  reason: string;
+  updated_at: string;
+}
+
+function hydratePlacementRow(row: any): FleetPlacementRecord {
+  return {
+    placement_id: String(row.placement_id || `${row.env}:${row.service}:${row.replica_index || 0}`),
+    env: String(row.env || 'uat'),
+    service: String(row.service || ''),
+    replica_index: Number(row.replica_index || 0),
+    node_id: String(row.node_id || ''),
+    mode: row.mode === 'singleton' ? 'singleton' : 'blue_green',
+    strategy:
+      row.strategy === 'binpack' || row.strategy === 'pinned' ? row.strategy : 'spread',
+    memory_mb: Number(row.memory_mb || 256),
+    mesh_ip: String(row.mesh_ip || ''),
+    mesh_port: Number(row.mesh_port || 0),
+    active_port: Number(row.active_port || 0),
+    desired_image: String(row.desired_image || ''),
+    status:
+      row.status === 'fenced' || row.status === 'unscheduled' || row.status === 'evicting'
+        ? row.status
+        : 'placed',
+    reason: String(row.reason || ''),
+    updated_at: String(row.updated_at || new Date().toISOString()),
+  };
+}
+
+export async function listFleetPlacements(
+  env: Env,
+  filters?: { env?: string; service?: string; node_id?: string }
+): Promise<FleetPlacementRecord[]> {
+  const envFilter = filters?.env ? filters.env.trim().toLowerCase() : '';
+  const svcFilter = filters?.service ? filters.service.trim().toLowerCase() : '';
+  const nodeFilter = filters?.node_id ? filters.node_id.trim() : '';
+
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    let sql = `SELECT * FROM fleet_placements`;
+    const clauses: string[] = [];
+    const binds: any[] = [];
+    if (envFilter) {
+      clauses.push(`LOWER(env) = ?`);
+      binds.push(envFilter);
+    }
+    if (svcFilter) {
+      clauses.push(`LOWER(service) = ?`);
+      binds.push(svcFilter);
+    }
+    if (nodeFilter) {
+      clauses.push(`node_id = ?`);
+      binds.push(nodeFilter);
+    }
+    if (clauses.length > 0) {
+      sql += ` WHERE ` + clauses.join(' AND ');
+    }
+    sql += ` ORDER BY env ASC, service ASC, replica_index ASC`;
+    const res = await db.prepare(sql).bind(...binds).all<any>();
+    return (res.results || []).map(hydratePlacementRow);
+  }
+
+  if (env.FLEET_KV) {
+    try {
+      const raw = await env.FLEET_KV.get('fleet:placements:all');
+      const list: FleetPlacementRecord[] = raw ? JSON.parse(raw) : [];
+      return list
+        .map(hydratePlacementRow)
+        .filter(
+          (p) =>
+            (!envFilter || p.env.toLowerCase() === envFilter) &&
+            (!svcFilter || p.service.toLowerCase() === svcFilter) &&
+            (!nodeFilter || p.node_id === nodeFilter)
+        )
+        .sort((a, b) =>
+          a.env.localeCompare(b.env) ||
+          a.service.localeCompare(b.service) ||
+          a.replica_index - b.replica_index
+        );
+    } catch {}
+  }
+  return [];
+}
+
+export async function saveServicePlacements(
+  env: Env,
+  envName: string,
+  service: string,
+  placements: FleetPlacementRecord[]
+): Promise<void> {
+  const cleanEnv = envName.trim().toLowerCase();
+  const cleanSvc = service.trim().toLowerCase();
+  const nowIso = new Date().toISOString();
+
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    const stmts = [
+      db
+        .prepare(`DELETE FROM fleet_placements WHERE LOWER(env) = ? AND LOWER(service) = ?`)
+        .bind(cleanEnv, cleanSvc),
+    ];
+    for (const p of placements) {
+      stmts.push(
+        db
+          .prepare(
+            `INSERT INTO fleet_placements (
+              placement_id, env, service, replica_index, node_id, mode, strategy,
+              memory_mb, mesh_ip, mesh_port, active_port, desired_image, status, reason, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .bind(
+            p.placement_id || `${cleanEnv}:${cleanSvc}:${p.replica_index}`,
+            cleanEnv,
+            cleanSvc,
+            Number(p.replica_index || 0),
+            p.node_id,
+            p.mode || 'blue_green',
+            p.strategy || 'spread',
+            Number(p.memory_mb || 256),
+            p.mesh_ip || '',
+            Number(p.mesh_port || 0),
+            Number(p.active_port || 0),
+            p.desired_image || '',
+            p.status || 'placed',
+            p.reason || '',
+            p.updated_at || nowIso
+          )
+      );
+    }
+    await db.batch(stmts);
+    return;
+  }
+
+  if (env.FLEET_KV) {
+    try {
+      const raw = await env.FLEET_KV.get('fleet:placements:all');
+      const prev: FleetPlacementRecord[] = raw ? JSON.parse(raw) : [];
+      const kept = prev.filter(
+        (x) => !(x.env.toLowerCase() === cleanEnv && x.service.toLowerCase() === cleanSvc)
+      );
+      const next = [
+        ...kept,
+        ...placements.map((p) => ({
+          ...p,
+          placement_id: p.placement_id || `${cleanEnv}:${cleanSvc}:${p.replica_index}`,
+          env: cleanEnv,
+          service: cleanSvc,
+          updated_at: p.updated_at || nowIso,
+        })),
+      ];
+      await env.FLEET_KV.put('fleet:placements:all', JSON.stringify(next));
+    } catch {}
+  }
+}
+
+export async function deleteServicePlacements(
+  env: Env,
+  envName: string,
+  service: string
+): Promise<void> {
+  await saveServicePlacements(env, envName, service, []);
+}
+
+export async function updatePlacementRuntimePort(
+  env: Env,
+  nodeId: string,
+  envName: string,
+  service: string,
+  activePort: number,
+  status?: 'placed' | 'fenced' | 'unscheduled' | 'evicting'
+): Promise<void> {
+  if (!nodeId || !service) return;
+  const cleanEnv = (envName || 'uat').trim().toLowerCase();
+  const cleanSvc = service.trim().toLowerCase();
+  const nowIso = new Date().toISOString();
+
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    if (status) {
+      await db
+        .prepare(
+          `UPDATE fleet_placements
+           SET active_port = ?, status = ?, updated_at = ?
+           WHERE node_id = ? AND LOWER(env) = ? AND LOWER(service) = ?`
+        )
+        .bind(Number(activePort || 0), status, nowIso, nodeId, cleanEnv, cleanSvc)
+        .run();
+    } else {
+      await db
+        .prepare(
+          `UPDATE fleet_placements
+           SET active_port = ?, updated_at = ?
+           WHERE node_id = ? AND LOWER(env) = ? AND LOWER(service) = ?`
+        )
+        .bind(Number(activePort || 0), nowIso, nodeId, cleanEnv, cleanSvc)
+        .run();
+    }
+    return;
+  }
+
+  if (env.FLEET_KV) {
+    try {
+      const raw = await env.FLEET_KV.get('fleet:placements:all');
+      if (!raw) return;
+      const list: FleetPlacementRecord[] = JSON.parse(raw);
+      let mutated = false;
+      for (const p of list) {
+        if (
+          p.node_id === nodeId &&
+          p.env.toLowerCase() === cleanEnv &&
+          p.service.toLowerCase() === cleanSvc
+        ) {
+          p.active_port = Number(activePort || 0);
+          if (status) p.status = status;
+          p.updated_at = nowIso;
+          mutated = true;
+        }
+      }
+      if (mutated) {
+        await env.FLEET_KV.put('fleet:placements:all', JSON.stringify(list));
+      }
+    } catch {}
+  }
 }

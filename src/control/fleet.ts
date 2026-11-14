@@ -1,4 +1,7 @@
 import type { NodeRecord } from '../types';
+import type { FleetPlacementRecord } from './db';
+
+export type FleetPlacementStrategy = 'spread' | 'binpack' | 'pinned';
 
 export interface FleetWorkerSpec {
   name: string;
@@ -20,10 +23,15 @@ export interface FleetServiceManifest {
   $schema?: string;
   service: string;
   env: 'uat' | 'prod' | 'infra' | 'staging' | 'dev' | string;
+  mode?: 'blue_green' | 'singleton';
   image: string;
   enabled?: boolean;
   adopt_only?: boolean;
   node_id?: string;
+  replicas?: number;
+  memory_mb?: number;
+  placement_strategy?: FleetPlacementStrategy;
+  required_tags?: string[];
   container_name?: string;
   restart?: 'always' | 'unless-stopped' | 'on-failure' | 'no';
   runtime?: 'runc' | 'runsc';
@@ -59,6 +67,11 @@ export interface FleetServiceStatus {
   enabled: boolean;
   adopt_only?: boolean;
   target_node: string;
+  placed_nodes?: string[];
+  desired_replicas?: number;
+  ready_replicas?: number;
+  placement_strategy?: FleetPlacementStrategy;
+  fenced?: boolean;
   desired_image: string;
   live_image?: string;
   active_containers: string[];
@@ -82,10 +95,15 @@ export const FLEET_JSON_SCHEMA = {
     $schema: { type: 'string' },
     service: { type: 'string', pattern: '^[a-z0-9-]+$' },
     env: { type: 'string', enum: ['infra', 'uat', 'prod', 'staging', 'dev'] },
+    mode: { type: 'string', enum: ['blue_green', 'singleton'] },
     image: { type: 'string' },
     enabled: { type: 'boolean', default: true },
     adopt_only: { type: 'boolean', default: false },
     node_id: { type: 'string' },
+    replicas: { type: 'integer', minimum: 1, maximum: 32, default: 1 },
+    memory_mb: { type: 'integer', minimum: 32, maximum: 262144, default: 256 },
+    placement_strategy: { type: 'string', enum: ['spread', 'binpack', 'pinned'], default: 'spread' },
+    required_tags: { type: 'array', items: { type: 'string' } },
     container_name: { type: 'string' },
     restart: { type: 'string', enum: ['always', 'unless-stopped', 'on-failure', 'no'], default: 'unless-stopped' },
     runtime: { type: 'string', enum: ['runc', 'runsc'], default: 'runc' },
@@ -258,6 +276,10 @@ export function buildPromotedManifest(
       command: src.command ?? tgt.command,
       entrypoint: src.entrypoint ?? tgt.entrypoint,
       workers: tgt.workers ?? src.workers,
+      replicas: tgt.replicas ?? src.replicas,
+      memory_mb: tgt.memory_mb ?? src.memory_mb,
+      placement_strategy: tgt.placement_strategy ?? src.placement_strategy,
+      required_tags: tgt.required_tags ?? src.required_tags,
     };
   }
 
@@ -282,12 +304,12 @@ export function buildPromotedManifest(
     ...(src.volumes ? { volumes: src.volumes.map(swapEnvToken) } : {}),
     ...(src.workers
       ? {
-          workers: src.workers.map((w) => ({
-            ...w,
-            ...(w.networks ? { networks: w.networks.map(swapEnvToken) } : {}),
-            ...(w.volumes ? { volumes: w.volumes.map(swapEnvToken) } : {}),
-          })),
-        }
+        workers: src.workers.map((w) => ({
+          ...w,
+          ...(w.networks ? { networks: w.networks.map(swapEnvToken) } : {}),
+          ...(w.volumes ? { volumes: w.volumes.map(swapEnvToken) } : {}),
+        })),
+      }
       : {}),
   };
 }
@@ -307,6 +329,8 @@ export function normalizeCommandArray(cmd: string[] | string | undefined): strin
 }
 
 export function isSingletonManifest(m: FleetServiceManifest): boolean {
+  if (m.mode === 'singleton') return true;
+  if (m.mode === 'blue_green') return false;
   return Boolean(m.container_name) && !m.host_port_blue && !m.host_port_green;
 }
 
@@ -327,6 +351,29 @@ export function validateFleetManifest(m: any): { valid: boolean; errors: string[
   }
   if (m.adopt_only !== undefined && typeof m.adopt_only !== 'boolean') {
     errors.push(`Invalid 'adopt_only' (${String(m.adopt_only)}): must be boolean`);
+  }
+  if (m.replicas !== undefined) {
+    const rep = Number(m.replicas);
+    if (!Number.isInteger(rep) || rep < 1 || rep > 32) {
+      errors.push(`Invalid 'replicas' (${String(m.replicas)}): must be integer 1..32`);
+    }
+  }
+  if (m.memory_mb !== undefined) {
+    const mem = Number(m.memory_mb);
+    if (!Number.isInteger(mem) || mem < 32 || mem > 262144) {
+      errors.push(`Invalid 'memory_mb' (${String(m.memory_mb)}): must be integer 32..262144`);
+    }
+  }
+  if (m.placement_strategy !== undefined) {
+    const allowedStrategies = ['spread', 'binpack', 'pinned'];
+    if (typeof m.placement_strategy !== 'string' || !allowedStrategies.includes(m.placement_strategy)) {
+      errors.push(`Invalid 'placement_strategy' (${String(m.placement_strategy)}): must be spread, binpack, or pinned`);
+    }
+  }
+  if (m.required_tags !== undefined) {
+    if (!Array.isArray(m.required_tags) || m.required_tags.some((t: any) => typeof t !== 'string' || !t.trim())) {
+      errors.push(`Invalid 'required_tags': must be an array of non-empty tag strings`);
+    }
   }
   if (m.domains !== undefined) {
     if (!Array.isArray(m.domains) || m.domains.some((d: any) => typeof d !== 'string' || !d.trim())) {
@@ -389,7 +436,7 @@ export async function saveFleetManifests(
           }
         }
       }
-    } catch {}
+    } catch { }
     merged.sort();
     await kv.put(indexKey, JSON.stringify(merged));
   }
@@ -406,7 +453,7 @@ export async function deleteFleetManifest(kv: any, envName: string, service: str
   await kv.delete(key);
   try {
     await kv.delete(`fleet:live_image:${env}:${cleanSvc}`);
-  } catch {}
+  } catch { }
 
   try {
     const indexKey = `fleet:manifests:${env}`;
@@ -418,7 +465,7 @@ export async function deleteFleetManifest(kv: any, envName: string, service: str
         await kv.put(indexKey, JSON.stringify(filtered));
       }
     }
-  } catch {}
+  } catch { }
 
   return true;
 }
@@ -435,7 +482,7 @@ export async function getFleetManifest(
     if (raw) {
       return JSON.parse(raw);
     }
-  } catch {}
+  } catch { }
   return null;
 }
 
@@ -457,7 +504,7 @@ export async function listFleetManifests(
         const m = await getFleetManifest(kv, env, svc);
         if (m) out.push(m);
       }
-    } catch {}
+    } catch { }
   }
   return out;
 }
@@ -511,7 +558,8 @@ export function isContainerRunningOnNode(node: NodeRecord | undefined, container
 export function computeFleetDriftStatus(
   manifests: Array<FleetServiceManifest & { _revision?: string; _synced_commit?: string; _synced_at?: string }>,
   nodes: NodeRecord[],
-  liveImagesByServiceKey: Record<string, string> = {}
+  liveImagesByServiceKey: Record<string, string> = {},
+  placements: FleetPlacementRecord[] = []
 ): FleetServiceStatus[] {
   return manifests.map((m) => {
     const env = normalizeFleetEnv(m.env);
@@ -519,10 +567,24 @@ export function computeFleetDriftStatus(
     const isEnabled = m.enabled !== false;
     const serviceKey = `${env}:${m.service.toLowerCase()}`;
     const desiredImage = liveImagesByServiceKey[serviceKey] || m.image;
+    const desiredReplicas = mode === 'singleton' ? 1 : Math.max(1, Number(m.replicas || 1));
+    const strategy: FleetPlacementStrategy =
+      m.placement_strategy || (m.node_id && !['auto', 'smart', 'all', 'all-prod'].includes(m.node_id) ? 'pinned' : 'spread');
 
-    const candidateNodes = m.node_id
-      ? nodes.filter((n) => n.node_id === m.node_id || n.hostname === m.node_id)
-      : nodes;
+    const svcPlacements = placements.filter(
+      (p) => p.env.toLowerCase() === env && p.service.toLowerCase() === m.service.toLowerCase()
+    );
+    const placedNodes = svcPlacements
+      .filter((p) => p.node_id && p.status === 'placed')
+      .map((p) => p.node_id);
+    const isFenced = svcPlacements.some((p) => p.status === 'fenced');
+
+    const candidateNodes =
+      placedNodes.length > 0
+        ? nodes.filter((n) => placedNodes.includes(n.node_id) || (n.hostname && placedNodes.includes(n.hostname)))
+        : m.node_id
+          ? nodes.filter((n) => n.node_id === m.node_id || n.hostname === m.node_id)
+          : nodes;
     const searchNodes = candidateNodes.length > 0 ? candidateNodes : nodes;
 
     const matchingContainers: Array<{ nodeId: string; name: string; image: string; state: string }> = [];
@@ -560,7 +622,18 @@ export function computeFleetDriftStatus(
 
     const driftReasons: string[] = [];
     const running = matchingContainers.filter((c) => c.state === 'running');
-    const targetNode = m.node_id || matchingContainers[0]?.nodeId || searchNodes[0]?.node_id || 'unassigned';
+    const runningNodeIds = Array.from(new Set(running.map((c) => c.nodeId)));
+    const effectiveNodes = placedNodes.length > 0 ? placedNodes : runningNodeIds;
+    const targetNode =
+      effectiveNodes.length > 1
+        ? effectiveNodes.join(', ')
+        : effectiveNodes[0] || m.node_id || matchingContainers[0]?.nodeId || searchNodes[0]?.node_id || 'unassigned';
+    const readyReplicas = mode === 'singleton' ? (running.length > 0 ? 1 : 0) : runningNodeIds.length;
+
+    if (isFenced) {
+      const fenceReason = svcPlacements.find((p) => p.status === 'fenced')?.reason || 'Stateful volume fenced on offline/cordoned node';
+      driftReasons.push(fenceReason);
+    }
 
     if (!isEnabled && matchingContainers.length === 0) {
       return {
@@ -570,11 +643,40 @@ export function computeFleetDriftStatus(
         enabled: false,
         adopt_only: m.adopt_only,
         target_node: targetNode,
+        placed_nodes: effectiveNodes,
+        desired_replicas: desiredReplicas,
+        ready_replicas: 0,
+        placement_strategy: strategy,
+        fenced: isFenced,
         desired_image: desiredImage,
         active_containers: [],
         sync_status: 'Suspended',
         health_status: 'Suspended',
         drift_reasons: ['Manifest disabled (enabled: false) — awaiting environment activation'],
+        revision: m._revision,
+        synced_commit: m._synced_commit,
+        updated_at: m._synced_at,
+      };
+    }
+
+    if (isFenced) {
+      return {
+        service: m.service,
+        env,
+        mode,
+        enabled: isEnabled,
+        adopt_only: m.adopt_only,
+        target_node: targetNode,
+        placed_nodes: effectiveNodes,
+        desired_replicas: desiredReplicas,
+        ready_replicas: 0,
+        placement_strategy: strategy,
+        fenced: true,
+        desired_image: desiredImage,
+        active_containers: [],
+        sync_status: 'OutOfSync',
+        health_status: 'Degraded',
+        drift_reasons: driftReasons,
         revision: m._revision,
         synced_commit: m._synced_commit,
         updated_at: m._synced_at,
@@ -590,6 +692,11 @@ export function computeFleetDriftStatus(
         enabled: isEnabled,
         adopt_only: m.adopt_only,
         target_node: targetNode,
+        placed_nodes: effectiveNodes,
+        desired_replicas: desiredReplicas,
+        ready_replicas: 0,
+        placement_strategy: strategy,
+        fenced: false,
         desired_image: desiredImage,
         active_containers: [],
         sync_status: searchNodes.length === 0 ? 'Unknown' : 'OutOfSync',
@@ -610,6 +717,11 @@ export function computeFleetDriftStatus(
         enabled: isEnabled,
         adopt_only: m.adopt_only,
         target_node: targetNode,
+        placed_nodes: effectiveNodes,
+        desired_replicas: desiredReplicas,
+        ready_replicas: 0,
+        placement_strategy: strategy,
+        fenced: false,
         desired_image: desiredImage,
         live_image: matchingContainers[0]?.image,
         active_containers: matchingContainers.map((c) => c.name),
@@ -623,9 +735,12 @@ export function computeFleetDriftStatus(
     }
 
     const liveImg = running[0].image;
-    const imageMatches = running.some((c) => c.image === desiredImage);
+    const imageMatches = running.every((c) => c.image === desiredImage);
     if (!imageMatches) {
       driftReasons.push(`Running image '${liveImg}' differs from desired '${desiredImage}'`);
+    }
+    if (desiredReplicas > 1 && readyReplicas < desiredReplicas) {
+      driftReasons.push(`Replica count ${readyReplicas}/${desiredReplicas} running across placed nodes`);
     }
 
     return {
@@ -635,11 +750,16 @@ export function computeFleetDriftStatus(
       enabled: isEnabled,
       adopt_only: m.adopt_only,
       target_node: targetNode,
+      placed_nodes: effectiveNodes,
+      desired_replicas: desiredReplicas,
+      ready_replicas: readyReplicas,
+      placement_strategy: strategy,
+      fenced: false,
       desired_image: desiredImage,
       live_image: liveImg,
-      active_containers: running.map((c) => c.name),
+      active_containers: running.map((c) => `${c.nodeId}:${c.name}`),
       sync_status: driftReasons.length === 0 ? 'Synced' : 'OutOfSync',
-      health_status: 'Healthy',
+      health_status: readyReplicas < desiredReplicas ? 'Progressing' : 'Healthy',
       drift_reasons: driftReasons,
       revision: m._revision,
       synced_commit: m._synced_commit,
