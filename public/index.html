@@ -2355,6 +2355,30 @@
     </form>
   </dialog>
 
+  <!-- MODAL: CONFIRM DRAIN-LOCKED GRACEFUL OS REBOOT -->
+  <dialog id="rebootConfirmDialog" class="ota-dialog" aria-labelledby="rebootConfirmTitle" closedby="any">
+    <div>
+      <h3 id="rebootConfirmTitle" style="font-size:1.05rem; font-weight:700;">Confirm Drain-Locked Host Reboot</h3>
+      <p style="font-size:0.8rem; color:var(--text-muted); margin-top:0.35rem; line-height:1.45;">
+        Queues a <code>reboot_node</code> command over the 15s heartbeat channel. The host agent waits for active deployments and database backups to drain, confirms command <code>ACK</code> first to prevent reboot loops, and executes a clean <code>systemctl reboot</code>.
+      </p>
+    </div>
+    <form method="dialog" id="rebootConfirmForm" style="display:flex; flex-direction:column; gap:0.85rem;">
+      <div>
+        <label for="rebootTargetNodeInput" style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:0.25rem;">Target Node</label>
+        <input type="text" id="rebootTargetNodeInput" class="search-box" value="" readonly style="width:100%;">
+      </div>
+      <div>
+        <label for="rebootReasonInput" style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:0.25rem;">Maintenance Reason</label>
+        <input type="text" id="rebootReasonInput" class="search-box" value="Apply pending Linux kernel security update" style="width:100%;">
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.35rem;">
+        <button value="cancel" autofocus class="btn">Cancel</button>
+        <button value="confirm" class="btn btn-primary" id="btnConfirmRebootSubmit">🔁 Queue Graceful Reboot</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Enhanced OTel Trace & Error Review Drawer -->
   <div class="drawer" id="traceDrawer">
     <div class="drawer-header" style="background:#090d18; border-bottom:1px solid var(--border); padding:1rem 1.25rem;">
@@ -2784,15 +2808,29 @@
                 <div class="progress-track"><div class="progress-fill" style="width: ${diskPct}%;"></div></div>
               </div>
             </div>
-            <div style="border-top:1px solid var(--border); padding-top:0.75rem; display:flex; justify-content:space-between; align-items:center; font-size:0.75rem;">
-              <span style="color:var(--text-muted);">Docker Daemon: <strong style="color:#10b981;">Online</strong></span>
-              <span style="color:var(--text-muted);">Active Containers: <strong style="color:#fff;">${containers.length || 5}</strong></span>
+            <div style="border-top:1px solid var(--border); padding-top:0.75rem; display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; gap:0.5rem; flex-wrap:wrap;">
+              <span style="color:var(--text-muted);">Docker Daemon: <strong style="color:#10b981;">Online</strong> · v${escapeHtml(node.version || '0.2.5')}</span>
+              <span style="display:flex; align-items:center; gap:0.45rem;">
+                ${metrics.reboot_required ? `<button type="button" class="btn btn-sm btn-reboot-node" data-node="${escapeHtml(node.node_id)}" style="padding:2px 8px; font-size:0.68rem; border-color:rgba(245,158,11,0.5); color:#fbbf24;" title="Pending OS/kernel reboot detected">🔁 Reboot Pending</button>` : ''}
+                <span style="color:var(--text-muted);">Active Containers: <strong style="color:#fff;">${containers.length || 5}</strong></span>
+              </span>
             </div>
           `;
           fleetNodeGrid.appendChild(card);
         });
 
-        // Wire copy buttons
+        // Wire copy & reboot buttons
+        fleetNodeGrid.querySelectorAll('.btn-reboot-node').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const targetNode = btn.getAttribute('data-node');
+            const rebootDialog = document.getElementById('rebootConfirmDialog');
+            const rebootNodeInput = document.getElementById('rebootTargetNodeInput');
+            if (targetNode && rebootDialog && rebootNodeInput) {
+              rebootNodeInput.value = targetNode;
+              rebootDialog.showModal();
+            }
+          });
+        });
         fleetNodeGrid.querySelectorAll('.btn-copy-mesh-ip').forEach(btn => {
           btn.addEventListener('click', (e) => {
             const ip = btn.getAttribute('data-ip');
@@ -5316,6 +5354,52 @@
             e.clientY > rect.bottom;
           pointerDownOutside = false;
           if (upOutside) otaConfirmDialog.close();
+        });
+      }
+    }
+
+    const rebootConfirmDialog = document.getElementById('rebootConfirmDialog');
+    if (rebootConfirmDialog) {
+      rebootConfirmDialog.addEventListener('close', async () => {
+        const action = rebootConfirmDialog.returnValue;
+        rebootConfirmDialog.returnValue = '';
+        if (action !== 'confirm') return;
+
+        const targetNode = document.getElementById('rebootTargetNodeInput')?.value?.trim();
+        const reason = document.getElementById('rebootReasonInput')?.value?.trim();
+        if (!targetNode) return;
+
+        try {
+          const resp = await fetch(`/api/v1/control/nodes/${encodeURIComponent(targetNode)}/reboot`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok) {
+            showToast(`Reboot trigger failed: ${data.error || resp.statusText}`, true);
+            return;
+          }
+          showToast(`Queued drain-locked graceful reboot for ${targetNode} (${data.command_id})!`);
+        } catch (err) {
+          showToast(`Reboot network error: ${err.message}`, true);
+        }
+      });
+
+      if (!('closedBy' in HTMLDialogElement.prototype)) {
+        const isOutsideDialog = (e, dialog) => {
+          const r = dialog.getBoundingClientRect();
+          return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+        };
+        let pressedOutside = false;
+        rebootConfirmDialog.addEventListener('pointerdown', (e) => {
+          pressedOutside = isOutsideDialog(e, rebootConfirmDialog);
+        });
+        rebootConfirmDialog.addEventListener('pointerup', (e) => {
+          if (pressedOutside && isOutsideDialog(e, rebootConfirmDialog)) {
+            rebootConfirmDialog.close();
+          }
+          pressedOutside = false;
         });
       }
     }

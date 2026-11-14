@@ -267,6 +267,14 @@ export default {
     if (url.pathname === '/api/v1/control/nodes' && request.method === 'GET') {
       return handleListNodes(env);
     }
+    if (url.pathname.startsWith('/api/v1/control/nodes/') && url.pathname.endsWith('/reboot') && request.method === 'POST') {
+      const nodeId = url.pathname.replace('/api/v1/control/nodes/', '').replace('/reboot', '').replace(/\/+$/, '').trim();
+      if (nodeId) return handleTriggerNodeReboot(nodeId, request, env);
+    }
+    if (url.pathname.startsWith('/api/v1/control/nodes/') && url.pathname.endsWith('/retire-units') && request.method === 'POST') {
+      const nodeId = url.pathname.replace('/api/v1/control/nodes/', '').replace('/retire-units', '').replace(/\/+$/, '').trim();
+      if (nodeId) return handleTriggerRetireSystemdUnits(nodeId, request, env);
+    }
     if (url.pathname.startsWith('/api/v1/control/nodes/') && request.method === 'GET') {
       const nodeId = url.pathname.replace('/api/v1/control/nodes/', '').trim();
       if (nodeId) {
@@ -1687,7 +1695,8 @@ async function handleTriggerDeploy(request: Request, env: Env, ctx: ExecutionCon
       ? await getFleetManifest(env.FLEET_KV, targetEnv, payload.service)
       : null;
     const defaults = getServiceDeclarativeDefaults(payload.service, payload.env || 'uat');
-    if (!payload.domain && defaults.domain) payload.domain = defaults.domain;
+    if (!payload.domain && (manifest?.domain || defaults.domain)) payload.domain = manifest?.domain || defaults.domain;
+    if (!payload.domains && (manifest?.domains || defaults.domains)) payload.domains = manifest?.domains || defaults.domains;
     if (!payload.container_port && defaults.container_port) payload.container_port = defaults.container_port;
     if (!payload.host_port_blue && defaults.host_port_blue) payload.host_port_blue = defaults.host_port_blue;
     if (!payload.host_port_green && defaults.host_port_green) payload.host_port_green = defaults.host_port_green;
@@ -1809,6 +1818,7 @@ async function handleTriggerDeploy(request: Request, env: Env, ctx: ExecutionCon
         host_port_blue: payload.host_port_blue,
         host_port_green: payload.host_port_green,
         domain: payload.domain,
+        domains: payload.domains,
         health_path: payload.health_path,
         command: payload.command,
         entrypoint: payload.entrypoint,
@@ -3971,6 +3981,126 @@ async function handleAgentUpdateStatus(request: Request, env: Env): Promise<Resp
   });
 }
 
+const VALID_SYSTEMD_UNIT_RE = /^[a-zA-Z0-9_.@-]+\.(timer|service)$/;
+
+async function handleTriggerNodeReboot(nodeId: string, request: Request, env: Env): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as { reason?: string };
+  const cmdId = `reboot_${Date.now()}_${nodeId}`;
+  const nowIso = new Date().toISOString();
+  const reason = (body.reason || 'Kernel / OS security update reboot').trim();
+
+  const cmd = {
+    id: cmdId,
+    deployment_id: cmdId,
+    type: 'reboot_node',
+    node_id: nodeId,
+    service: 'host-reboot',
+    reason,
+  };
+
+  if (env.FLEET_KV) {
+    await safeKvPut(
+      env.FLEET_KV,
+      `deployment:${cmdId}`,
+      JSON.stringify({
+        deployment_id: cmdId,
+        service: 'host-reboot',
+        image: 'os-kernel',
+        node_id: nodeId,
+        env: 'infra',
+        status: 'initiated',
+        created_at: nowIso,
+        updated_at: nowIso,
+        message: `Queued drain-locked graceful OS reboot on ${nodeId}: ${reason}`,
+      })
+    );
+  }
+
+  await enqueueFleetCommand(nodeId, cmd, env);
+
+  return new Response(
+    JSON.stringify({
+      status: 'queued',
+      command_id: cmdId,
+      node_id: nodeId,
+      reason,
+    }),
+    {
+      status: 202,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+async function handleTriggerRetireSystemdUnits(nodeId: string, request: Request, env: Env): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as { units?: string[] };
+  const units = Array.isArray(body.units)
+    ? Array.from(new Set(body.units.map((u) => String(u || '').trim()).filter(Boolean)))
+    : [];
+
+  if (units.length === 0) {
+    return new Response(JSON.stringify({ error: 'Request must provide a non-empty units[] array' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const invalid = units.filter((u) => u.startsWith('-') || !VALID_SYSTEMD_UNIT_RE.test(u));
+  if (invalid.length > 0) {
+    return new Response(
+      JSON.stringify({ error: `Invalid systemd unit names (must match .timer or .service): ${invalid.join(', ')}` }),
+      {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      }
+    );
+  }
+
+  const cmdId = `maint_${Date.now()}_${nodeId}`;
+  const nowIso = new Date().toISOString();
+  const cmd = {
+    id: cmdId,
+    deployment_id: cmdId,
+    type: 'retire_systemd_units',
+    node_id: nodeId,
+    service: 'host-maintenance',
+    units,
+  };
+
+  if (env.FLEET_KV) {
+    await safeKvPut(
+      env.FLEET_KV,
+      `deployment:${cmdId}`,
+      JSON.stringify({
+        deployment_id: cmdId,
+        service: 'host-maintenance',
+        image: 'systemd',
+        node_id: nodeId,
+        env: 'infra',
+        status: 'initiated',
+        created_at: nowIso,
+        updated_at: nowIso,
+        message: `Queued zero-SSH retirement of ${units.length} systemd units on ${nodeId}`,
+      })
+    );
+  }
+
+  await enqueueFleetCommand(nodeId, cmd, env);
+
+  return new Response(
+    JSON.stringify({
+      status: 'queued',
+      command_id: cmdId,
+      node_id: nodeId,
+      units_count: units.length,
+    }),
+    {
+      status: 202,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
 async function reconcileManifestList(
   manifests: FleetServiceManifest[],
   env: Env,
@@ -4067,6 +4197,7 @@ async function reconcileManifestList(
           image: effectiveImage,
           env: normEnv,
           domain: m.domain,
+          domains: m.domains,
           container_port: m.container_port,
           host_port_blue: m.host_port_blue,
           host_port_green: m.host_port_green,

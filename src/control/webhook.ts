@@ -35,6 +35,7 @@ export interface ParsedWebhookDeploy {
   is_preview?: boolean;
   pr_number?: number;
   domain?: string;
+  domains?: string[];
   canary_weight?: number;
   canary_duration?: number;
   action?: 'deploy' | 'teardown';
@@ -118,6 +119,7 @@ export function parseDeployWebhook(
       is_preview: Boolean(body.is_preview),
       pr_number: body.pr_number ? Number(body.pr_number) : undefined,
       domain: body.domain,
+      domains: Array.isArray(body.domains) ? body.domains : undefined,
       canary_weight: body.canary_weight ? Number(body.canary_weight) : undefined,
       canary_duration: body.canary_duration ? Number(body.canary_duration) : undefined,
       action: body.action === 'teardown' ? 'teardown' : 'deploy',
@@ -339,6 +341,7 @@ export async function resolveWebhookDeployPayload(
     env: envName,
     node_id: parsed.node_id && parsed.node_id !== 'auto' ? parsed.node_id : (manifest?.node_id || parsed.node_id || 'all-prod'),
     domain: parsed.domain || manifest?.domain || defaults.domain,
+    domains: parsed.domains || manifest?.domains || defaults.domains,
     container_port: parsed.container_port || manifest?.container_port || defaults.container_port,
     host_port_blue: parsed.host_port_blue || manifest?.host_port_blue || defaults.host_port_blue,
     host_port_green: parsed.host_port_green || manifest?.host_port_green || defaults.host_port_green,

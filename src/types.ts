@@ -49,6 +49,7 @@ export interface MetricsSnapshot {
   load_avg_5: number;
   load_avg_15: number;
   uptime_seconds: number;
+  reboot_required?: boolean;
 }
 
 export interface NodeRegistrationPayload {
@@ -78,6 +79,7 @@ export interface DeployRequestPayload {
   image: string;
   env?: string;
   domain?: string;
+  domains?: string[];
   container_port?: number;
   host_port_blue?: number;
   host_port_green?: number;

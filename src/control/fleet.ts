@@ -28,6 +28,7 @@ export interface FleetServiceManifest {
   restart?: 'always' | 'unless-stopped' | 'on-failure' | 'no';
   runtime?: 'runc' | 'runsc';
   domain?: string;
+  domains?: string[];
   container_port?: number;
   host_port_blue?: number;
   host_port_green?: number;
@@ -47,6 +48,7 @@ export interface FleetServiceManifest {
   entrypoint?: string[] | string;
   healthcheck?: FleetHealthcheckSpec;
   workers?: FleetWorkerSpec[];
+  env_vars?: Record<string, string>;
   secrets?: Record<string, string>;
 }
 
@@ -102,6 +104,11 @@ export function validateFleetManifest(m: any): { valid: boolean; errors: string[
   }
   if (m.adopt_only !== undefined && typeof m.adopt_only !== 'boolean') {
     errors.push(`Invalid 'adopt_only' (${String(m.adopt_only)}): must be boolean`);
+  }
+  if (m.domains !== undefined) {
+    if (!Array.isArray(m.domains) || m.domains.some((d: any) => typeof d !== 'string' || !d.trim())) {
+      errors.push(`Invalid 'domains': must be an array of non-empty hostname strings`);
+    }
   }
   if (!m.image || typeof m.image !== 'string' || m.image.trim() === '') {
     errors.push(`Invalid or missing 'image' for service '${m.service || 'unknown'}'`);
