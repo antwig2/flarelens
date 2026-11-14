@@ -22,7 +22,14 @@ bucket_name = "flarelens-logs"
 binding = "BACKUP_BUCKET"
 bucket_name = "flarelens-backups"
 
-# Cloudflare KV Binding for Fleet, Mesh & Device Registry
+# Cloudflare D1 Database Binding for Zero-Cost Control Plane State & Command Queue
+[[d1_databases]]
+binding = "CONTROL_DB"
+database_name = "flarelens-control"
+database_id = "YOUR_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+# Cloudflare KV Binding for Secrets Vault & Device Auth Registry
 [[kv_namespaces]]
 binding = "FLEET_KV"
 id = "YOUR_KV_NAMESPACE_ID"

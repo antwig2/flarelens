@@ -810,11 +810,11 @@
     <form id="deployForm" style="display:flex; flex-direction:column; gap:0.85rem;">
       <div>
         <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Service Name</label>
-        <input type="text" id="deployService" class="search-box" value="bill-api" required style="width:100%;">
+        <input type="text" id="deployService" class="search-box" value="web-api" required style="width:100%;">
       </div>
       <div>
         <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Docker Image (Candidate)</label>
-        <input type="text" id="deployImage" class="search-box" value="ghcr.io/my-org/bill-api:v2.2.0" required style="width:100%;">
+        <input type="text" id="deployImage" class="search-box" value="ghcr.io/my-org/web-api:v2.2.0" required style="width:100%;">
       </div>
       <div>
         <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Target Environment</label>
@@ -877,7 +877,7 @@
           </div>
           <div style="flex:2;">
             <label style="font-size:0.7rem; color:var(--text-muted); display:block; margin-bottom:0.2rem;">Preview Domain</label>
-            <input type="text" id="deployPreviewDomain" class="search-box" placeholder="pr-42-bill-api.example.com" style="width:100%;">
+            <input type="text" id="deployPreviewDomain" class="search-box" placeholder="pr-42-web-api.example.com" style="width:100%;">
           </div>
         </div>
         <span style="font-size:0.68rem; color:var(--text-dim); display:block; margin-top:0.3rem;">
@@ -955,8 +955,8 @@
     curl -X POST https://control.example.com/api/v1/control/deploy/webhook \
       -H "Content-Type: application/json" \
       -d '{
-        "service": "bill-api",
-        "image": "ghcr.io/my-org/bill-api:${{ github.sha }}",
+        "service": "web-api",
+        "image": "ghcr.io/my-org/web-api:${{ github.sha }}",
         "node_id": "all-prod"
       }'</pre>
       </div>
@@ -981,7 +981,7 @@
       <div style="display:flex; gap:1rem;">
         <div style="flex:1;">
           <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Service Name</label>
-          <input type="text" id="importEnvService" class="search-box" value="bill-api" required style="width:100%;">
+          <input type="text" id="importEnvService" class="search-box" value="web-api" required style="width:100%;">
         </div>
         <div style="width:140px;">
           <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Environment</label>
@@ -1132,7 +1132,7 @@
       <div style="display:flex; flex-direction:column; gap:0.35rem; width:calc(100% - 35px);">
         <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
           <span id="drawerStatusBadge" class="badge" style="font-size:0.7rem; font-weight:700; padding:3px 8px; border-radius:4px;">ERROR 500</span>
-          <span id="drawerServiceBadge" class="badge badge-info" style="font-size:0.7rem; font-weight:600;">bill-api</span>
+          <span id="drawerServiceBadge" class="badge badge-info" style="font-size:0.7rem; font-weight:600;">web-api</span>
           <span id="drawerEnvBadge" style="font-size:0.68rem; color:var(--text-muted); background:rgba(255,255,255,0.06); padding:2px 6px; border-radius:4px; font-weight:600; text-transform:uppercase;">UAT</span>
           <span id="drawerDurationBadge" style="font-size:0.7rem; color:#38bdf8; font-family:var(--font-mono); margin-left:auto;">124.5 ms</span>
         </div>
@@ -1602,7 +1602,7 @@
       if (urlEl) urlEl.textContent = `${curOrigin}/api/v1/control/deploy/webhook`;
       const snipEl = document.getElementById('webhookSnippetDisplay');
       if (snipEl) {
-        snipEl.textContent = `- name: Trigger FlareLens GitOps Blue/Green Deploy\n  run: |\n    curl -X POST ${curOrigin}/api/v1/control/deploy/webhook \\\n      -H "Content-Type: application/json" \\\n      -d '{\n        "service": "bill-api",\n        "image": "ghcr.io/my-org/bill-api:\${{ github.sha }}",\n        "node_id": "auto"\n      }'`;
+        snipEl.textContent = `- name: Trigger FlareLens GitOps Blue/Green Deploy\n  run: |\n    curl -X POST ${curOrigin}/api/v1/control/deploy/webhook \\\n      -H "Content-Type: application/json" \\\n      -d '{\n        "service": "web-api",\n        "image": "ghcr.io/my-org/web-api:\${{ github.sha }}",\n        "node_id": "auto"\n      }'`;
       }
       webhookModal.showModal();
     });
@@ -1633,7 +1633,7 @@
     deployIsPreview?.addEventListener('change', (e) => {
       if (previewFields) previewFields.style.display = e.target.checked ? 'flex' : 'none';
       if (e.target.checked) {
-        const svc = document.getElementById('deployService')?.value || 'bill-api';
+        const svc = document.getElementById('deployService')?.value || 'web-api';
         const pr = document.getElementById('deployPRNumber')?.value || '42';
         const previewDomainInput = document.getElementById('deployPreviewDomain');
         if (previewDomainInput) previewDomainInput.value = `pr-${pr}-${svc}.example.com`;
@@ -1641,7 +1641,7 @@
     });
 
     document.getElementById('deployPRNumber')?.addEventListener('input', (e) => {
-      const svc = document.getElementById('deployService')?.value || 'bill-api';
+      const svc = document.getElementById('deployService')?.value || 'web-api';
       const pr = e.target.value || '42';
       const previewDomainInput = document.getElementById('deployPreviewDomain');
       if (previewDomainInput) previewDomainInput.value = `pr-${pr}-${svc}.example.com`;

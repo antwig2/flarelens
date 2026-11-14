@@ -16,8 +16,25 @@ import {
   MeshRegisterPayload,
   MeshCreateClientPayload,
   PreAuthKeyRecord,
+  FeatureFlag,
 } from './types';
 import { processAlerts } from './alerts';
+import {
+  upsertNodeRecord,
+  getNodeRecordD1,
+  listNodeRecordsD1,
+  upsertMeshPeerD1,
+  deleteMeshPeerD1,
+  listMeshPeersD1,
+  enqueueCommandD1,
+  listPendingCommandsD1,
+  ackCommandD1,
+  listFeatureFlagsD1,
+  getFeatureFlagD1,
+  saveFeatureFlagD1,
+  deleteFeatureFlagD1,
+  getFlagsVersion,
+} from './control/db';
 import { encryptSecrets, decryptSecrets, parseEnvContent, getVaultLookupKeys, resolveVaultSecrets } from './control/vault';
 import { verifyGitHubSignature, parseDeployWebhook, reportGitHubStatus, resolveWebhookDeployPayload, getServiceDeclarativeDefaults } from './control/webhook';
 import { isGitHubOidcToken, verifyGitHubOidcToken } from './control/github_oidc';
@@ -170,6 +187,25 @@ export default {
       return handleDeviceToken(request, env);
     }
 
+    // 3d. Agent-authenticated Control Callbacks (accept ENROLL_TOKEN, INGEST_SECRET, or Dashboard Auth)
+    if (
+      (url.pathname === '/api/v1/control/commands' && request.method === 'GET') ||
+      (url.pathname === '/api/v1/control/commands/ack' && request.method === 'POST') ||
+      (url.pathname === '/api/v1/control/deploy/status' && request.method === 'POST') ||
+      (url.pathname === '/api/v1/control/backup/status' && request.method === 'POST') ||
+      (url.pathname === '/api/v1/control/mesh/register' && request.method === 'POST') ||
+      (url.pathname === '/api/v1/control/flags' && request.method === 'GET')
+    ) {
+      const agentErr = validateAgentOrDashboardAuth(request, env, url);
+      if (agentErr) return agentErr;
+      if (url.pathname === '/api/v1/control/commands') return handleGetNodeCommands(request, env);
+      if (url.pathname === '/api/v1/control/commands/ack') return handleAckNodeCommand(request, env);
+      if (url.pathname === '/api/v1/control/deploy/status') return handleUpdateDeployStatus(request, env, ctx);
+      if (url.pathname === '/api/v1/control/backup/status') return handleUpdateBackupStatus(request, env, ctx);
+      if (url.pathname === '/api/v1/control/mesh/register') return handleMeshRegister(request, env, ctx);
+      if (url.pathname === '/api/v1/control/flags') return handleListFlags(env);
+    }
+
     // 4. Dashboard & Query APIs (Protected by Cloudflare Access or DASHBOARD_PASSWORD)
     const dashAuthErr = validateDashboardAuth(request, env);
     if (dashAuthErr) return dashAuthErr;
@@ -298,6 +334,18 @@ export default {
     if (url.pathname.startsWith('/api/v1/control/secrets/') && request.method === 'DELETE') {
       const service = url.pathname.replace('/api/v1/control/secrets/', '').trim();
       if (service) return handleDeleteVaultSecrets(service, env, ctx);
+    }
+
+    // 18-21. Edge Feature Flags CRUD & Toggle (D1-backed with piggybacked flags_version)
+    if (url.pathname === '/api/v1/control/flags' && request.method === 'POST') {
+      return handleSaveFlag(request, env);
+    }
+    if (url.pathname === '/api/v1/control/flags/toggle' && request.method === 'POST') {
+      return handleToggleFlag(request, env);
+    }
+    if (url.pathname.startsWith('/api/v1/control/flags/') && request.method === 'DELETE') {
+      const key = url.pathname.replace('/api/v1/control/flags/', '').trim();
+      if (key) return handleDeleteFlag(key, env);
     }
 
     // 22. Zero-Trust Sovereign Mesh: Get Mesh & Coordinator Status (GET /api/v1/control/mesh/status)
@@ -670,6 +718,19 @@ function validateEnrollAuth(request: Request, env: Env, url: URL): Response | nu
   return null;
 }
 
+function validateAgentOrDashboardAuth(request: Request, env: Env, url: URL): Response | null {
+  const authHeader = request.headers.get('Authorization') || '';
+  const bearer = authHeader.startsWith('Bearer ') ? authHeader.substring(7).trim() : '';
+  const queryToken = url.searchParams.get('token') || '';
+  const provided = bearer || request.headers.get('x-api-key') || queryToken;
+
+  if (provided) {
+    if (env.ENROLL_TOKEN && provided === env.ENROLL_TOKEN) return null;
+    if (env.INGEST_SECRET && provided === env.INGEST_SECRET) return null;
+  }
+  return validateDashboardAuth(request, env);
+}
+
 /**
  * Validates dashboard authentication via Cloudflare Access (Zero Trust) or HTTP Basic Auth
  */
@@ -789,20 +850,19 @@ async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): 
 
     const now = new Date();
     const normalizedLogs: LogRecord[] = [];
+    let heartbeatNodeId: string | null = null;
 
     for (const item of items) {
       // Check if item is a NodeTelemetryHeartbeat from flarelens-agent
       if (item && item.node_id && item.metrics && typeof item.metrics === 'object' && ('cpu_usage_pct' in item.metrics || 'ram_used_bytes' in item.metrics)) {
         const telem = item as NodeTelemetryHeartbeat;
         const nodeId = telem.node_id;
+        heartbeatNodeId = nodeId;
 
-        // 1. Update in-memory & KV
+        // 1. Update in-memory & D1 (throttled 60s write unless status transitioned)
         let node = fleetNodes.get(nodeId);
-        if (!node && env.FLEET_KV) {
-          const raw = await env.FLEET_KV.get(`node:${nodeId}`);
-          if (raw) {
-            try { node = JSON.parse(raw); } catch {}
-          }
+        if (!node) {
+          node = (await getNodeRecordD1(env, nodeId)) || undefined;
         }
 
         if (node) {
@@ -813,10 +873,9 @@ async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): 
           node.latest_telemetry = telem;
           fleetNodes.set(nodeId, node);
 
-          // Only persist to KV on state transition (e.g. Healthy -> Warning) to prevent burning 5,760+ writes/day
-          if (env.FLEET_KV && prevStatus !== node.status) {
-            ctx.waitUntil(safeKvPut(env.FLEET_KV, `node:${nodeId}`, JSON.stringify(node)));
-          }
+          ctx.waitUntil(
+            upsertNodeRecord(env, node, { forceWrite: prevStatus !== node.status })
+          );
         }
 
         const cpuPct = telem.metrics?.cpu_usage_pct ?? 0;
@@ -914,13 +973,34 @@ async function handleIngest(request: Request, env: Env, ctx: ExecutionContext): 
       ctx.waitUntil(flushToR2(logsToFlush, env, now));
     }
 
-    return new Response(JSON.stringify({ status: 'ok', count: normalizedLogs.length }), {
-      status: 202,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
+    let piggybackedCommands: any[] | undefined;
+    let piggybackedFlagsVersion: string | undefined;
+    if (heartbeatNodeId) {
+      const [dbCmds, flagsVer] = await Promise.all([
+        listPendingCommandsD1(env, heartbeatNodeId),
+        getFlagsVersion(env),
+      ]);
+      const merged = new Map<string, any>();
+      for (const c of dbCmds) if (c?.id) merged.set(c.id, c);
+      for (const c of inMemoryCommands.get(heartbeatNodeId) || []) if (c?.id) merged.set(c.id, c);
+      piggybackedCommands = Array.from(merged.values());
+      piggybackedFlagsVersion = flagsVer;
+    }
+
+    return new Response(
+      JSON.stringify({
+        status: 'ok',
+        count: normalizedLogs.length,
+        ...(heartbeatNodeId ? { commands: piggybackedCommands, flags_version: piggybackedFlagsVersion } : {}),
+      }),
+      {
+        status: 202,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      }
+    );
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message || 'Invalid JSON payload' }), {
       status: 400,
@@ -1232,20 +1312,8 @@ async function handleEnroll(request: Request, env: Env, ctx: ExecutionContext): 
       updated_at: nowIso,
     };
 
-    // 1. Persist to Cloudflare KV if bound
-    if (env.FLEET_KV) {
-      await safeKvPut(env.FLEET_KV, `node:${payload.node_id}`, JSON.stringify(record));
-
-      // Update fleet index list
-      try {
-        const existingListRaw = await env.FLEET_KV.get('fleet:nodes');
-        const nodeList: string[] = existingListRaw ? JSON.parse(existingListRaw) : [];
-        if (!nodeList.includes(payload.node_id)) {
-          nodeList.push(payload.node_id);
-          await safeKvPut(env.FLEET_KV, 'fleet:nodes', JSON.stringify(nodeList));
-        }
-      } catch {}
-    }
+    // 1. Persist to Cloudflare D1 (primary) or KV fallback
+    await upsertNodeRecord(env, record, { forceWrite: true });
 
     // 2. Persist to in-memory map & R2 bucket fallback
     fleetNodes.set(payload.node_id, record);
@@ -1308,31 +1376,15 @@ async function handleEnroll(request: Request, env: Env, ctx: ExecutionContext): 
  */
 async function handleListNodes(env: Env): Promise<Response> {
   try {
-    const nodes: NodeRecord[] = [];
-
-    if (env.FLEET_KV) {
-      const existingListRaw = await env.FLEET_KV.get('fleet:nodes');
-      if (existingListRaw) {
-        try {
-          const idList: string[] = JSON.parse(existingListRaw);
-          for (const id of idList) {
-            const rawNode = await env.FLEET_KV.get(`node:${id}`);
-            if (rawNode) nodes.push(JSON.parse(rawNode));
-          }
-        } catch {}
-      } else {
-        const listResult = await env.FLEET_KV.list({ prefix: 'node:' });
-        for (const key of listResult.keys) {
-          const raw = await env.FLEET_KV.get(key.name);
-          if (raw) nodes.push(JSON.parse(raw));
-        }
-      }
-    }
+    const nodes: NodeRecord[] = await listNodeRecordsD1(env);
 
     // Merge in-memory nodes
     for (const [id, record] of fleetNodes.entries()) {
-      if (!nodes.some((n) => n.node_id === id)) {
+      const idx = nodes.findIndex((n) => n.node_id === id);
+      if (idx === -1) {
         nodes.push(record);
+      } else if ((record.last_heartbeat || 0) >= (nodes[idx].last_heartbeat || 0)) {
+        nodes[idx] = record;
       }
     }
 
@@ -1373,19 +1425,11 @@ async function handleListNodes(env: Env): Promise<Response> {
  * Get details for a specific node
  */
 async function handleGetNode(nodeId: string, env: Env): Promise<Response> {
-  if (env.FLEET_KV) {
-    const raw = await env.FLEET_KV.get(`node:${nodeId}`);
-    if (raw) {
-      return new Response(raw, {
-        status: 200,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      });
-    }
-  }
-
   const mem = fleetNodes.get(nodeId);
-  if (mem) {
-    return new Response(JSON.stringify(mem), {
+  const stored = await getNodeRecordD1(env, nodeId);
+  const chosen = mem && (!stored || (mem.last_heartbeat || 0) >= (stored.last_heartbeat || 0)) ? mem : stored;
+  if (chosen) {
+    return new Response(JSON.stringify(chosen), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     });
@@ -1543,16 +1587,8 @@ async function selectBestNodeForService(
  * Resolves fleet nodes for targeted, auto-scheduled, or cluster-wide multi-node rollouts
  */
 async function resolveFleetNodes(targetNodeId: string, env: Env, serviceName?: string): Promise<string[]> {
-  const allNodes: string[] = [];
-  if (env.FLEET_KV) {
-    try {
-      const raw = await env.FLEET_KV.get('fleet:nodes');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) allNodes.push(...parsed);
-      }
-    } catch {}
-  }
+  const d1Nodes = await listNodeRecordsD1(env);
+  const allNodes: string[] = d1Nodes.map((n) => n.node_id);
   for (const n of fleetNodes.keys()) {
     if (!allNodes.includes(n)) allNodes.push(n);
   }
@@ -1732,15 +1768,7 @@ async function handleTriggerDeploy(request: Request, env: Env, ctx: ExecutionCon
       nodeCmds.push(deployCmd);
       inMemoryCommands.set(targetNode, nodeCmds);
 
-      if (env.BACKUP_BUCKET) {
-        ctx.waitUntil(
-          env.BACKUP_BUCKET.put(
-            `control/commands/${targetNode}/${deployCmd.id}.json`,
-            JSON.stringify(deployCmd),
-            { httpMetadata: { contentType: 'application/json' } }
-          )
-        );
-      }
+      await enqueueCommandD1(env, targetNode, deployCmd);
 
       createdDeployments.push(record);
     }
@@ -2376,17 +2404,7 @@ async function handleTriggerBackup(request: Request, env: Env, ctx: ExecutionCon
     const nodeCmds = inMemoryCommands.get(payload.node_id) || [];
     nodeCmds.push(cmd);
     inMemoryCommands.set(payload.node_id, nodeCmds);
-
-    // 2. Persist to R2 Command Queue (1M free writes/month, globally synchronized across all Cloudflare PoPs)
-    if (env.BACKUP_BUCKET) {
-      ctx.waitUntil(
-        env.BACKUP_BUCKET.put(
-          `control/commands/${payload.node_id}/${cmd.id}.json`,
-          JSON.stringify(cmd),
-          { httpMetadata: { contentType: 'application/json' } }
-        )
-      );
-    }
+    await enqueueCommandD1(env, payload.node_id, cmd);
 
     if (env.FLEET_KV) {
       ctx.waitUntil(safeKvPut(env.FLEET_KV, `backup:${backupKey}`, JSON.stringify(record)));
@@ -2398,11 +2416,6 @@ async function handleTriggerBackup(request: Request, env: Env, ctx: ExecutionCon
           if (list.length > 50) list.pop();
           ctx.waitUntil(safeKvPut(env.FLEET_KV, 'fleet:backups', JSON.stringify(list)));
         }
-
-        const rawCmds = await env.FLEET_KV.get(`fleet:commands:${payload.node_id}`);
-        const cmds: any[] = rawCmds ? JSON.parse(rawCmds) : [];
-        cmds.push(cmd);
-        ctx.waitUntil(safeKvPut(env.FLEET_KV, `fleet:commands:${payload.node_id}`, JSON.stringify(cmds)));
       } catch {}
     }
 
@@ -2468,25 +2481,7 @@ async function handleTriggerRestore(request: Request, env: Env, ctx: ExecutionCo
     const nodeCmds = inMemoryCommands.get(payload.node_id) || [];
     nodeCmds.push(cmd);
     inMemoryCommands.set(payload.node_id, nodeCmds);
-
-    if (env.BACKUP_BUCKET) {
-      ctx.waitUntil(
-        env.BACKUP_BUCKET.put(
-          `control/commands/${payload.node_id}/${cmd.id}.json`,
-          JSON.stringify(cmd),
-          { httpMetadata: { contentType: 'application/json' } }
-        )
-      );
-    }
-
-    if (env.FLEET_KV) {
-      try {
-        const rawCmds = await env.FLEET_KV.get(`fleet:commands:${payload.node_id}`);
-        const cmds: any[] = rawCmds ? JSON.parse(rawCmds) : [];
-        cmds.push(cmd);
-        ctx.waitUntil(safeKvPut(env.FLEET_KV, `fleet:commands:${payload.node_id}`, JSON.stringify(cmds)));
-      } catch {}
-    }
+    await enqueueCommandD1(env, payload.node_id, cmd);
 
     // Broadcast to WebSocket and Live SSE
     broadcastTelemetry({
@@ -2540,41 +2535,16 @@ async function handleGetNodeCommands(request: Request, env: Env): Promise<Respon
 
     const commandMap = new Map<string, any>();
 
-    // 1. Fetch commands from R2 queue (Globally synchronized across all Cloudflare PoPs, 1M writes/mo free)
-    if (env.BACKUP_BUCKET) {
-      try {
-        const listed = await env.BACKUP_BUCKET.list({
-          prefix: `control/commands/${nodeId}/`,
-          limit: 20,
-        });
-        for (const obj of listed.objects) {
-          const file = await env.BACKUP_BUCKET.get(obj.key);
-          if (file) {
-            const raw = await file.text();
-            const parsed = JSON.parse(raw);
-            commandMap.set(parsed.id, parsed);
-          }
-        }
-      } catch {}
+    // 1. Fetch pending commands from Cloudflare D1 (Zero R2.list() Class A calls)
+    const dbCmds = await listPendingCommandsD1(env, nodeId);
+    for (const c of dbCmds) {
+      if (c?.id) commandMap.set(c.id, c);
     }
 
-    // 2. In-memory commands
+    // 2. Merge same-isolate in-memory commands
     const memCmds = inMemoryCommands.get(nodeId) || [];
     for (const c of memCmds) {
-      commandMap.set(c.id, c);
-    }
-
-    // 3. KV commands if available
-    if (env.FLEET_KV) {
-      try {
-        const rawCmds = await env.FLEET_KV.get(`fleet:commands:${nodeId}`);
-        if (rawCmds) {
-          const kvCmds: any[] = JSON.parse(rawCmds);
-          for (const c of kvCmds) {
-            commandMap.set(c.id, c);
-          }
-        }
-      } catch {}
+      if (c?.id) commandMap.set(c.id, c);
     }
 
     const commands = Array.from(commandMap.values());
@@ -2597,32 +2567,20 @@ async function handleGetNodeCommands(request: Request, env: Env): Promise<Respon
 async function handleAckNodeCommand(request: Request, env: Env): Promise<Response> {
   try {
     const url = new URL(request.url);
-    const cmdId = url.searchParams.get('id');
-    const nodeId = url.searchParams.get('node_id');
+    let body: { node_id?: string; command_id?: string; id?: string } = {};
+    try {
+      const raw = await request.text();
+      if (raw.trim()) body = JSON.parse(raw);
+    } catch {}
+
+    const nodeId = url.searchParams.get('node_id') || body.node_id || '';
+    const cmdId = url.searchParams.get('id') || url.searchParams.get('command_id') || body.command_id || body.id || '';
 
     if (cmdId && nodeId) {
-      // 1. Delete from R2 command queue
-      if (env.BACKUP_BUCKET) {
-        try {
-          await env.BACKUP_BUCKET.delete(`control/commands/${nodeId}/${cmdId}.json`);
-        } catch {}
-      }
+      await ackCommandD1(env, nodeId, cmdId);
 
-      // 2. Remove from in-memory
       const memCmds = inMemoryCommands.get(nodeId) || [];
-      inMemoryCommands.set(nodeId, memCmds.filter(c => c.id !== cmdId));
-
-      // 3. Remove from KV if present
-      if (env.FLEET_KV) {
-        try {
-          const rawCmds = await env.FLEET_KV.get(`fleet:commands:${nodeId}`);
-          if (rawCmds) {
-            const cmds: any[] = JSON.parse(rawCmds);
-            const filtered = cmds.filter((c: any) => c.id !== cmdId);
-            await safeKvPut(env.FLEET_KV, `fleet:commands:${nodeId}`, JSON.stringify(filtered));
-          }
-        } catch {}
-      }
+      inMemoryCommands.set(nodeId, memCmds.filter((c) => c.id !== cmdId));
     }
 
     return new Response(JSON.stringify({ status: 'ack' }), {
@@ -3150,11 +3108,7 @@ async function handleMeshRegister(request: Request, env: Env, ctx: ExecutionCont
     }
 
     fleetMeshPeers.set(peer.id, peer);
-    if (env.FLEET_KV) {
-      ctx.waitUntil(safeKvPut(env.FLEET_KV, `mesh:peer:${peer.id}`, JSON.stringify(peer)));
-      const idList = allPeers.map((p) => p.id);
-      ctx.waitUntil(safeKvPut(env.FLEET_KV, 'mesh:peers', JSON.stringify(idList)));
-    }
+    await upsertMeshPeerD1(env, peer);
 
     broadcastTelemetry({
       type: 'mesh_peer_updated',
@@ -3308,12 +3262,10 @@ async function handleMeshCreateClient(request: Request, env: Env, ctx: Execution
 
     allPeers.push(clientPeer);
     fleetMeshPeers.set(clientPeer.id, clientPeer);
+    await upsertMeshPeerD1(env, clientPeer);
 
     if (env.FLEET_KV) {
-      ctx.waitUntil(safeKvPut(env.FLEET_KV, `mesh:peer:${clientPeer.id}`, JSON.stringify(clientPeer)));
       ctx.waitUntil(safeKvPut(env.FLEET_KV, `mesh:preauth_key:${authKeyRecord.id}`, JSON.stringify(authKeyRecord)));
-      const idList = allPeers.map((p) => p.id);
-      ctx.waitUntil(safeKvPut(env.FLEET_KV, 'mesh:peers', JSON.stringify(idList)));
       if (privKey) {
         ctx.waitUntil(safeKvPut(env.FLEET_KV, `mesh:client_priv:${clientPeer.id}`, privKey, { expirationTtl: 86400 * 30 }));
       }
@@ -3394,15 +3346,7 @@ async function handleMeshGetClientConfig(clientId: string, env: Env): Promise<Re
 async function handleMeshDeletePeer(peerId: string, env: Env, ctx: ExecutionContext): Promise<Response> {
   try {
     fleetMeshPeers.delete(peerId);
-    if (env.FLEET_KV) {
-      try {
-        ctx.waitUntil(env.FLEET_KV.delete(`mesh:peer:${peerId}`));
-        ctx.waitUntil(env.FLEET_KV.delete(`mesh:client_priv:${peerId}`));
-      } catch {}
-      const allPeers = await loadAllMeshPeers(env);
-      const filtered = allPeers.filter((p) => p.id !== peerId);
-      ctx.waitUntil(safeKvPut(env.FLEET_KV, 'mesh:peers', JSON.stringify(filtered.map((p) => p.id))));
-    }
+    await deleteMeshPeerD1(env, peerId);
 
     broadcastTelemetry({
       type: 'mesh_peer_removed',
@@ -3422,22 +3366,10 @@ async function handleMeshDeletePeer(peerId: string, env: Env, ctx: ExecutionCont
 }
 
 /**
- * Helper to load all mesh peers from KV and in-memory cache
+ * Helper to load all mesh peers from D1 (primary), KV fallback, and in-memory cache
  */
 async function loadAllMeshPeers(env: Env): Promise<MeshPeerRecord[]> {
-  const peers: MeshPeerRecord[] = [];
-  if (env.FLEET_KV) {
-    try {
-      const rawList = await env.FLEET_KV.get('mesh:peers');
-      if (rawList) {
-        const ids: string[] = JSON.parse(rawList);
-        for (const id of ids) {
-          const rawPeer = await env.FLEET_KV.get(`mesh:peer:${id}`);
-          if (rawPeer) peers.push(JSON.parse(rawPeer));
-        }
-      }
-    } catch {}
-  }
+  const peers: MeshPeerRecord[] = await listMeshPeersD1(env);
 
   for (const [id, p] of fleetMeshPeers.entries()) {
     if (!peers.some((x) => x.id === id)) {
@@ -3446,6 +3378,79 @@ async function loadAllMeshPeers(env: Env): Promise<MeshPeerRecord[]> {
   }
 
   return peers;
+}
+
+/**
+ * Edge Feature Flags CRUD & Instant Version Rotation (D1-backed)
+ */
+async function handleListFlags(env: Env): Promise<Response> {
+  const [flags, flags_version] = await Promise.all([
+    listFeatureFlagsD1(env),
+    getFlagsVersion(env),
+  ]);
+  return new Response(JSON.stringify({ flags, count: flags.length, flags_version }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  });
+}
+
+async function handleSaveFlag(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json()) as Partial<FeatureFlag>;
+  if (!body.key || typeof body.key !== 'string') {
+    return new Response(JSON.stringify({ error: 'Missing required field: key' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+  const flag: FeatureFlag = {
+    key: body.key.trim(),
+    description: body.description || '',
+    enabled: Boolean(body.enabled),
+    rollout_pct: typeof body.rollout_pct === 'number' ? body.rollout_pct : 100,
+    environments: body.environments,
+    target_tenants: body.target_tenants,
+    updated_at: new Date().toISOString(),
+  };
+  const flags_version = await saveFeatureFlagD1(env, flag);
+  return new Response(JSON.stringify({ status: 'saved', flag, flags_version }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  });
+}
+
+async function handleToggleFlag(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json()) as { key?: string; enabled?: boolean };
+  if (!body.key) {
+    return new Response(JSON.stringify({ error: 'Missing required field: key' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+  const existing =
+    (await getFeatureFlagD1(env, body.key)) ||
+    (await listFeatureFlagsD1(env)).find((f) => f.key === body.key);
+  const updated: FeatureFlag = {
+    key: body.key,
+    description: existing?.description || '',
+    enabled: typeof body.enabled === 'boolean' ? body.enabled : !Boolean(existing?.enabled),
+    rollout_pct: existing?.rollout_pct ?? 100,
+    environments: existing?.environments,
+    target_tenants: existing?.target_tenants,
+    updated_at: new Date().toISOString(),
+  };
+  const flags_version = await saveFeatureFlagD1(env, updated);
+  return new Response(JSON.stringify({ status: 'toggled', flag: updated, flags_version }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  });
+}
+
+async function handleDeleteFlag(key: string, env: Env): Promise<Response> {
+  const flags_version = await deleteFeatureFlagD1(env, key);
+  return new Response(JSON.stringify({ status: 'deleted', key, flags_version }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  });
 }
 
 /**

@@ -8,7 +8,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "build": "tsc --noEmit",
-    "test": "npx tsx test-github-oidc.mjs"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test-control-plane-d1.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261001.1",

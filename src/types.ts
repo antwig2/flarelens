@@ -183,10 +183,21 @@ export interface VaultMetadata {
   keys_count: number;
 }
 
+export interface FeatureFlag {
+  key: string;
+  description?: string;
+  enabled: boolean;
+  rollout_pct: number;
+  environments?: string[];
+  target_tenants?: string[];
+  updated_at: string;
+}
+
 export interface Env {
   LOGS_BUCKET: R2Bucket;
   BACKUP_BUCKET?: R2Bucket;
   FLEET_KV?: KVNamespace;
+  CONTROL_DB?: D1Database;
   DEPLOY_QUEUE?: Queue<any>;
   ASSETS?: Fetcher;
   ENVIRONMENT?: string;
