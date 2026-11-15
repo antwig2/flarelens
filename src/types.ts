@@ -95,7 +95,11 @@ export interface DeployRequestPayload {
     entrypoint?: string[];
     volumes?: string[];
     networks?: string[];
+    memory_mb?: number;
+    cpu_cores?: number;
   }>;
+  memory_mb?: number;
+  cpu_cores?: number;
   timeout_seconds?: number;
   drain_seconds?: number;
   secrets?: Record<string, string>;

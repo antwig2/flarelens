@@ -26,7 +26,11 @@ export interface ParsedWebhookDeploy {
     entrypoint?: string[];
     volumes?: string[];
     networks?: string[];
+    memory_mb?: number;
+    cpu_cores?: number;
   }>;
+  memory_mb?: number;
+  cpu_cores?: number;
   timeout_seconds?: number;
   drain_seconds?: number;
   pre_deploy_snapshot?: boolean;
@@ -111,6 +115,8 @@ export function parseDeployWebhook(
       networks: Array.isArray(body.networks) ? body.networks : undefined,
       volumes: Array.isArray(body.volumes) ? body.volumes : undefined,
       workers: Array.isArray(body.workers) ? body.workers : undefined,
+      memory_mb: body.memory_mb !== undefined ? Number(body.memory_mb) : undefined,
+      cpu_cores: body.cpu_cores !== undefined ? Number(body.cpu_cores) : undefined,
       timeout_seconds: body.timeout_seconds ? Number(body.timeout_seconds) : undefined,
       drain_seconds: body.drain_seconds ? Number(body.drain_seconds) : undefined,
       pre_deploy_snapshot: body.pre_deploy_snapshot !== undefined ? Boolean(body.pre_deploy_snapshot) : undefined,
@@ -277,7 +283,11 @@ export interface ServiceDeclarativeDefaults {
     entrypoint?: string[];
     volumes?: string[];
     networks?: string[];
+    memory_mb?: number;
+    cpu_cores?: number;
   }>;
+  memory_mb?: number;
+  cpu_cores?: number;
   timeout_seconds?: number;
   drain_seconds?: number;
   pre_deploy_snapshot?: boolean;
@@ -353,6 +363,8 @@ export async function resolveWebhookDeployPayload(
     aliases: parsed.aliases || manifest?.aliases,
     volumes: parsed.volumes || manifest?.volumes,
     workers: parsed.workers || manifest?.workers || defaults.workers,
+    memory_mb: parsed.memory_mb ?? manifest?.memory_mb,
+    cpu_cores: parsed.cpu_cores ?? manifest?.cpu_cores,
     timeout_seconds: parsed.timeout_seconds || manifest?.timeout_seconds || defaults.timeout_seconds,
     drain_seconds: parsed.drain_seconds || manifest?.drain_seconds || defaults.drain_seconds,
     pre_deploy_snapshot:

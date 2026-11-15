@@ -9,6 +9,8 @@ export interface FleetWorkerSpec {
   entrypoint?: string[];
   volumes?: string[];
   networks?: string[];
+  memory_mb?: number;
+  cpu_cores?: number;
 }
 
 export interface FleetHealthcheckSpec {
@@ -30,6 +32,7 @@ export interface FleetServiceManifest {
   node_id?: string;
   replicas?: number;
   memory_mb?: number;
+  cpu_cores?: number;
   placement_strategy?: FleetPlacementStrategy;
   required_tags?: string[];
   container_name?: string;
@@ -102,6 +105,7 @@ export const FLEET_JSON_SCHEMA = {
     node_id: { type: 'string' },
     replicas: { type: 'integer', minimum: 1, maximum: 32, default: 1 },
     memory_mb: { type: 'integer', minimum: 32, maximum: 262144, default: 256 },
+    cpu_cores: { type: 'number', minimum: 0.05, maximum: 256 },
     placement_strategy: { type: 'string', enum: ['spread', 'binpack', 'pinned'], default: 'spread' },
     required_tags: { type: 'array', items: { type: 'string' } },
     container_name: { type: 'string' },
@@ -148,6 +152,8 @@ export const FLEET_JSON_SCHEMA = {
           entrypoint: { type: 'array', items: { type: 'string' } },
           volumes: { type: 'array', items: { type: 'string' } },
           networks: { type: 'array', items: { type: 'string' } },
+          memory_mb: { type: 'integer', minimum: 32, maximum: 262144 },
+          cpu_cores: { type: 'number', minimum: 0.05, maximum: 256 },
         },
       },
     },
@@ -278,6 +284,7 @@ export function buildPromotedManifest(
       workers: tgt.workers ?? src.workers,
       replicas: tgt.replicas ?? src.replicas,
       memory_mb: tgt.memory_mb ?? src.memory_mb,
+      cpu_cores: tgt.cpu_cores ?? src.cpu_cores,
       placement_strategy: tgt.placement_strategy ?? src.placement_strategy,
       required_tags: tgt.required_tags ?? src.required_tags,
     };
@@ -362,6 +369,12 @@ export function validateFleetManifest(m: any): { valid: boolean; errors: string[
     const mem = Number(m.memory_mb);
     if (!Number.isInteger(mem) || mem < 32 || mem > 262144) {
       errors.push(`Invalid 'memory_mb' (${String(m.memory_mb)}): must be integer 32..262144`);
+    }
+  }
+  if (m.cpu_cores !== undefined) {
+    const cpu = Number(m.cpu_cores);
+    if (!Number.isFinite(cpu) || cpu < 0.05 || cpu > 256) {
+      errors.push(`Invalid 'cpu_cores' (${String(m.cpu_cores)}): must be number 0.05..256`);
     }
   }
   if (m.placement_strategy !== undefined) {

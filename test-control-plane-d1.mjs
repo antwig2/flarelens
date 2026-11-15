@@ -658,6 +658,7 @@ async function runTests() {
           domains: ['checkout.example.com'],
           replicas: 2,
           memory_mb: 512,
+          cpu_cores: 1.25,
           placement_strategy: 'spread',
           required_tags: ['staging'],
           container_port: 8080,
@@ -723,6 +724,8 @@ async function runTests() {
     (c) => c.type === 'deploy' && c.service === 'checkout-api'
   );
   assert.ok(deployCheckoutCmd, 'Remote node must receive deploy command for checkout-api');
+  assert.strictEqual(deployCheckoutCmd.memory_mb, 512, 'deploy command must carry memory_mb cgroup limit');
+  assert.strictEqual(deployCheckoutCmd.cpu_cores, 1.25, 'deploy command must carry cpu_cores cgroup limit');
   assert.ok(
     Array.isArray(deployCheckoutCmd.extra_hosts) &&
       deployCheckoutCmd.extra_hosts.includes('postgres-staging:100.64.0.31') &&
@@ -864,7 +867,51 @@ async function runTests() {
     ['pool-eu-1', 'pool-eu-3'],
     'Dead-node failover must automatically reschedule checkout-api onto surviving healthy peers'
   );
-  console.log('   ✅ Passed: Multi-node spread scheduling, WireGuard ExtraHosts & remote_upstreams, drain fencing & dead-node failover verified!\n');
+
+  // Verify on-demand Docker image garbage collection command queueing
+  const pruneImagesRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/nodes/pool-eu-1/prune-images', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ until_hours: 72 }),
+    }),
+    env,
+    ctx
+  );
+  await Promise.all(pendingWaitTasks.splice(0));
+  assert.strictEqual(pruneImagesRes.status, 202);
+  const pruneImagesBody = await pruneImagesRes.json();
+  assert.strictEqual(pruneImagesBody.status, 'queued');
+  assert.strictEqual(pruneImagesBody.until_hours, 72);
+
+  const hbPruneCheck = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/ingest', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-ingest-secret',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        node_id: 'pool-eu-1',
+        timestamp: new Date().toISOString(),
+        status: 'Healthy',
+        docker_healthy: true,
+        metrics: { cpu_usage_pct: 8, ram_used_bytes: 1_000_000_000, ram_total_bytes: 8_589_934_592 },
+        containers: [],
+      }),
+    }),
+    env,
+    ctx
+  );
+  const hbPruneBody = await hbPruneCheck.json();
+  assert.ok(
+    (hbPruneBody.commands || []).some((c) => c.type === 'prune_images' && c.until_hours === 72),
+    'prune_images command must be queued on target node'
+  );
+  console.log('   ✅ Passed: Multi-node spread scheduling, WireGuard ExtraHosts & remote_upstreams, hard cgroup limits, image prune, drain fencing & dead-node failover verified!\n');
 
   console.log('🎉 ALL FLARELENS OPEN-SOURCE D1 CONTROL PLANE TESTS PASSED!');
 }

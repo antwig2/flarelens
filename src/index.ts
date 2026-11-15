@@ -321,6 +321,10 @@ export default {
       const nodeId = url.pathname.replace('/api/v1/control/nodes/', '').replace('/uncordon', '').replace(/\/+$/, '').trim();
       if (nodeId) return handleUncordonNode(nodeId, request, env, ctx);
     }
+    if (url.pathname.startsWith('/api/v1/control/nodes/') && url.pathname.endsWith('/prune-images') && request.method === 'POST') {
+      const nodeId = url.pathname.replace('/api/v1/control/nodes/', '').replace('/prune-images', '').replace(/\/+$/, '').trim();
+      if (nodeId) return handlePruneNodeImages(nodeId, request, env);
+    }
     if (url.pathname.startsWith('/api/v1/control/nodes/') && request.method === 'GET') {
       const nodeId = url.pathname.replace('/api/v1/control/nodes/', '').trim();
       if (nodeId) {
@@ -1907,6 +1911,8 @@ async function handleTriggerDeploy(request: Request, env: Env, ctx: ExecutionCon
     if (!payload.entrypoint && defaults.entrypoint) payload.entrypoint = defaults.entrypoint;
     if (!payload.networks && defaults.networks) payload.networks = defaults.networks;
     if (!payload.workers && defaults.workers) payload.workers = defaults.workers;
+    if (payload.memory_mb === undefined && manifest?.memory_mb !== undefined) payload.memory_mb = manifest.memory_mb;
+    if (payload.cpu_cores === undefined && manifest?.cpu_cores !== undefined) payload.cpu_cores = manifest.cpu_cores;
     if (!payload.timeout_seconds && defaults.timeout_seconds) payload.timeout_seconds = defaults.timeout_seconds;
     if (!payload.drain_seconds && defaults.drain_seconds) payload.drain_seconds = defaults.drain_seconds;
     if (payload.pre_deploy_snapshot === undefined && defaults.pre_deploy_snapshot !== undefined) {
@@ -2051,6 +2057,8 @@ async function handleTriggerDeploy(request: Request, env: Env, ctx: ExecutionCon
         networks: payload.networks,
         volumes: payload.volumes,
         workers: payload.workers,
+        memory_mb: payload.memory_mb,
+        cpu_cores: payload.cpu_cores,
         secrets: payload.secrets,
         network: payload.network,
         canary_weight: payload.canary_weight,
@@ -4606,6 +4614,8 @@ async function reconcileManifestsWithScheduler(
               }
             : undefined,
           secrets: resolvedSecrets,
+          memory_mb: m.memory_mb,
+          cpu_cores: m.cpu_cores,
           force_recreate_stateful: Boolean(opts?.forceRecreateStateful),
           mesh_port: meshPort,
           ...(extraHosts.length > 0 ? { extra_hosts: extraHosts } : {}),
@@ -4658,6 +4668,8 @@ async function reconcileManifestsWithScheduler(
           aliases: m.aliases,
           volumes: m.volumes,
           workers: m.workers,
+          memory_mb: m.memory_mb,
+          cpu_cores: m.cpu_cores,
           timeout_seconds: m.timeout_seconds,
           drain_seconds: m.drain_seconds,
           pre_deploy_snapshot: m.pre_deploy_snapshot,
@@ -5752,6 +5764,58 @@ async function handleFleetFailoverCheck(
     }),
     {
       status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+/**
+ * POST /api/v1/control/nodes/:id/prune-images
+ * Queues an on-demand Docker image garbage collection command on a specific node (or "all").
+ */
+async function handlePruneNodeImages(
+  nodeId: string,
+  request: Request,
+  env: Env
+): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as { until_hours?: number };
+  const untilHours = Math.max(1, Math.min(8760, Math.trunc(Number(body.until_hours || 72))));
+  const targetIds: string[] = [];
+
+  if (nodeId === 'all') {
+    const nodes = await loadAllNodesMerged(env);
+    for (const n of nodes) {
+      if (n.node_id) targetIds.push(n.node_id);
+    }
+  } else {
+    targetIds.push(nodeId);
+  }
+
+  const queuedIds: string[] = [];
+  for (const tid of targetIds) {
+    const cmdId = `prune_${Date.now()}_${tid}`;
+    await enqueueFleetCommand(
+      tid,
+      {
+        id: cmdId,
+        type: 'prune_images',
+        node_id: tid,
+        until_hours: untilHours,
+      },
+      env
+    );
+    queuedIds.push(cmdId);
+  }
+
+  return new Response(
+    JSON.stringify({
+      status: 'queued',
+      target_nodes: targetIds,
+      until_hours: untilHours,
+      command_ids: queuedIds,
+    }),
+    {
+      status: 202,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     }
   );

@@ -3048,14 +3048,18 @@
               <label for="fleetStrategyPinned" style="font-size:0.79rem; cursor:pointer;">Pinned (Anchor to Host)</label>
             </div>
           </div>
-          <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.6rem;">
+          <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.6rem;">
             <div class="fleet-field" id="fleetReplicasFieldWrap" style="margin-block-end:0;">
               <label for="fleetReplicasInput">Replicas (1–32)</label>
               <input type="text" id="fleetReplicasInput" name="replicas" inputmode="numeric" pattern="[0-9]*" class="search-box" value="1" style="width:100%;">
             </div>
             <div class="fleet-field" style="margin-block-end:0;">
-              <label for="fleetMemoryMbInput">Memory Reserve (MB)</label>
+              <label for="fleetMemoryMbInput">RAM Limit (MB)</label>
               <input type="text" id="fleetMemoryMbInput" name="memory_mb" inputmode="numeric" pattern="[0-9]*" class="search-box" value="256" style="width:100%;">
+            </div>
+            <div class="fleet-field" style="margin-block-end:0;">
+              <label for="fleetCpuCoresInput">CPU Limit (Cores)</label>
+              <input type="text" id="fleetCpuCoresInput" name="cpu_cores" inputmode="decimal" placeholder="e.g. 1.0" class="search-box" value="" style="width:100%;">
             </div>
             <div class="fleet-field" style="margin-block-end:0;">
               <label for="fleetTargetNodeInput">Target Host (<code>auto</code> or ID)</label>
@@ -6584,6 +6588,11 @@
       if (Number.isInteger(memMb) && memMb >= 32) base.memory_mb = memMb;
       else delete base.memory_mb;
 
+      const rawCpu = document.getElementById('fleetCpuCoresInput')?.value.trim();
+      const cpuCores = rawCpu ? Number(rawCpu) : NaN;
+      if (Number.isFinite(cpuCores) && cpuCores >= 0.05) base.cpu_cores = cpuCores;
+      else delete base.cpu_cores;
+
       const rawNodeId = document.getElementById('fleetTargetNodeInput')?.value.trim();
       if (rawNodeId && rawNodeId !== 'auto') base.node_id = rawNodeId;
       else delete base.node_id;
@@ -6676,9 +6685,11 @@
 
       const repInput = document.getElementById('fleetReplicasInput');
       const memInput = document.getElementById('fleetMemoryMbInput');
+      const cpuInput = document.getElementById('fleetCpuCoresInput');
       const nodeInput = document.getElementById('fleetTargetNodeInput');
       if (repInput) repInput.value = String(isSingleton ? 1 : (m?.replicas ?? 1));
       if (memInput) memInput.value = String(m?.memory_mb ?? (isSingleton ? 512 : 256));
+      if (cpuInput) cpuInput.value = m?.cpu_cores !== undefined ? String(m.cpu_cores) : '';
       if (nodeInput) nodeInput.value = m?.node_id || 'auto';
 
       const domList = Array.isArray(m?.domains) && m.domains.length > 0
