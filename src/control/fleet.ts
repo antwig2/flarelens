@@ -568,6 +568,22 @@ export function isContainerRunningOnNode(node: NodeRecord | undefined, container
   return false;
 }
 
+export function isAgentVersionAtLeast(actual: string | undefined, minimum: string): boolean {
+  if (!actual || !minimum) return false;
+  const cleanActual = actual.trim().replace(/^v/i, '').split('-')[0];
+  const cleanMin = minimum.trim().replace(/^v/i, '').split('-')[0];
+  const aParts = cleanActual.split('.').map((p) => Number.parseInt(p, 10) || 0);
+  const mParts = cleanMin.split('.').map((p) => Number.parseInt(p, 10) || 0);
+  const len = Math.max(aParts.length, mParts.length);
+  for (let i = 0; i < len; i++) {
+    const a = aParts[i] || 0;
+    const m = mParts[i] || 0;
+    if (a > m) return true;
+    if (a < m) return false;
+  }
+  return true;
+}
+
 export function computeFleetDriftStatus(
   manifests: Array<FleetServiceManifest & { _revision?: string; _synced_commit?: string; _synced_at?: string }>,
   nodes: NodeRecord[],

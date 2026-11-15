@@ -30,6 +30,7 @@ import {
   deleteFleetManifest,
   isSingletonManifest,
   isContainerRunningOnNode,
+  isAgentVersionAtLeast,
   validateFleetManifest,
   saveFleetManifests,
   getFleetManifest,
@@ -4586,7 +4587,15 @@ async function reconcileManifestsWithScheduler(
       const adoptedNodes: string[] = [];
 
       for (const nodeId of nodesToDispatch) {
-        if (m.adopt_only && !opts?.forceRecreateStateful && isContainerRunningOnNode(nodeById.get(nodeId), containerName)) {
+        const nodeObj = nodeById.get(nodeId);
+        const supportsLiveAdoptCgroups =
+          isAgentVersionAtLeast(nodeObj?.version, '0.2.9') && Boolean(m.memory_mb || m.cpu_cores);
+        if (
+          m.adopt_only &&
+          !opts?.forceRecreateStateful &&
+          isContainerRunningOnNode(nodeObj, containerName) &&
+          !supportsLiveAdoptCgroups
+        ) {
           adoptedNodes.push(nodeId);
           continue;
         }
@@ -4601,6 +4610,7 @@ async function reconcileManifestsWithScheduler(
           image: effectiveImage,
           container_name: containerName,
           restart: m.restart || 'always',
+          ...(m.adopt_only ? { adopt_only: true } : {}),
           networks: m.networks,
           aliases: m.aliases,
           volumes: m.volumes,
