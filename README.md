@@ -61,7 +61,7 @@ npx wrangler d1 migrations apply flarelens-control --remote
 ### 2. Enroll a Server Node (`flarelensd`)
 
 ```sh
-curl -fsSL "https://<your-worker-url>/install.sh" | sudo bash -s -- \
+curl -fsSL "https://flarelens.dev/install.sh" | sudo bash -s -- \
   --control "https://<your-worker-url>" \
   --token "<YOUR_INGEST_SECRET>"
 ```

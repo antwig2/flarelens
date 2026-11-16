@@ -5,3 +5,5 @@ dist/
 *.log
 .DS_Store
 wrangler.local.toml
+website/dist/
+website/.wrangler/

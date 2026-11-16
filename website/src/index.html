@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <script>
+    try {
+      document.querySelector('meta[name="color-scheme"]').content = localStorage.getItem('color-scheme') ?? 'light dark';
+    } catch {}
+  </script>
+  <title>FlareLens | Open-Source Serverless Infrastructure, Declarative Fleet &amp; WireGuard Mesh</title>
+  <meta name="description" content="Manage Linux, macOS, and Windows servers, deploy zero-downtime Blue/Green workloads with immutable revisions, run a P2P WireGuard mesh with TTL 5s MagicDNS, and query an R2 Parquet log lakehouse from a $0/month Cloudflare Workers + D1 control plane.">
+  <link rel="canonical" href="https://flarelens.dev/">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="FlareLens">
+  <meta property="og:title" content="FlareLens — Sovereign Infrastructure &amp; Declarative Fleet Platform">
+  <meta property="og:description" content="Zero-Git Blue/Green deploys, hard kernel cgroups, direct P2P WireGuard mesh with TTL 5s DNS, encrypted RAM secrets, and R2 Parquet logs on a $0/mo Cloudflare Workers + D1 control plane.">
+  <meta property="og:url" content="https://flarelens.dev/">
+  <meta property="og:image" content="https://flarelens.dev/og-card.svg">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="/styles/main.css">
+  <script type="module" src="/scripts/site.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <a href="#main-heading" class="skip-link visually-hidden">Skip to main content</a>
+    <div class="container header-inner">
+      <a class="site-logo" href="/">
+        <svg width="28" height="28" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+          <rect x="4" y="4" width="56" height="56" rx="14" fill="#0b0f17" stroke="#38bdf8" stroke-width="3.5"/>
+          <circle cx="32" cy="32" r="14" stroke="#fb923c" stroke-width="4"/>
+          <circle cx="32" cy="32" r="5" fill="#fb923c"/>
+        </svg>
+        <span>FlareLens</span>
+        <span class="logo-badge">v2.0</span>
+      </a>
+
+      <div class="header-actions">
+        <nav class="site-nav" aria-label="Primary">
+          <button
+            class="menu-button"
+            type="button"
+            popovertarget="site-menu"
+            popovertargetaction="toggle"
+            aria-controls="site-menu"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16" stroke-linecap="round"/>
+            </svg>
+            <span>Menu</span>
+          </button>
+
+          <ul id="site-menu" class="site-menu" popover="auto">
+            <li><a href="/" aria-current="page">Overview</a></li>
+            <li><a href="#architecture">Architecture</a></li>
+            <li><a href="#capabilities">Capabilities</a></li>
+            <li><a href="#manifests">Manifests</a></li>
+            <li><a href="/docs/">Documentation</a></li>
+            <li><a href="https://github.com/antwig2/flarelens" target="_blank" rel="noopener noreferrer">Control Plane</a></li>
+            <li><a href="https://github.com/antwig2/flarelensd" target="_blank" rel="noopener noreferrer">Agent (flarelensd)</a></li>
+          </ul>
+        </nav>
+
+        <button type="button" class="theme-toggle" aria-label="Switch color theme">
+          <svg class="icon-sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41" stroke-linecap="round"/>
+          </svg>
+          <svg class="icon-moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container hero-grid">
+        <div>
+          <div class="hero-pill">
+            <span class="hero-pill-dot" aria-hidden="true"></span>
+            <span>Apache-2.0 Open Source · Cloudflare Workers + Static Go Agent</span>
+          </div>
+          <h1 id="main-heading" tabindex="-1" class="hero-title">
+            Enterprise Fleet Orchestration <span class="hero-gradient">Without the SaaS Tax</span>
+          </h1>
+          <p class="hero-subtitle">
+            Reconcile zero-downtime Blue/Green services and stateful singletons with immutable revisions, enforce hard Docker cgroup limits, connect servers over a direct P2P WireGuard mesh with <code>TTL 5s</code> MagicDNS, and query an R2 Parquet lakehouse—all from a <strong>$0/month</strong> serverless control plane.
+          </p>
+
+          <div class="hero-cta">
+            <a class="btn btn-primary" href="https://deploy.workers.cloudflare.com/?url=https://github.com/antwig2/flarelens" target="_blank" rel="noopener noreferrer">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>Deploy to Cloudflare</span>
+            </a>
+            <a class="btn btn-secondary" href="/docs/">Read Documentation</a>
+            <a class="btn btn-secondary" href="https://github.com/antwig2/flarelens" target="_blank" rel="noopener noreferrer">Star on GitHub</a>
+          </div>
+
+          <div class="metrics-strip">
+            <div class="metric-card">
+              <div class="metric-value">$0/mo</div>
+              <div class="metric-label">Workers + D1 + R2 Free Tier</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-value">&lt;25 MiB</div>
+              <div class="metric-label">Static Go Host Daemon</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-value">&lt;1 ms</div>
+              <div class="metric-label">Atomic Traefik Route Flip</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-value">5s TTL</div>
+              <div class="metric-label">Split-Horizon Mesh DNS</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="code-panel">
+          <div class="code-panel-header">
+            <span class="window-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span id="hero-install-label">Enroll any Linux host in 10 seconds</span>
+          </div>
+          <div class="copyable">
+            <span class="copy">
+              <button type="button" class="copy-button" command="--copy" commandfor="hero-install-cmd" aria-label="Copy Linux host enrollment command">
+                <svg class="icon-copy" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                <svg class="icon-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                  <path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Copy</span>
+              </button>
+              <span class="tip" role="status"></span>
+            </span>
+            <pre role="region" aria-labelledby="hero-install-label" tabindex="0"><code id="hero-install-cmd">curl -fsSL https://flarelens.dev/install.sh | sudo bash -s -- \
+  --control "https://your-plane.workers.dev" \
+  --token "$FLARELENS_INGEST_SECRET"</code></pre>
+          </div>
+          <div class="code-panel-header">
+            <span>Live Host Verification</span>
+            <span class="text-ok">● Healthy · Piggybacked 15s Sync</span>
+          </div>
+          <pre role="region" aria-label="Agent enrollment output" tabindex="0"><code>[flarelensd] SHA-256 checksum verified (linux/amd64)
+[flarelensd] WireGuard overlay active: 100.64.0.1/10 (UDP P2P)
+[flarelensd] MagicDNS listening on 100.64.0.1:53 (UDP+TCP, TTL=5s)
+[flarelensd] RAM secret store mounted: /dev/shm/flarelens-secrets (0700)
+[flarelensd] Enrolled as Healthy — 0 inbound firewall ports required</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="architecture" class="section below-fold">
+      <div class="container">
+        <div class="section-head">
+          <div class="eyebrow">Two-Plane Sovereign Design</div>
+          <h2 class="section-title">The Edge Coordinates. Your Servers Own the Data Plane.</h2>
+          <p class="section-lead">
+            FlareLens never routes private database or container traffic through a central proxy. If control-plane connectivity ever drops, running containers, Traefik routes, and WireGuard tunnels continue serving live traffic autonomously.
+          </p>
+        </div>
+
+        <div class="arch-grid">
+          <div class="arch-plane">
+            <div class="eyebrow">Control Plane · Cloudflare Edge</div>
+            <h3>Global Coordinator (antwig2/flarelens)</h3>
+            <ul>
+              <li><strong>D1 State &amp; Revisions:</strong> Immutable numbered fleet revisions (<code>rev-1</code>, <code>rev-2</code>, …), placement leases, and 1-click UAT → Prod promotion &amp; rollback.</li>
+              <li><strong>Piggybacked 15s Heartbeat:</strong> Commands, mesh peers, cluster endpoints, and feature flag hashes ride the <code>/api/v1/ingest</code> response (<code>0</code> R2 <code>list()</code> calls).</li>
+              <li><strong>AES-256-GCM Vault:</strong> Zero-plaintext secrets stored encrypted in Workers KV and delivered strictly into process RAM or ephemeral <code>/dev/shm</code> tmpfs.</li>
+              <li><strong>Parquet Lakehouse:</strong> Compacts container logs into Hive-partitioned Apache Parquet in R2, queried in-browser via DuckDB-WASM with <code>$0</code> egress.</li>
+            </ul>
+          </div>
+
+          <div class="arch-connector" aria-hidden="true">
+            <span>▲ Outbound TLS / OIDC</span>
+            <span>15s Piggyback</span>
+            <span>▼ SHA-256 OTA</span>
+          </div>
+
+          <div class="arch-plane">
+            <div class="eyebrow">Data Plane · Cloud, Bare-Metal &amp; Hybrid</div>
+            <h3>Static Go Host Agent (antwig2/flarelensd)</h3>
+            <ul>
+              <li><strong>Blue/Green &amp; Singletons:</strong> Boots candidate slots, runs pre-deploy R2 <code>pg_dump</code> snapshots &amp; migrations, verifies health probes, and flips Traefik in <code>&lt;1ms</code>.</li>
+              <li><strong>Hard Kernel Cgroups:</strong> Enforces <code>HostConfig.Memory</code> &amp; <code>NanoCPUs</code>, updates running stateful singletons in place with zero restarts, and auto-prunes 72h+ images.</li>
+              <li><strong>Direct P2P WireGuard:</strong> Kernel-space ChaCha20-Poly1305 mesh across regions and providers without central VPN relays or bandwidth bottlenecks.</li>
+              <li><strong>Split-Horizon MagicDNS:</strong> Embedded UDP+TCP DNS server on <code>&lt;overlay_ip&gt;:53</code> serving round-robin <code>&lt;service&gt;.&lt;env&gt;.mesh</code> records at <code>TTL = 5s</code>.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="capabilities" class="section below-fold">
+      <div class="container">
+        <div class="section-head">
+          <div class="eyebrow">Platform Capabilities</div>
+          <h2 class="section-title">Everything Docker Compose Was Missing Across Multiple Servers</h2>
+          <p class="section-lead">
+            No Kubernetes control-plane VMs, no etcd quorum babysitting, and no six separate SaaS subscriptions.
+          </p>
+        </div>
+
+        <div class="card-grid">
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <h3>Zero-Git Fleet &amp; Immutable Revisions</h3>
+            <p>Create, edit, suspend, promote (<code>uat → prod</code>), and roll back workloads directly in the UI—or sync YAML manifests from GitHub Actions via keyless OIDC. Every mutation writes an immutable <code>rev-N</code> snapshot to D1 + R2.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+                <rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+              </svg>
+            </div>
+            <h3>Multi-Server Scheduler &amp; Auto-Failover</h3>
+            <p>Schedule stateless replicas across a server pool with <code>spread</code> anti-affinity, <code>binpack</code> consolidation, or <code>pinned</code> affinity. Drain nodes cleanly, reschedule off dead hosts automatically, and fence stateful DB volumes so data is never wiped.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>
+              </svg>
+            </div>
+            <h3>Dynamic Mesh DNS (TTL 5s)</h3>
+            <p>Containers receive <code>HostConfig.Dns</code> pointing to <code>&lt;overlay_ip&gt;:53</code> over UDP and TCP. Cross-server calls to <code>http://billing-api:8080</code> resolve across healthy WireGuard peers with lock-free round-robin and 5-second failover.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+              </svg>
+            </div>
+            <h3>Zero-Plaintext Vault &amp; RAM tmpfs</h3>
+            <p>Secrets stay AES-256-GCM encrypted in KV until deployment, then inject into container memory or materialize into <code>/dev/shm/flarelens-secrets</code> (<code>0700</code> host isolation, <code>0600</code> private keys) via <code>__FLARELENS_FILE__</code>—never touching persistent disks.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 6h16M4 12h16M4 18h10" stroke-linecap="round"/><circle cx="18" cy="18" r="3"/>
+              </svg>
+            </div>
+            <h3>Hard Cgroup Limits &amp; Auto Image Prune</h3>
+            <p>Declare <code>memory_mb</code> and <code>cpu_cores</code> on apps, workers, and stateful singletons so a memory leak can never starve PostgreSQL. Retired Docker images older than 72 hours are garbage-collected automatically while preserving instant rollback layers.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/>
+              </svg>
+            </div>
+            <h3>Zero-Disk R2 Backups &amp; DuckDB Logs</h3>
+            <p>Pre-deploy guardrails stream gzipped <code>pg_dump</code> snapshots through an <code>io.Pipe</code> directly to Cloudflare R2 before running schema migrations, with automated rollback on failure and browser-native SQL analytics over Parquet logs.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="manifests" class="section below-fold">
+      <div class="container">
+        <div class="section-head">
+          <div class="eyebrow">Canonical Schema · flarelens.dev/schemas/fleet.schema.json</div>
+          <h2 class="section-title">Clean Declarative Manifests With Full IDE Autocomplete</h2>
+          <p class="section-lead">
+            Author workloads in the Dashboard UI or validate YAML/JSON files in VS Code and CI against <a href="/schemas/fleet.schema.json"><code>https://flarelens.dev/schemas/fleet.schema.json</code></a>.
+          </p>
+        </div>
+
+        <div class="tab-bar" role="tablist" aria-label="Fleet manifest examples">
+          <button id="tab-bg" class="tab-btn" type="button" role="tab" aria-selected="true" aria-controls="panel-bg" tabindex="0">
+            blue-green-api.yml
+          </button>
+          <button id="tab-pg" class="tab-btn" type="button" role="tab" aria-selected="false" aria-controls="panel-pg" tabindex="-1">
+            stateful-postgres.yml
+          </button>
+          <button id="tab-ha" class="tab-btn" type="button" role="tab" aria-selected="false" aria-controls="panel-ha" tabindex="-1">
+            multi-node-spread.json
+          </button>
+        </div>
+
+        <div id="panel-bg" class="code-panel" role="tabpanel" aria-labelledby="tab-bg">
+          <div class="code-panel-header">
+            <span id="caption-bg">Zero-downtime Blue/Green API + background worker + pre-deploy migration guardrail</span>
+            <span>YAML</span>
+          </div>
+          <div class="copyable">
+            <span class="copy">
+              <button type="button" class="copy-button" command="--copy" commandfor="code-bg" aria-label="Copy Blue/Green YAML manifest">
+                <svg class="icon-copy" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                <svg class="icon-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                  <path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Copy</span>
+              </button>
+              <span class="tip" role="status"></span>
+            </span>
+            <pre role="region" aria-labelledby="caption-bg" tabindex="0"><code id="code-bg"># yaml-language-server: $schema=https://flarelens.dev/schemas/fleet.schema.json
+service: billing-api
+env: prod
+mode: blue_green
+domains:
+  - api.example.com
+  - auth.example.com
+image: ghcr.io/acme/billing-api:1.8.0
+memory_mb: 768
+cpu_cores: 1.5
+container_port: 8080
+host_port_blue: 9080
+host_port_green: 9081
+health_path: /health
+pre_deploy_snapshot: true
+run_migrations: true
+migration_cmd: /app/billing-api migrate up
+
+networks:
+  - app-prod
+  - flarelens-edge
+
+aliases:
+  - billing-api
+
+workers:
+  - name: outbox-drainer
+    command: ["worker", "start"]
+    memory_mb: 384
+    cpu_cores: 0.75
+    networks:
+      - app-prod</code></pre>
+          </div>
+        </div>
+
+        <div id="panel-pg" class="code-panel" role="tabpanel" aria-labelledby="tab-pg" hidden>
+          <div class="code-panel-header">
+            <span id="caption-pg">Self-contained PostgreSQL 18 singleton with RAM tmpfs first-boot init SQL</span>
+            <span>YAML</span>
+          </div>
+          <div class="copyable">
+            <span class="copy">
+              <button type="button" class="copy-button" command="--copy" commandfor="code-pg" aria-label="Copy PostgreSQL singleton manifest">
+                <svg class="icon-copy" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                <svg class="icon-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                  <path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Copy</span>
+              </button>
+              <span class="tip" role="status"></span>
+            </span>
+            <pre role="region" aria-labelledby="caption-pg" tabindex="0"><code id="code-pg"># yaml-language-server: $schema=https://flarelens.dev/schemas/fleet.schema.json
+service: postgres
+env: prod
+mode: singleton
+image: postgres:18
+container_name: acme-prod-postgres
+restart: always
+memory_mb: 2048
+cpu_cores: 2.0
+
+networks:
+  - app-prod
+
+aliases:
+  - postgres
+
+volumes:
+  - /var/lib/acme/prod/postgres:/var/lib/postgresql
+
+healthcheck:
+  test: ["CMD-SHELL", "pg_isready -U app_user -d app_prod"]
+  interval: 10s
+  timeout: 5s
+  retries: 5
+
+env_vars:
+  POSTGRES_DB: postgres
+  __FLARELENS_FILE__/docker-entrypoint-initdb.d/01-init.sql: |
+    CREATE DATABASE app_prod;
+    CREATE DATABASE analytics_prod;</code></pre>
+          </div>
+        </div>
+
+        <div id="panel-ha" class="code-panel" role="tabpanel" aria-labelledby="tab-ha" hidden>
+          <div class="code-panel-header">
+            <span id="caption-ha">Multi-server anti-affinity spread across tagged EU WireGuard nodes</span>
+            <span>JSON</span>
+          </div>
+          <div class="copyable">
+            <span class="copy">
+              <button type="button" class="copy-button" command="--copy" commandfor="code-ha" aria-label="Copy multi-server JSON manifest">
+                <svg class="icon-copy" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                <svg class="icon-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                  <path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Copy</span>
+              </button>
+              <span class="tip" role="status"></span>
+            </span>
+            <pre role="region" aria-labelledby="caption-ha" tabindex="0"><code id="code-ha">{
+  "$schema": "https://flarelens.dev/schemas/fleet.schema.json",
+  "service": "checkout-web",
+  "env": "prod",
+  "mode": "blue_green",
+  "domain": "shop.example.com",
+  "image": "ghcr.io/acme/checkout-web:3.2.1",
+  "replicas": 3,
+  "placement_strategy": "spread",
+  "required_tags": ["region:eu", "tier:compute"],
+  "memory_mb": 512,
+  "cpu_cores": 1.0,
+  "container_port": 3000,
+  "host_port_blue": 9100,
+  "host_port_green": 9101,
+  "health_path": "/readyz",
+  "networks": ["app-prod", "flarelens-edge"]
+}</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section below-fold">
+      <div class="container">
+        <div class="section-head">
+          <div class="eyebrow">Operational Economics</div>
+          <h2 class="section-title">How FlareLens Compares</h2>
+          <p class="section-lead">
+            Keep raw Linux/Docker predictability and $0 egress telemetry while gaining multi-host orchestration, encrypted secrets, and mesh networking.
+          </p>
+        </div>
+
+        <div tabindex="0" role="region" aria-labelledby="compare-caption" class="table-wrapper">
+          <table class="data-table" style="--label-2: 'FlareLens'; --label-3: 'Managed Kubernetes'; --label-4: 'Fragmented SaaS + Compose';">
+            <caption id="compare-caption">Platform architecture and cost comparison across multi-server deployments</caption>
+            <thead>
+              <tr>
+                <th scope="col">Capability</th>
+                <th scope="col">FlareLens</th>
+                <th scope="col">Managed Kubernetes</th>
+                <th scope="col">Fragmented SaaS + Compose</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Control Plane Cost</th>
+                <td class="text-ok">$0/mo (Workers + D1 + R2 free tier)</td>
+                <td>$75–$300+/mo control plane + node overhead</td>
+                <td>$150–$500+/mo across 4–6 SaaS bills</td>
+              </tr>
+              <tr>
+                <th scope="row">Host Agent Overhead</th>
+                <td class="text-ok">&lt;25 MiB static Go binary</td>
+                <td>600–1,200+ MiB (kubelet, CNI, CSI, agents)</td>
+                <td>Multiple log, APM, and VPN daemons</td>
+              </tr>
+              <tr>
+                <th scope="row">Cross-Server Service DNS</th>
+                <td class="text-ok">Built-in WireGuard MagicDNS (TTL 5s)</td>
+                <td>CoreDNS + CNI overlay</td>
+                <td>Manual /etc/hosts or external VPN DNS</td>
+              </tr>
+              <tr>
+                <th scope="row">Secret Materialization</th>
+                <td class="text-ok">AES-256-GCM Vault → RAM /dev/shm tmpfs</td>
+                <td>etcd Secrets + external-secrets operator</td>
+                <td>Plaintext .env files on disk or SaaS CLI</td>
+              </tr>
+              <tr>
+                <th scope="row">Log Storage &amp; Egress</th>
+                <td class="text-ok">R2 Parquet + DuckDB-WASM ($0 egress)</td>
+                <td>Self-hosted Loki/ELK or paid SaaS ingest</td>
+                <td>Per-GB ingestion &amp; retention markups</td>
+              </tr>
+              <tr>
+                <th scope="row">Stateful DB Safety</th>
+                <td class="text-ok">Volume fencing + streaming R2 pg_dump</td>
+                <td>StatefulSet PVCs + CSI snapshot controller</td>
+                <td>Custom cron scripts</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section below-fold" aria-labelledby="faq-heading">
+      <div class="container">
+        <div class="section-head">
+          <div class="eyebrow">Frequently Asked Questions</div>
+          <h2 id="faq-heading" class="section-title">Common Architectural Questions</h2>
+        </div>
+
+        <div class="faq-list">
+          <details class="faq-item" name="flarelens-faq" open>
+            <summary>Do I need a GitOps repository to use FlareLens?</summary>
+            <div class="faq-body">
+              <p>No. You can define, deploy, suspend, promote (<code>uat → prod</code>), and roll back services directly in the FlareLens Dashboard UI backed by immutable D1 + R2 revisions (<code>rev-1</code>, <code>rev-2</code>, …). If you also use CI/CD, GitHub Actions webhooks and <code>fleet/*.yml</code> OIDC syncs plug directly into the same revision history.</p>
+            </div>
+          </details>
+
+          <details class="faq-item" name="flarelens-faq">
+            <summary>Does my private server-to-server traffic pass through Cloudflare?</summary>
+            <div class="faq-body">
+              <p>Never. Cloudflare Workers only coordinates Curve25519 public keys and endpoint discovery. All private container, database, and operator mesh traffic flows directly peer-to-peer between your hosts over encrypted UDP WireGuard tunnels.</p>
+            </div>
+          </details>
+
+          <details class="faq-item" name="flarelens-faq">
+            <summary>What happens if a host loses internet access to the Control Plane?</summary>
+            <div class="faq-body">
+              <p>Running containers, local Traefik routing rules, hard kernel cgroups, and active peer-to-peer WireGuard sessions continue operating autonomously with zero disruption. Once connectivity returns, <code>flarelensd</code> resumes its 15-second heartbeat sync automatically.</p>
+            </div>
+          </details>
+
+          <details class="faq-item" name="flarelens-faq">
+            <summary>Do I have to use Cloudflare Tunnel (cloudflared) for public web traffic?</summary>
+            <div class="faq-body">
+              <p>No. FlareLens supports both direct public ingress (pointing standard <code>A</code>/<code>AAAA</code> DNS records at your server with Traefik/Caddy TLS) and zero-inbound-port tunnels (running <code>cloudflared</code> as a managed singleton with ports <code>22</code>, <code>80</code>, and <code>443</code> closed on your firewall).</p>
+            </div>
+          </details>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div>
+        <strong>FlareLens</strong> · Open-Source Serverless Infrastructure Platform (Apache-2.0)
+      </div>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="/docs/">Documentation</a>
+        <a href="/schemas/fleet.schema.json">JSON Schema</a>
+        <a href="/install.sh">install.sh</a>
+        <a href="https://github.com/antwig2/flarelens" target="_blank" rel="noopener noreferrer">GitHub (Control Plane)</a>
+        <a href="https://github.com/antwig2/flarelensd" target="_blank" rel="noopener noreferrer">GitHub (flarelensd)</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

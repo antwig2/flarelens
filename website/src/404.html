@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <script>try{const s=localStorage.getItem("color-scheme");if(s==="light"||s==="dark")document.querySelector('meta[name="color-scheme"]').content=s;}catch{}</script>
+  <title>Page Not Found | FlareLens</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles/site.css">
+  <script type="module" src="/scripts/site.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="site-logo" href="/">
+        <img class="logo-mark" src="/favicon.svg" alt="" width="32" height="32">
+        <span>FlareLens</span>
+      </a>
+      <div class="header-actions">
+        <a class="btn btn-primary" href="/">Back to Home</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="section">
+    <div class="container">
+      <span class="section-kicker">HTTP 404</span>
+      <h1 tabindex="-1">Route not found on this edge node</h1>
+      <p class="hero-lead">The page you requested does not exist on <code>flarelens.dev</code>.</p>
+      <div class="hero-cta-row">
+        <a class="btn btn-primary" href="/">FlareLens Overview</a>
+        <a class="btn btn-ghost" href="/docs/">Read Documentation</a>
+        <a class="btn btn-ghost" href="/schemas/fleet.schema.json">Fleet JSON Schema</a>
+      </div>
+    </div>
+  </main>
+</body>
+</html>
+
