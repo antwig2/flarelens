@@ -101,8 +101,8 @@
           </div>
         </div>
 
-        <div class="summary-grid" aria-label="Platform overview">
-          <a class="summary-card" href="#cap-fleet">
+        <div id="product" class="summary-grid">
+          <article class="summary-card">
             <span class="summary-icon" aria-hidden="true">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <rect x="3" y="4" width="18" height="6" rx="1.5"/>
@@ -110,11 +110,11 @@
                 <circle cx="7" cy="7" r="1" fill="currentColor"/><circle cx="7" cy="17" r="1" fill="currentColor"/>
               </svg>
             </span>
-            <span class="summary-card-title">Fleet Management</span>
-            <span class="summary-card-sub">Servers and workloads</span>
-          </a>
+            <h2 class="summary-card-title">Fleet Management</h2>
+            <p class="summary-card-sub">Servers and workloads</p>
+          </article>
 
-          <a class="summary-card" href="#cap-deployments">
+          <article class="summary-card">
             <span class="summary-icon" aria-hidden="true">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <path d="M17 2l4 4-4 4" stroke-linecap="round" stroke-linejoin="round"/>
@@ -123,132 +123,58 @@
                 <path d="M21 13v2a3 3 0 0 1-3 3H3" stroke-linecap="round"/>
               </svg>
             </span>
-            <span class="summary-card-title">Application Deployments</span>
-            <span class="summary-card-sub">Revisions and rollbacks</span>
-          </a>
+            <h2 class="summary-card-title">Deployments</h2>
+            <p class="summary-card-sub">Revisions and rollbacks</p>
+          </article>
 
-          <a class="summary-card" href="#cap-networking">
+          <article class="summary-card">
             <span class="summary-icon" aria-hidden="true">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="18" r="2.5"/><circle cx="19" cy="18" r="2.5"/>
                 <path d="M10.5 7.2 6.5 15.8M13.5 7.2l4 8.6M7.5 18h9" stroke-linecap="round"/>
               </svg>
             </span>
-            <span class="summary-card-title">Private Networking</span>
-            <span class="summary-card-sub">WireGuard networking</span>
-          </a>
+            <h2 class="summary-card-title">Private Mesh</h2>
+            <p class="summary-card-sub">WireGuard networking</p>
+          </article>
 
-          <a class="summary-card" href="#cap-observability">
+          <article class="summary-card">
             <span class="summary-icon" aria-hidden="true">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <path d="M4 19V5M4 19h16" stroke-linecap="round"/>
                 <path d="M8 15l3-4 3 2 5-6" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </span>
-            <span class="summary-card-title">Observability</span>
-            <span class="summary-card-sub">Logs, metrics and health</span>
-          </a>
+            <h2 class="summary-card-title">Observability</h2>
+            <p class="summary-card-sub">Logs, metrics and health</p>
+          </article>
 
-          <a class="summary-card" href="#cap-secrets">
+          <article class="summary-card">
             <span class="summary-icon" aria-hidden="true">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <circle cx="8" cy="15" r="4"/>
                 <path d="M10.85 12.15 19 4m-2 2 2 2m-4 0 2 2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </span>
-            <span class="summary-card-title">Secrets &amp; Configuration</span>
-            <span class="summary-card-sub">Secure runtime configuration</span>
-          </a>
+            <h2 class="summary-card-title">Secrets &amp; Flags</h2>
+            <p class="summary-card-sub">Secure runtime configuration</p>
+          </article>
 
-          <a class="summary-card" href="#cap-backups">
+          <article class="summary-card">
             <span class="summary-icon" aria-hidden="true">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <ellipse cx="12" cy="5" rx="7.5" ry="3"/>
                 <path d="M4.5 5v14c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3V5M4.5 12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3"/>
               </svg>
             </span>
-            <span class="summary-card-title">Backups &amp; Recovery</span>
-            <span class="summary-card-sub">R2 streaming storage</span>
-          </a>
-        </div>
-      </div>
-    </section>
-
-    <!-- 2. THESIS -->
-    <section class="section below-fold">
-      <div class="container">
-        <div class="section-head">
-          <div class="eyebrow">Serverless Infrastructure Control Plane</div>
-          <h2 class="section-title">Infrastructure management shouldn't require more infrastructure.</h2>
-        </div>
-
-        <div class="prose-stack">
-          <p>Running applications across servers often means managing separate tools for deployment, networking, monitoring, secrets, and host operations.</p>
-          <p>As your infrastructure grows, so does the complexity of keeping everything connected, secure, and operational.</p>
-          <p><strong>FlareLens brings those operations together.</strong></p>
-          <p>One interface to manage your infrastructure. One lightweight agent on each host. A serverless control plane that coordinates everything.</p>
-          <p>Your applications continue running on your own machines.</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- 3. CAPABILITIES -->
-    <section id="product" class="section below-fold">
-      <div class="container">
-        <div class="section-head">
-          <div class="eyebrow">Capabilities</div>
-          <h2 class="section-title">Everything you need to operate your infrastructure.</h2>
-        </div>
-
-        <div class="capability-grid">
-          <article id="cap-fleet" class="capability-card">
-            <h3>Fleet Management</h3>
-            <p class="capability-tagline">Every server. One place to manage them.</p>
-            <p>Manage cloud VMs, bare-metal servers, and hybrid infrastructure from a unified dashboard.</p>
-            <p>Monitor host health, organize nodes, manage workloads, coordinate maintenance, and control deployments across your fleet.</p>
-          </article>
-
-          <article id="cap-deployments" class="capability-card">
-            <h3>Application Deployments</h3>
-            <p class="capability-tagline">Deploy with confidence. Roll back when needed.</p>
-            <p>Define applications, configure deployment requirements, and let FlareLens reconcile your desired infrastructure state.</p>
-            <p>Use Blue/Green deployments, health checks, immutable revisions, environment promotion, and rollback to manage application releases.</p>
-            <p>No mandatory Git repository. No Kubernetes cluster required.</p>
-          </article>
-
-          <article id="cap-networking" class="capability-card">
-            <h3>Private Networking</h3>
-            <p class="capability-tagline">Connect your infrastructure without exposing it.</p>
-            <p>Create encrypted private networks across your servers and operator workstations using WireGuard.</p>
-            <p>FlareLens coordinates peer discovery while direct peer-to-peer connections carry private traffic between reachable nodes.</p>
-            <p>Run internal services over a private network and reduce the need for publicly exposed management endpoints.</p>
-          </article>
-
-          <article id="cap-observability" class="capability-card">
-            <h3>Observability</h3>
-            <p class="capability-tagline">See what's happening across your infrastructure.</p>
-            <p>Monitor host health, inspect application logs, investigate incidents, and track service availability from one dashboard.</p>
-            <p>Stream live telemetry and retain historical logs in compressed Parquet format using Cloudflare R2.</p>
-          </article>
-
-          <article id="cap-secrets" class="capability-card">
-            <h3>Secrets &amp; Configuration</h3>
-            <p class="capability-tagline">Keep sensitive configuration under control.</p>
-            <p>Centralize application secrets and runtime configuration.</p>
-            <p>FlareLens provides encrypted secret storage, in-memory secret injection, environment-specific configuration, and feature flags without requiring persistent plaintext <code>.env</code> files on your hosts.</p>
-          </article>
-
-          <article id="cap-backups" class="capability-card">
-            <h3>Backups &amp; Recovery</h3>
-            <p class="capability-tagline">Protect your data. Prepare for recovery.</p>
-            <p>Stream PostgreSQL backups directly to Cloudflare R2 without creating large temporary backup files on the host.</p>
-            <p>Manage database backup operations alongside the infrastructure that depends on them.</p>
+            <h2 class="summary-card-title">Backups</h2>
+            <p class="summary-card-sub">R2 streaming storage</p>
           </article>
         </div>
       </div>
     </section>
 
-    <!-- 4. WORKFLOW -->
+    <!-- 2. WORKFLOW -->
     <section class="section below-fold">
       <div class="container">
         <div class="section-head">

@@ -648,48 +648,12 @@
     font-size: 0.98rem;
     font-weight: 650;
     color: var(--text);
+    letter-spacing: -0.01em;
   }
 
   .summary-card-sub {
     font-size: 0.86rem;
     color: var(--text-muted);
-  }
-
-  /* Detailed Capability Cards (2-col grid) */
-  .capability-grid {
-    display: grid;
-    gap: 1.15rem;
-  }
-
-  @media (width >= 48rem) {
-    .capability-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-
-  .capability-card {
-    padding: 1.65rem;
-    border-radius: 14px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-  }
-
-  .capability-card h3 {
-    font-size: 1.125rem;
-  }
-
-  .capability-tagline {
-    font-size: 0.94rem;
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .capability-card p:not(.capability-tagline) {
-    font-size: 0.93rem;
-    color: var(--text-secondary);
   }
 
   /* 4-Step Workflow */
