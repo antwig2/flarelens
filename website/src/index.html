@@ -213,7 +213,7 @@
       </div>
     </section>
 
-    <!-- 5. ARCHITECTURE -->
+    <!-- 3. ARCHITECTURE DIAGRAM -->
     <section id="architecture" class="section below-fold">
       <div class="container">
         <div class="section-head">
@@ -222,28 +222,94 @@
           <p class="section-lead">A serverless control plane. A sovereign data plane.</p>
         </div>
 
-        <div class="plane-grid">
-          <article class="plane-card">
-            <span class="plane-label">Control plane — Cloudflare</span>
-            <h3>Serverless Management</h3>
-            <p>FlareLens uses Cloudflare Workers for its management API, D1 for operational state, KV for coordination and encrypted secrets, and R2 for log and backup storage.</p>
-            <p>Deploy it into your own Cloudflare account.</p>
-          </article>
+        <figure class="arch-diagram" aria-labelledby="arch-caption">
+          <div class="arch-layout">
+            <!-- LEFT: CONTROL PLANE -->
+            <div class="arch-box arch-control">
+              <div class="arch-box-head">
+                <span class="arch-badge">Control Plane</span>
+                <span class="arch-owner">Your Cloudflare Account</span>
+              </div>
 
-          <article class="plane-card">
-            <span class="plane-label">Execution plane — Your servers</span>
-            <h3>Sovereign Runtime</h3>
-            <p>A lightweight Go daemon manages workloads, deployments, host telemetry, and maintenance operations on enrolled machines.</p>
-            <p>Applications execute on your infrastructure, not inside the Cloudflare Worker.</p>
-          </article>
+              <ul class="arch-stack-list" role="list">
+                <li class="arch-node">
+                  <span class="arch-node-key">Workers</span>
+                  <span class="arch-node-val">Management API &amp; Dashboard</span>
+                </li>
+                <li class="arch-node">
+                  <span class="arch-node-key">D1</span>
+                  <span class="arch-node-val">Fleet state &amp; revisions</span>
+                </li>
+                <li class="arch-node">
+                  <span class="arch-node-key">KV</span>
+                  <span class="arch-node-val">Encrypted secrets &amp; peer index</span>
+                </li>
+                <li class="arch-node">
+                  <span class="arch-node-key">R2</span>
+                  <span class="arch-node-val">Parquet logs &amp; DB backups</span>
+                </li>
+              </ul>
+            </div>
 
-          <article class="plane-card">
-            <span class="plane-label">Private network — WireGuard</span>
-            <h3>Direct Peer-to-Peer Mesh</h3>
-            <p>WireGuard establishes encrypted connections between participating hosts and operators.</p>
-            <p>Cloudflare coordinates management and peer discovery without acting as the default router for private workload traffic.</p>
-          </article>
-        </div>
+            <!-- CENTER: CONTROL / TELEMETRY BRIDGE -->
+            <div class="arch-bridge" aria-hidden="true">
+              <div class="arch-wire">
+                <span class="arch-wire-label">15s TLS Sync</span>
+                <svg class="arch-arrow-h" viewBox="0 0 120 16" fill="none">
+                  <line x1="2" y1="8" x2="110" y2="8" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3"/>
+                  <path d="M105 3.5L113 8l-8 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span class="arch-wire-sub">Commands, revisions &amp; secrets</span>
+              </div>
+
+              <div class="arch-wire">
+                <span class="arch-wire-label">Outbound Stream</span>
+                <svg class="arch-arrow-h" viewBox="0 0 120 16" fill="none">
+                  <line x1="10" y1="8" x2="118" y2="8" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3"/>
+                  <path d="M15 3.5L7 8l8 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span class="arch-wire-sub">Telemetry &amp; R2 pg_dump</span>
+              </div>
+            </div>
+
+            <!-- RIGHT: DATA PLANE -->
+            <div class="arch-box arch-data">
+              <div class="arch-box-head">
+                <span class="arch-badge arch-badge-solid">Data Plane</span>
+                <span class="arch-owner">Your Servers &amp; Infrastructure</span>
+              </div>
+
+              <div class="arch-hosts">
+                <div class="arch-host-card">
+                  <div class="arch-host-title">Host A · Cloud VM</div>
+                  <div class="arch-host-chip">flarelensd (Go daemon)</div>
+                  <div class="arch-host-chip">Blue/Green Apps &amp; Ingress</div>
+                </div>
+
+                <div class="arch-host-card">
+                  <div class="arch-host-title">Host B · Bare Metal</div>
+                  <div class="arch-host-chip">flarelensd (Go daemon)</div>
+                  <div class="arch-host-chip">Services &amp; PostgreSQL</div>
+                </div>
+              </div>
+
+              <div class="arch-mesh-bar">
+                <div class="arch-mesh-line" aria-hidden="true">
+                  <svg viewBox="0 0 320 18" fill="none">
+                    <path d="M14 4L6 9l8 5M306 4l8 5-8 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    <line x1="8" y1="9" x2="312" y2="9" stroke="currentColor" stroke-width="1.6"/>
+                  </svg>
+                </div>
+                <div class="arch-mesh-title">Direct WireGuard P2P Mesh · MagicDNS</div>
+                <div class="arch-mesh-sub">Encrypted peer-to-peer traffic between hosts &amp; operators — private workload traffic never routes through Cloudflare</div>
+              </div>
+            </div>
+          </div>
+
+          <figcaption id="arch-caption" class="arch-caption">
+            Control Plane coordinates desired state, secrets, and peer discovery; all application containers and WireGuard mesh traffic execute directly inside your Data Plane.
+          </figcaption>
+        </figure>
       </div>
     </section>
 
