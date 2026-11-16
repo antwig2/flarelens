@@ -4,36 +4,66 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
-  <script>try{const s=localStorage.getItem("color-scheme");if(s==="light"||s==="dark")document.querySelector('meta[name="color-scheme"]').content=s;}catch{}</script>
+  <script>
+    try {
+      document.querySelector('meta[name="color-scheme"]').content = localStorage.getItem('color-scheme') ?? 'light dark';
+    } catch {}
+  </script>
   <title>Page Not Found | FlareLens</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles/site.css">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/styles/main.css">
   <script type="module" src="/scripts/site.js"></script>
 </head>
-<body class="home-dark-surface">
+<body>
   <header class="site-header">
-    <div class="header-inner">
-      <a class="site-logo" href="/">
-        <img class="logo-mark" src="/favicon.svg" alt="" width="28" height="28">
-        <span>FlareLens</span>
-      </a>
-      <div class="header-actions">
-        <a class="btn btn-emerald" href="/">Back to Home</a>
+    <a href="#main-heading" class="skip-link visually-hidden">Skip to main content</a>
+    <div class="header-frame">
+      <div class="header-inner">
+        <a class="site-logo" href="/">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M12 3L3 7.5 12 12l9-4.5L12 3z" stroke-linejoin="round"/>
+            <path d="M3 12l9 4.5 9-4.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M3 16.5L12 21l9-4.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>FlareLens</span>
+        </a>
+        <div class="header-actions">
+          <nav class="site-nav" aria-label="Primary">
+            <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu">
+              <span>Menu</span>
+            </button>
+            <ul id="site-menu" class="site-menu" popover="auto">
+              <li><a href="/">Product</a></li>
+              <li><a href="/#architecture">Architecture</a></li>
+              <li><a href="/docs/">Docs</a></li>
+              <li><a href="https://github.com/antwig2/flarelens" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            </ul>
+          </nav>
+        </div>
       </div>
     </div>
   </header>
 
-  <main class="section">
-    <div class="container">
-      <span class="section-kicker">HTTP 404</span>
-      <h1 tabindex="-1" class="section-heading">Route not found</h1>
-      <p class="section-subcopy">The page you requested does not exist on <code>flarelens.dev</code>.</p>
-      <div class="hero-cta-row" style="margin-block-start:1.5rem">
-        <a class="btn btn-hero-primary" href="/">Overview</a>
-        <a class="btn btn-hero-secondary" href="/docs/">Docs</a>
-        <a class="btn btn-hero-secondary" href="/compare/">Compare</a>
+  <main class="page-frame">
+    <section class="hero">
+      <div class="container hero-center">
+        <div class="eyebrow">HTTP 404</div>
+        <h1 id="main-heading" tabindex="-1" class="hero-title">Page not found.</h1>
+        <p class="hero-lead">The route you requested does not exist on <code>flarelens.dev</code>.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="/">Return to FlareLens</a>
+          <a class="btn btn-secondary" href="/docs/">Read Docs</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-frame">
+      <div class="container footer-inner">
+        <div><strong>FlareLens</strong> · Open-Source Infrastructure Operations · Apache 2.0</div>
       </div>
     </div>
-  </main>
+  </footer>
 </body>
 </html>

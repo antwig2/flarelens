@@ -1,13 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <defs>
-    <linearGradient id="fl-emerald" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#4ade80"/>
-      <stop offset="100%" stop-color="#16a34a"/>
-    </linearGradient>
-  </defs>
-  <rect x="4" y="4" width="56" height="56" rx="14" fill="#0b0e12" stroke="#1f2937" stroke-width="2.5"/>
-  <rect x="14" y="14" width="36" height="36" rx="9" fill="url(#fl-emerald)" fill-opacity="0.14" stroke="url(#fl-emerald)" stroke-width="2.5"/>
-  <circle cx="32" cy="32" r="8" stroke="#4ade80" stroke-width="3"/>
-  <circle cx="32" cy="32" r="3" fill="#4ade80"/>
-  <path d="M32 14v6M32 44v6M14 32h6M44 32h6" stroke="#4ade80" stroke-width="2.5" stroke-linecap="round"/>
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="#111113"/>
+  <path d="M32 14L14 23l18 9 18-9-18-9z" stroke="#ffffff" stroke-width="3.6" stroke-linejoin="round"/>
+  <path d="M14 32l18 9 18-9" stroke="#ffffff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M14 41l18 9 18-9" stroke="#a1a1aa" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

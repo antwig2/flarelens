@@ -1,16 +1,18 @@
 # FlareLens
 
-### Open-Source Serverless Infrastructure, Declarative Fleet Engine & Sovereign Mesh Platform
+**Open-Source Infrastructure Operations · Serverless Infrastructure Control Plane**
 
-Manage servers, create & reconcile declarative workloads with immutable revisions (zero Git repo required), deploy zero-downtime Blue/Green releases, secure private WireGuard networks, and run an R2 Parquet log lakehouse from a **$0/month** Cloudflare Workers + D1 control plane.
+### Your infrastructure. Under your control.
 
-[Website](https://flarelens.dev/) · [Deploy to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/antwig2/flarelens) · [Host Agent (`flarelensd`)](https://github.com/antwig2/flarelensd) · [Releases](https://github.com/antwig2/flarelens/releases)
+Manage servers, deploy applications, connect private networks, secure secrets, and observe your infrastructure from one open-source control plane, deployed in your own Cloudflare account.
+
+[Website](https://flarelens.dev/) · [Documentation](https://flarelens.dev/docs/) · [Deploy to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/antwig2/flarelens) · [Host Agent (`flarelensd`)](https://github.com/antwig2/flarelensd) · [Releases](https://github.com/antwig2/flarelens/releases)
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/antwig2/flarelens)
 [![Latest release](https://img.shields.io/github/v/release/antwig2/flarelens?label=release&color=f38020)](https://github.com/antwig2/flarelens/releases/latest)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-555)](LICENSE)
 
-FlareLens is an open-source platform for managing infrastructure across cloud, bare-metal, and hybrid environments. Built with a serverless Cloudflare Workers + D1 + R2 control plane and a single static Go host daemon ([`flarelensd`](https://github.com/antwig2/flarelensd)), it replaces centralized Kubernetes/Consul/Headscale control VMs, SSH-based Ansible playbooks, and boilerplate GitOps repositories with a 1-click serverless control plane.
+FlareLens brings infrastructure management, declarative deployments, private networking, secrets, and observability together without requiring dedicated control-plane servers or a Kubernetes cluster. Built with a serverless Cloudflare Workers + D1 + KV + R2 control plane and a lightweight Go host daemon ([`flarelensd`](https://github.com/antwig2/flarelensd)), your applications continue running on your own machines while one control plane coordinates everything.
 
 ---
 
