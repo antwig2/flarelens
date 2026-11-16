@@ -4,59 +4,36 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
-  <script>
-    try {
-      document.querySelector('meta[name="color-scheme"]').content = localStorage.getItem('color-scheme') ?? 'light dark';
-    } catch {}
-  </script>
+  <script>try{const s=localStorage.getItem("color-scheme");if(s==="light"||s==="dark")document.querySelector('meta[name="color-scheme"]').content=s;}catch{}</script>
   <title>Page Not Found | FlareLens</title>
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/styles/main.css">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles/site.css">
   <script type="module" src="/scripts/site.js"></script>
 </head>
-<body>
+<body class="home-dark-surface">
   <header class="site-header">
-    <a href="#main-heading" class="skip-link visually-hidden">Skip to main content</a>
-    <div class="container header-inner">
+    <div class="header-inner">
       <a class="site-logo" href="/">
-        <svg width="28" height="28" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-          <rect x="4" y="4" width="56" height="56" rx="14" fill="#0b0f17" stroke="#38bdf8" stroke-width="3.5"/>
-          <circle cx="32" cy="32" r="14" stroke="#fb923c" stroke-width="4"/>
-          <circle cx="32" cy="32" r="5" fill="#fb923c"/>
-        </svg>
+        <img class="logo-mark" src="/favicon.svg" alt="" width="28" height="28">
         <span>FlareLens</span>
       </a>
       <div class="header-actions">
-        <nav class="site-nav" aria-label="Primary">
-          <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu">
-            <span>Menu</span>
-          </button>
-          <ul id="site-menu" class="site-menu" popover="auto">
-            <li><a href="/">Overview</a></li>
-            <li><a href="/docs/">Documentation</a></li>
-            <li><a href="/schemas/fleet.schema.json">JSON Schema</a></li>
-          </ul>
-        </nav>
+        <a class="btn btn-emerald" href="/">Back to Home</a>
       </div>
     </div>
   </header>
 
-  <main class="hero">
+  <main class="section">
     <div class="container">
-      <div class="eyebrow">HTTP 404</div>
-      <h1 id="main-heading" tabindex="-1" class="hero-title">Route Not Found</h1>
-      <p class="hero-subtitle">The page you requested does not exist on <code>flarelens.dev</code>.</p>
-      <div class="hero-cta">
-        <a class="btn btn-primary" href="/">Back to Home</a>
-        <a class="btn btn-secondary" href="/docs/">Browse Documentation</a>
+      <span class="section-kicker">HTTP 404</span>
+      <h1 tabindex="-1" class="section-heading">Route not found</h1>
+      <p class="section-subcopy">The page you requested does not exist on <code>flarelens.dev</code>.</p>
+      <div class="hero-cta-row" style="margin-block-start:1.5rem">
+        <a class="btn btn-hero-primary" href="/">Overview</a>
+        <a class="btn btn-hero-secondary" href="/docs/">Docs</a>
+        <a class="btn btn-hero-secondary" href="/compare/">Compare</a>
       </div>
     </div>
   </main>
-
-  <footer class="site-footer">
-    <div class="container footer-inner">
-      <div><strong>FlareLens</strong> · Apache-2.0 Open Source</div>
-    </div>
-  </footer>
 </body>
 </html>

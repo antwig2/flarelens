@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <script>try{const s=localStorage.getItem("color-scheme");if(s==="light"||s==="dark")document.querySelector('meta[name="color-scheme"]').content=s;}catch{}</script>
+  <title>How FlareLens Compares | FlareLens</title>
+  <meta name="description" content="Honest side-by-side comparison of FlareLens against Coolify, Kamal 2, Dokku, Managed Kubernetes, Tailscale + Datadog + Doppler, and PaaS clouds.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles/site.css">
+  <script type="module" src="/scripts/site.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <a href="#compare-heading" class="skip-link visually-hidden">Skip to comparison</a>
+    <div class="header-inner">
+      <a class="site-logo" href="/">
+        <img class="logo-mark" src="/favicon.svg" alt="" width="28" height="28">
+        <span>FlareLens</span>
+      </a>
+
+      <nav class="site-nav" aria-label="Primary">
+        <button
+          class="menu-button"
+          type="button"
+          popovertarget="site-menu"
+          popovertargetaction="toggle"
+          aria-controls="site-menu"
+        >
+          <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M4 7h16M4 12h16M4 17h16"/>
+          </svg>
+          <span>Menu</span>
+        </button>
+
+        <ul id="site-menu" class="site-menu" popover="auto">
+          <li><a href="/docs/">Docs</a></li>
+          <li><a href="/compare/" aria-current="page">Compare</a></li>
+          <li><a href="/#get-started">Examples</a></li>
+          <li><a href="/schemas/fleet.schema.json">Schema</a></li>
+          <li><a href="/llms-full.txt">llms.txt</a></li>
+        </ul>
+      </nav>
+
+      <div class="header-actions">
+        <button
+          class="search-trigger"
+          type="button"
+          command="show-modal"
+          commandfor="search-dialog"
+          aria-label="Search documentation"
+        >
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>
+          </svg>
+          <span class="search-trigger-label">Search...</span>
+          <span class="search-kbd" aria-hidden="true">⌘K</span>
+        </button>
+
+        <button id="theme-toggle" class="theme-toggle" type="button">
+          <span class="theme-opt-light">
+            <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+            </svg>
+            <span class="visually-hidden">Switch to light theme</span>
+          </span>
+          <span class="theme-opt-dark">
+            <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+            <span class="visually-hidden">Switch to dark theme</span>
+          </span>
+        </button>
+
+        <a class="nav-gh-btn" href="https://github.com/antwig2/flarelens" rel="noopener">
+          <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.33-1.76-1.33-1.76-1.09-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5 1 .11-.78.42-1.3.76-1.6-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.02 0c2.28-1.55 3.29-1.23 3.29-1.23.66 1.66.25 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.48 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12 12 0 0 0 12 .5z"/>
+          </svg>
+          <span>GitHub</span>
+        </a>
+
+        <a class="btn btn-emerald" href="/docs/">Get started</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="page-hero">
+      <span class="section-kicker">COMPARE</span>
+      <h1 id="compare-heading" tabindex="-1">How FlareLens compares</h1>
+      <p>
+        FlareLens is an open-source control plane and WireGuard mesh that runs in your own Cloudflare account and on your own servers. Here's how it stacks up—including where the others are the better choice.
+      </p>
+    </section>
+
+    <div class="compare-table-wrap">
+      <table class="compare-matrix">
+        <caption class="visually-hidden">Side-by-side comparison of FlareLens and infrastructure alternatives</caption>
+        <thead>
+          <tr>
+            <th scope="col">Dimension</th>
+            <th scope="col" class="col-flarelens">FlareLens</th>
+            <th scope="col">Coolify</th>
+            <th scope="col">Kamal 2</th>
+            <th scope="col">Managed Kubernetes</th>
+            <th scope="col">Compose + SaaS Stack</th>
+            <th scope="col">Fly.io / Render</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Where control plane lives</th>
+            <td class="col-flarelens"><strong>Your own Cloudflare account (Workers, D1, KV &amp; R2)</strong></td>
+            <td>Dedicated PHP/Postgres/Redis control VM you patch (or paid cloud)</td>
+            <td>Stateless Ruby CLI invoked over SSH from laptop/CI</td>
+            <td>Cloud provider control plane ($75+/mo) + cluster CRDs</td>
+            <td>4–5 third-party SaaS clouds (Datadog, Tailscale, Doppler…)</td>
+            <td>Vendor's proprietary cloud</td>
+          </tr>
+          <tr>
+            <th scope="row">Source code</th>
+            <td class="col-flarelens"><strong>Open source, Apache-2.0</strong></td>
+            <td>Open source, Apache-2.0</td>
+            <td>Open source, MIT</td>
+            <td>Open source core + proprietary cloud IAM/LB glue</td>
+            <td>Proprietary SaaS</td>
+            <td>Proprietary PaaS</td>
+          </tr>
+          <tr>
+            <th scope="row">Control plane cost</th>
+            <td class="col-flarelens"><strong>$0/mo</strong> on Cloudflare Free (or $5/mo Workers Paid)</td>
+            <td>$10–$25/mo control VM (or $5/server Cloud)</td>
+            <td>$0 CLI (requires SSH access from CI runners)</td>
+            <td>$75–$300+/mo before worker nodes &amp; load balancers</td>
+            <td>$200–$600+/mo as nodes and log volume grow</td>
+            <td>Markup on vCPU, RAM, and egress bandwidth</td>
+          </tr>
+          <tr>
+            <th scope="row">Cross-server private mesh</th>
+            <td class="col-flarelens"><strong>Built-in P2P WireGuard + 5s <code>MagicDNS</code> (<code>*.mesh</code>)</strong></td>
+            <td>Not built-in (bring Tailscale or manual WireGuard)</td>
+            <td>Not built-in (bring Tailscale or VPC)</td>
+            <td>Cilium / Calico CNI overlay</td>
+            <td>Paid per-user/node VPN SaaS</td>
+            <td>Built-in WireGuard 6PN inside vendor cloud only</td>
+          </tr>
+          <tr>
+            <th scope="row">Zero-downtime rollouts &amp; DB safety</th>
+            <td class="col-flarelens"><strong>Atomic &lt;1ms Traefik swap + streaming R2 <code>pg_dump</code> + auto-rollback</strong></td>
+            <td>Rolling Docker restarts / Traefik labels; manual DB rollback</td>
+            <td><code>kamal-proxy</code> zero-downtime HTTP; backups external</td>
+            <td>Argo Rollouts + custom backup Jobs</td>
+            <td>Custom bash/Ansible scripts</td>
+            <td>Built-in rolling / blue-green inside vendor cloud</td>
+          </tr>
+          <tr>
+            <th scope="row">Secrets on host disk</th>
+            <td class="col-flarelens"><strong>Zero <code>.env</code> files on disk; AES-256-GCM in RAM + <code>0700</code> <code>/dev/shm</code></strong></td>
+            <td>Compose <code>.env</code> files written to host disk</td>
+            <td>Injected via <code>kamal secrets</code> env at deploy</td>
+            <td>etcd Secrets (base64 unless KMS/ExternalSecrets added)</td>
+            <td>Doppler / Vault CLI agent</td>
+            <td>Platform runtime env vars</td>
+          </tr>
+          <tr>
+            <th scope="row">Centralized logs &amp; SQL analytics</th>
+            <td class="col-flarelens"><strong>R2 Apache Parquet + in-browser DuckDB-WASM ($0 egress)</strong></td>
+            <td>Per-container Docker logs only (no columnar lakehouse)</td>
+            <td>None built-in (bring vector/Loki/SaaS)</td>
+            <td>Self-host Loki / ClickHouse + PVCs</td>
+            <td>$0.50–$2.50+/GB SaaS log ingestion</td>
+            <td>Short retention; external sink for SQL analytics</td>
+          </tr>
+          <tr>
+            <th scope="row">Multi-server placement &amp; drain</th>
+            <td class="col-flarelens"><strong><code>spread</code> / <code>binpack</code> / <code>pinned</code> + stateful DB volume fencing</strong></td>
+            <td>Manual server assignment or Docker Swarm</td>
+            <td>Static host lists in <code>config/deploy.yml</code></td>
+            <td>Full scheduler + PodDisruptionBudgets + CSI</td>
+            <td>Manual</td>
+            <td>Vendor region placement</td>
+          </tr>
+          <tr>
+            <th scope="row">When to pick the alternative</th>
+            <td class="col-flarelens"><strong>You want sovereign VMs/bare-metal with mesh, GitOps, Vault &amp; Parquet logs in one $0 control plane.</strong></td>
+            <td>You want 200+ 1-click self-hosted app templates (Ghost, Plausible, Supabase) with built-in Nixpacks builds.</td>
+            <td>You want pure stateless CLI deploys over SSH with zero persistent control plane at all.</td>
+            <td>You have 50+ engineers needing custom CRDs, HPA autoscaling, and multi-team RBAC namespaces.</td>
+            <td>You need SOC2 vendor-managed APM traces, RUM, and PagerDuty rotations out of the box.</td>
+            <td>You want zero Linux hosts to manage and accept PaaS compute pricing.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div>
+        <strong>FlareLens</strong> · Apache-2.0 Open Source · <a href="/">flarelens.dev</a>
+      </div>
+      <ul class="footer-links" role="list">
+        <li><a href="/">Overview</a></li>
+        <li><a href="/docs/">Docs</a></li>
+        <li><a href="/llms-full.txt">llms-full.txt</a></li>
+        <li><a href="/schemas/fleet.schema.json">JSON Schema</a></li>
+        <li><a href="https://github.com/antwig2/flarelens" rel="noopener">GitHub</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <dialog id="search-dialog" closedby="any" aria-label="Search FlareLens documentation">
+    <div class="search-modal-head">
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b98ab" stroke-width="2" stroke-linecap="round">
+        <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>
+      </svg>
+      <input
+        id="search-modal-input"
+        class="search-modal-input"
+        type="search"
+        placeholder="Jump to docs, schema, mesh, cgroups..."
+        aria-label="Search FlareLens topics"
+        autofocus
+      >
+      <form method="dialog">
+        <button class="search-close-btn" type="submit" aria-label="Close search dialog">Esc</button>
+      </form>
+    </div>
+    <ul id="search-results-list" class="search-results-list" role="list"></ul>
+  </dialog>
+
+  <div id="live-announcer" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>

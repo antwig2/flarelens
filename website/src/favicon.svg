@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <defs>
-    <linearGradient id="fl-grad" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#6366f1"/>
-      <stop offset="55%" stop-color="#38bdf8"/>
-      <stop offset="100%" stop-color="#f97316"/>
+    <linearGradient id="fl-emerald" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4ade80"/>
+      <stop offset="100%" stop-color="#16a34a"/>
     </linearGradient>
   </defs>
-  <rect x="4" y="4" width="56" height="56" rx="14" fill="#0b0f17" stroke="url(#fl-grad)" stroke-width="3"/>
-  <circle cx="32" cy="32" r="14" stroke="url(#fl-grad)" stroke-width="4"/>
-  <circle cx="32" cy="32" r="5" fill="#f97316"/>
-  <path d="M32 10v6M32 48v6M10 32h6M48 32h6" stroke="#38bdf8" stroke-width="3" stroke-linecap="round"/>
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="#0b0e12" stroke="#1f2937" stroke-width="2.5"/>
+  <rect x="14" y="14" width="36" height="36" rx="9" fill="url(#fl-emerald)" fill-opacity="0.14" stroke="url(#fl-emerald)" stroke-width="2.5"/>
+  <circle cx="32" cy="32" r="8" stroke="#4ade80" stroke-width="3"/>
+  <circle cx="32" cy="32" r="3" fill="#4ade80"/>
+  <path d="M32 14v6M32 44v6M14 32h6M44 32h6" stroke="#4ade80" stroke-width="2.5" stroke-linecap="round"/>
 </svg>
