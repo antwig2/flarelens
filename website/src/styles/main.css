@@ -583,17 +583,9 @@
   }
 
   .hero-lead {
-    font-size: clamp(1.05rem, 1.6vw, 1.18rem);
+    font-size: clamp(1.05rem, 1.6vw, 1.16rem);
     color: var(--text-secondary);
-    max-inline-size: 40rem;
-    margin-inline: auto;
-    margin-block-end: 0.85rem;
-  }
-
-  .hero-sublead {
-    font-size: 0.96rem;
-    color: var(--text-muted);
-    max-inline-size: 40rem;
+    max-inline-size: 38rem;
     margin-inline: auto;
     margin-block-end: 1.85rem;
   }
