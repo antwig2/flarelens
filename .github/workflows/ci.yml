@@ -39,3 +39,6 @@ jobs:
 
       - name: Run D1 Control Plane & Piggyback Tests
         run: npm test
+
+      - name: Verify Website Build (flarelens.dev)
+        run: node ./website/scripts/build.mjs

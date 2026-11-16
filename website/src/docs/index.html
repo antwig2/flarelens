@@ -4,300 +4,307 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
-  <script>try{const s=localStorage.getItem("color-scheme");if(s==="light"||s==="dark")document.querySelector('meta[name="color-scheme"]').content=s;}catch{}</script>
+  <script>
+    try {
+      document.querySelector('meta[name="color-scheme"]').content = localStorage.getItem('color-scheme') ?? 'light dark';
+    } catch {}
+  </script>
   <title>Documentation | FlareLens</title>
-  <meta name="description" content="Complete setup, declarative fleet manifest reference, WireGuard MagicDNS guide, cgroup limits, Vault RAM secrets, and REST API documentation for FlareLens.">
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles/site.css">
+  <meta name="description" content="Complete technical documentation for FlareLens: 1-click Cloudflare Workers control-plane setup, flarelensd enrollment, Zero-Git declarative manifests, WireGuard MagicDNS, cgroups, and R2 Parquet analytics.">
+  <link rel="canonical" href="https://flarelens.dev/docs/">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="FlareLens">
+  <meta property="og:title" content="FlareLens Technical Documentation">
+  <meta property="og:description" content="Deploy the $0/mo Cloudflare Workers + D1 control plane, enroll Linux/Windows nodes, author declarative fleet manifests, and run a P2P WireGuard service mesh.">
+  <meta property="og:url" content="https://flarelens.dev/docs/">
+  <meta property="og:image" content="https://flarelens.dev/og-card.svg">
+  <link rel="stylesheet" href="/styles/main.css">
   <script type="module" src="/scripts/site.js"></script>
 </head>
 <body>
   <header class="site-header">
-    <a href="#docs-heading" class="skip-link visually-hidden">Skip to documentation</a>
-    <div class="header-inner">
+    <a href="#main-heading" class="skip-link visually-hidden">Skip to main content</a>
+    <div class="container header-inner">
       <a class="site-logo" href="/">
-        <img class="logo-mark" src="/favicon.svg" alt="" width="32" height="32">
+        <svg width="28" height="28" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+          <rect x="4" y="4" width="56" height="56" rx="14" fill="#0b0f17" stroke="#38bdf8" stroke-width="3.5"/>
+          <circle cx="32" cy="32" r="14" stroke="#fb923c" stroke-width="4"/>
+          <circle cx="32" cy="32" r="5" fill="#fb923c"/>
+        </svg>
         <span>FlareLens</span>
-        <span class="logo-version">Docs</span>
+        <span class="logo-badge">Docs</span>
       </a>
 
-      <nav class="site-nav" aria-label="Primary">
-        <button
-          class="menu-button"
-          type="button"
-          popovertarget="site-menu"
-          popovertargetaction="toggle"
-          aria-controls="site-menu"
-        >
-          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M4 7h16M4 12h16M4 17h16"/>
-          </svg>
-          <span>Menu</span>
-        </button>
-
-        <ul id="site-menu" class="site-menu" popover="auto">
-          <li><a href="/">Overview</a></li>
-          <li><a href="/docs/" aria-current="page">Documentation</a></li>
-          <li><a href="/schemas/fleet.schema.json">JSON Schema</a></li>
-          <li><a href="https://github.com/antwig2/flarelens" rel="noopener">Control Plane</a></li>
-          <li><a href="https://github.com/antwig2/flarelensd" rel="noopener">flarelensd</a></li>
-        </ul>
-      </nav>
-
       <div class="header-actions">
-        <button id="theme-toggle" class="theme-toggle" type="button">
-          <span class="theme-opt-light">
-            <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+        <nav class="site-nav" aria-label="Primary">
+          <button
+            class="menu-button"
+            type="button"
+            popovertarget="site-menu"
+            popovertargetaction="toggle"
+            aria-controls="site-menu"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16" stroke-linecap="round"/>
             </svg>
-            <span class="visually-hidden">Switch to light theme</span>
-          </span>
-          <span class="theme-opt-dark">
-            <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-            </svg>
-            <span class="visually-hidden">Switch to dark theme</span>
-          </span>
+            <span>Menu</span>
+          </button>
+
+          <ul id="site-menu" class="site-menu" popover="auto">
+            <li><a href="/">Overview</a></li>
+            <li><a href="/docs/" aria-current="page">Documentation</a></li>
+            <li><a href="/schemas/fleet.schema.json">JSON Schema</a></li>
+            <li><a href="https://github.com/antwig2/flarelens" target="_blank" rel="noopener noreferrer">Control Plane</a></li>
+            <li><a href="https://github.com/antwig2/flarelensd" target="_blank" rel="noopener noreferrer">Agent (flarelensd)</a></li>
+          </ul>
+        </nav>
+
+        <button type="button" class="theme-toggle" aria-label="Switch color theme">
+          <svg class="icon-sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41" stroke-linecap="round"/>
+          </svg>
+          <svg class="icon-moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
         </button>
-        <a class="btn btn-cf" href="https://deploy.workers.cloudflare.com/?url=https://github.com/antwig2/flarelens" rel="noopener">
-          Deploy to Cloudflare
-        </a>
       </div>
     </div>
   </header>
 
-  <div class="container docs-shell">
-    <aside class="docs-toc">
+  <main class="container docs-shell">
+    <aside class="docs-sidebar">
+      <div class="docs-sidebar-title">On This Page</div>
       <nav aria-label="Documentation sections">
-        <p class="docs-toc-title">On this page</p>
-        <ul>
-          <li><a href="#quick-start">1. Quick Start ($0 Tier)</a></li>
+        <ul class="docs-toc">
+          <li><a href="#quickstart">1. Quick Start</a></li>
           <li><a href="#enroll-nodes">2. Enroll Host Nodes</a></li>
-          <li><a href="#declarative-fleet">3. Zero-Git Fleet &amp; Revisions</a></li>
-          <li><a href="#placement-mesh">4. Multi-Server &amp; MagicDNS</a></li>
-          <li><a href="#cgroups-prune">5. Cgroup Limits &amp; Prune</a></li>
-          <li><a href="#vault-ram-secrets">6. Vault &amp; RAM Secrets</a></li>
-          <li><a href="#backups-lakehouse">7. Backups &amp; R2 Lakehouse</a></li>
-          <li><a href="#schema-api">8. Schema &amp; Control API</a></li>
+          <li><a href="#zero-git-fleet">3. Zero-Git Fleet &amp; Revisions</a></li>
+          <li><a href="#manifest-spec">4. Manifest Schema &amp; Cgroups</a></li>
+          <li><a href="#mesh-dns">5. WireGuard Mesh &amp; MagicDNS</a></li>
+          <li><a href="#vault-ram">6. Vault &amp; RAM tmpfs Secrets</a></li>
+          <li><a href="#backups-logs">7. R2 Backups &amp; Parquet Logs</a></li>
+          <li><a href="#api-reference">8. Control Plane API</a></li>
         </ul>
       </nav>
     </aside>
 
-    <main class="docs-article">
-      <div>
-        <span class="section-kicker">FlareLens v2.0 Reference</span>
-        <h1 id="docs-heading" tabindex="-1">Platform Documentation</h1>
-        <p class="hero-lead">
-          Deploy the serverless Cloudflare Workers + D1 + R2 control plane in under two minutes, enroll Linux/macOS/Windows servers with a single command, and orchestrate zero-downtime multi-node workloads.
+    <div class="docs-prose">
+      <header class="docs-section">
+        <div class="eyebrow">FlareLens v2.0 Reference</div>
+        <h1 id="main-heading" tabindex="-1" class="section-title">FlareLens Documentation</h1>
+        <p class="section-lead">
+          Deploy a self-hosted serverless control plane on Cloudflare's free tier, enroll Linux or Windows hosts with <code>flarelensd</code>, and orchestrate resilient multi-node workloads.
         </p>
-      </div>
+      </header>
 
-      <!-- 1. Quick Start -->
-      <section id="quick-start" class="docs-section">
+      <section id="quickstart" class="docs-section">
         <h2>1. Deploy the Control Plane ($0 Free Tier)</h2>
         <p>
-          Wrangler v4 automatically provisions your <code>CONTROL_DB</code> (D1), <code>FLEET_KV</code> (Workers KV), <code>LOGS_BUCKET</code> (R2), and <code>BACKUP_BUCKET</code> (R2) bindings directly from <code>wrangler.toml</code>.
+          You can launch your own isolated FlareLens Control Plane in one click using the <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/antwig2/flarelens" target="_blank" rel="noopener noreferrer">Deploy to Cloudflare Workers</a> button—Wrangler v4 automatically provisions <code>CONTROL_DB</code> (D1), <code>FLEET_KV</code> (KV), <code>LOGS_BUCKET</code> (R2), and <code>BACKUP_BUCKET</code> (R2)—or deploy from the CLI:
         </p>
 
-        <figure class="code-figure">
-          <figcaption>
-            <span id="cap-cp-deploy">Shell — Clone, set secrets &amp; deploy Worker</span>
-            <button class="copy-btn" type="button" data-copy-target="code-cp-deploy" aria-label="Copy control plane deploy commands">
-              <span data-copy-label>Copy</span>
-            </button>
-          </figcaption>
-          <pre id="code-cp-deploy" class="code-block" role="region" aria-labelledby="cap-cp-deploy" tabindex="0"><code>git clone https://github.com/antwig2/flarelens.git
+        <div class="code-panel">
+          <div class="code-panel-header">
+            <span id="doc-cp-label">Deploy Control Plane via Wrangler CLI</span>
+            <span>sh</span>
+          </div>
+          <div class="copyable">
+            <span class="copy">
+              <button type="button" class="copy-button" command="--copy" commandfor="doc-cp-cmd" aria-label="Copy Wrangler deploy commands">
+                <svg class="icon-copy" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                <svg class="icon-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                  <path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Copy</span>
+              </button>
+              <span class="tip" role="status"></span>
+            </span>
+            <pre role="region" aria-labelledby="doc-cp-label" tabindex="0"><code id="doc-cp-cmd">git clone https://github.com/antwig2/flarelens.git
 cd flarelens
 npm install
 
-# Configure edge secrets (never stored in plaintext)
 npx wrangler secret put INGEST_SECRET
 npx wrangler secret put DASHBOARD_PASSWORD
 npx wrangler secret put VAULT_MASTER_KEY
 
-# Deploy Worker &amp; apply D1 control-plane schema migrations
 npm run deploy
 npx wrangler d1 migrations apply flarelens-control --remote</code></pre>
-        </figure>
+          </div>
+        </div>
       </section>
 
-      <!-- 2. Enroll Host Nodes -->
       <section id="enroll-nodes" class="docs-section">
-        <h2>2. Enroll Server Nodes (<code>flarelensd</code>)</h2>
+        <h2>2. Enroll Host Nodes (flarelensd)</h2>
         <p>
-          Install the static Go host daemon directly from <code>https://flarelens.dev/install.sh</code> (or your own Worker URL). The installer verifies SHA-256 digests, writes <code>/etc/flarelens/agent.toml</code>, and enables the <code>flarelensd.service</code> systemd unit.
+          Install the static Go host agent (<a href="https://github.com/antwig2/flarelensd" target="_blank" rel="noopener noreferrer"><code>antwig2/flarelensd</code></a>) using the vanity installer hosted at <code>https://flarelens.dev/install.sh</code> (Linux/macOS) or <code>https://flarelens.dev/install.ps1</code> (Windows):
         </p>
 
-        <figure class="code-figure">
-          <figcaption>
-            <span id="cap-node-enroll">Linux systemd enrollment</span>
-            <button class="copy-btn" type="button" data-copy-target="code-node-enroll" aria-label="Copy Linux node enrollment command">
-              <span data-copy-label>Copy</span>
-            </button>
-          </figcaption>
-          <pre id="code-node-enroll" class="code-block" role="region" aria-labelledby="cap-node-enroll" tabindex="0"><code>curl -fsSL https://flarelens.dev/install.sh | sudo bash -s -- \
-  --control "https://&lt;your-worker-domain&gt;" \
-  --token "&lt;YOUR_INGEST_SECRET&gt;"</code></pre>
-        </figure>
+        <div class="code-panel">
+          <div class="code-panel-header">
+            <span id="doc-enroll-label">Linux / macOS one-line enrollment</span>
+            <span>sh</span>
+          </div>
+          <div class="copyable">
+            <span class="copy">
+              <button type="button" class="copy-button" command="--copy" commandfor="doc-enroll-cmd" aria-label="Copy Linux enrollment command">
+                <svg class="icon-copy" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                <svg class="icon-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                  <path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Copy</span>
+              </button>
+              <span class="tip" role="status"></span>
+            </span>
+            <pre role="region" aria-labelledby="doc-enroll-label" tabindex="0"><code id="doc-enroll-cmd">curl -fsSL https://flarelens.dev/install.sh | sudo bash -s -- \
+  --control "https://your-plane.workers.dev" \
+  --token "<YOUR_INGEST_SECRET>"</code></pre>
+          </div>
+        </div>
 
-        <h3>Operator Workstation WireGuard Login (Optional)</h3>
-        <p>Connect a developer laptop directly to the private <code>100.64.0.0/10</code> WireGuard mesh with internal <code>*.mesh</code> DNS:</p>
-        <figure class="code-figure">
-          <figcaption>
-            <span id="cap-op-login">Workstation mesh login</span>
-            <button class="copy-btn" type="button" data-copy-target="code-op-login" aria-label="Copy operator mesh login command">
-              <span data-copy-label>Copy</span>
-            </button>
-          </figcaption>
-          <pre id="code-op-login" class="code-block" role="region" aria-labelledby="cap-op-login" tabindex="0"><code>sudo flarelens-agent login --control="https://&lt;your-worker-domain&gt;"</code></pre>
-        </figure>
+        <div class="callout">
+          <strong>Zero-SSH OTA Upgrades:</strong> Once enrolled, <code>flarelensd</code> verifies SHA-256 digests and upgrades itself atomically via <code>self_update</code> commands piggybacked onto its 15-second heartbeat—draining active deployments or backups before swapping binaries.
+        </div>
       </section>
 
-      <!-- 3. Declarative Fleet -->
-      <section id="declarative-fleet" class="docs-section">
-        <h2>3. Zero-Git Declarative Fleet &amp; Immutable Revisions</h2>
+      <section id="zero-git-fleet" class="docs-section below-fold">
+        <h2>3. Zero-Git Declarative Fleet &amp; Revisions</h2>
         <p>
-          Open <strong>Declarative Fleet</strong> in your dashboard and click <strong><code>+ New Service</code></strong> to launch Blue/Green apps or stateful singletons (<code>postgres</code>, <code>dragonfly</code>, <code>traefik</code>, <code>cloudflared</code>). Every save writes an immutable revision (<code>rev-1</code>, <code>rev-2</code>, …) to D1 and R2 with 1-click <code>uat → prod</code> promotion and 1-click rollback.
+          Open the <strong>Declarative Fleet</strong> tab in your dashboard to manage services directly in Cloudflare D1 + R2 without needing a Git repository:
         </p>
-        <p>
-          Using YAML/JSON files in a repository as well? Point the YAML language server at <code>https://flarelens.dev/schemas/fleet.schema.json</code> for full IDE validation and autocompletion:
-        </p>
-
-        <figure class="code-figure">
-          <figcaption>
-            <span id="cap-yaml-spec">fleet/prod/orders-api.yml</span>
-            <button class="copy-btn" type="button" data-copy-target="code-yaml-spec" aria-label="Copy declarative YAML manifest">
-              <span data-copy-label>Copy</span>
-            </button>
-          </figcaption>
-          <pre id="code-yaml-spec" class="code-block" role="region" aria-labelledby="cap-yaml-spec" tabindex="0"><code># yaml-language-server: $schema=https://flarelens.dev/schemas/fleet.schema.json
-service: orders-api
-env: prod
-mode: blue_green
-image: ghcr.io/acme/orders-api:2.1.0
-replicas: 2
-placement_strategy: spread
-memory_mb: 512
-cpu_cores: 1.0
-domains:
-  - orders.example.com
-container_port: 8080
-host_port_blue: 9080
-host_port_green: 9081
-health_path: /health
-pre_deploy_snapshot: true
-run_migrations: true
-migration_cmd: /orders-api migrate up
-networks:
-  - app-prod
-  - flarelens-edge
-workers:
-  - name: orders-drainer
-    command: ["worker", "start"]
-    memory_mb: 256
-    cpu_cores: 0.5
-    networks:
-      - app-prod</code></pre>
-        </figure>
-      </section>
-
-      <!-- 4. Placement & MagicDNS -->
-      <section id="placement-mesh" class="docs-section">
-        <h2>4. Multi-Server Scheduling, Drain Fencing &amp; Dynamic Mesh DNS</h2>
         <ul>
-          <li><strong>Placement Strategies:</strong> <code>spread</code> (HA anti-affinity across distinct hosts), <code>binpack</code> (pack onto highest-utilization fitting nodes), or <code>pinned</code> (<code>node_id</code> / <code>required_tags</code>).</li>
-          <li><strong>Split-Horizon <code>MagicDNSServer</code> (<code>TTL = 5s</code>):</strong> Binds strictly to <code>&lt;overlay_ip&gt;:53</code> over UDP and TCP (RFC 1035 2-byte framing), serving round-robin <code>A</code> records for <code>&lt;service&gt;.&lt;env&gt;.mesh</code> across all healthy WireGuard replicas while stripping CGNAT entries from static <code>/etc/hosts</code> so failover happens within 5 seconds.</li>
-          <li><strong>Graceful Node Drain &amp; Stateful Fencing:</strong> <code>POST /api/v1/control/nodes/:id/drain</code> migrates stateless replicas to peer servers while marking stateful volume workloads as <code>fenced</code> so local database disks are never wiped automatically.</li>
+          <li><strong>Immutable Revisions:</strong> Every create, edit, promotion, or delete writes an immutable numbered snapshot (<code>rev-1</code>, <code>rev-2</code>, …) to D1 and <code>state/revisions/rev-N.json</code> in R2.</li>
+          <li><strong>1-Click Promotion &amp; Rollback:</strong> Promote validated staging/UAT images to <code>prod</code> or roll back the entire fleet—including deleted workloads—to any historical revision.</li>
+          <li><strong>Suspended Staging Gate (<code>enabled: false</code>):</strong> Stage production manifests in a <code>Suspended</code> state while pre-populating Vault secrets, then launch in 1 click.</li>
+          <li><strong>Optional Keyless GitHub OIDC Sync:</strong> Teams using GitOps can push <code>fleet/&lt;env&gt;/*.yml</code> manifests via <code>POST /api/v1/control/fleet/sync</code> authenticated with short-lived GitHub Actions OIDC tokens.</li>
         </ul>
       </section>
 
-      <!-- 5. Cgroups & Image Prune -->
-      <section id="cgroups-prune" class="docs-section">
-        <h2>5. Hard Docker Cgroup Isolation &amp; Auto Image Prune</h2>
+      <section id="manifest-spec" class="docs-section below-fold">
+        <h2>4. Manifest Schema, Placement &amp; Hard Cgroup Limits</h2>
         <p>
-          Setting <code>memory_mb</code> and <code>cpu_cores</code> configures both the Control Plane capacity scheduler and Linux kernel cgroups (<code>HostConfig.Memory</code> and <code>HostConfig.NanoCPUs</code>) across Blue/Green slots, companion workers, and singletons.
+          Point YAML Language Server or JSON editors to <a href="/schemas/fleet.schema.json"><code>https://flarelens.dev/schemas/fleet.schema.json</code></a> for strict validation:
         </p>
         <ul>
-          <li><strong>Zero-Restart Singleton Cgroup Sync:</strong> Updating <code>memory_mb</code> or <code>cpu_cores</code> on a running <code>postgres</code> or <code>dragonfly</code> singleton applies live via Docker's <code>POST /containers/{id}/update</code> API without restarting the database.</li>
-          <li><strong>Two-Pass Image Garbage Collection:</strong> Automatically prunes dangling images older than 24h and unused tagged images older than 72h after deployments and on a 12-hour daemon schedule (preserving 72 hours of instant local rollback cache).</li>
+          <li><code>mode</code>: <code>blue_green</code> (zero-downtime slot swap + Traefik health-checked flip) or <code>singleton</code> (stateful engines such as PostgreSQL, Dragonfly, Redis, or Cloudflared).</li>
+          <li><code>placement_strategy</code>: <code>spread</code> (HA anti-affinity across nodes), <code>binpack</code> (RAM consolidation), or <code>pinned</code> (host affinity), combined with <code>replicas</code> (<code>1..32</code>) and <code>required_tags</code>.</li>
+          <li><code>memory_mb</code> &amp; <code>cpu_cores</code>: Enforces hard Linux kernel cgroup ceilings (<code>HostConfig.Memory</code> and <code>NanoCPUs</code>) on Blue/Green slots, companion <code>workers</code>, and singletons. Updating resource budgets on a running stateful singleton applies live via Docker's <code>ContainerUpdate</code> API with <strong>zero container restarts</strong>.</li>
+          <li><strong>Stateful Volume Fencing:</strong> Draining a node (<code>POST /api/v1/control/nodes/:id/drain</code>) or detecting a dead host reschedules stateless replicas onto healthy peers while marking local-disk singletons as <code>fenced</code> so persistent database volumes are never wiped automatically.</li>
         </ul>
       </section>
 
-      <!-- 6. Vault & RAM Secrets -->
-      <section id="vault-ram-secrets" class="docs-section">
-        <h2>6. Zero-Plaintext Vault &amp; Ephemeral RAM Secret Files</h2>
+      <section id="mesh-dns" class="docs-section below-fold">
+        <h2>5. Direct P2P WireGuard Mesh &amp; MagicDNS (TTL 5s)</h2>
         <p>
-          Store per-service environment secrets in the Dashboard Vault (encrypted at the edge with <code>AES-256-GCM</code>). To mount private PEM keys, SQL init scripts, or config YAML files without writing them to persistent host disks, prefix any Vault or <code>env_vars</code> key with <code>__FLARELENS_FILE__</code>:
+          Every enrolled host joins a peer-to-peer WireGuard overlay (<code>100.64.0.0/10</code>) and binds two local mesh subsystems solely on its private WireGuard IP (zero public port exposure):
         </p>
-
-        <figure class="code-figure">
-          <figcaption>
-            <span id="cap-ram-files">RAM tmpfs file materialization (/dev/shm/flarelens-secrets)</span>
-            <button class="copy-btn" type="button" data-copy-target="code-ram-files" aria-label="Copy RAM secret file example">
-              <span data-copy-label>Copy</span>
-            </button>
-          </figcaption>
-          <pre id="code-ram-files" class="code-block" role="region" aria-labelledby="cap-ram-files" tabindex="0"><code>service: postgres
-env: prod
-mode: singleton
-image: postgres:18
-memory_mb: 1280
-cpu_cores: 1.5
-volumes:
-  - /opt/data/prod/postgres:/var/lib/postgresql
-env_vars:
-  POSTGRES_DB: postgres
-  __FLARELENS_FILE__/docker-entrypoint-initdb.d/01-init.sql: |
-    CREATE DATABASE orders_prod;
-    CREATE DATABASE workflows_prod;</code></pre>
-        </figure>
-        <p>
-          <code>flarelensd</code> enforces <code>0700</code> root-only host isolation on <code>/dev/shm/flarelens-secrets</code>, sets <code>0600</code> on private keys (<code>*.key</code>, <code>*priv*.pem</code>) and <code>0644</code> on SQL/YAML/public certs so non-root container UIDs (like <code>postgres</code> UID <code>999</code>) read them seamlessly, and auto-bootstraps missing persistent read-write data directories.
-        </p>
+        <ol>
+          <li><strong>WireGuard Service Router:</strong> Deterministic <code>&lt;overlay_ip&gt;:&lt;mesh_port&gt;</code> TCP forwarders proxy cross-node requests directly to active local Blue/Green slots.</li>
+          <li><strong>Split-Horizon MagicDNSServer (<code>&lt;overlay_ip&gt;:53</code> over UDP + TCP):</strong> Containers are configured with <code>HostConfig.Dns: [&lt;overlay_ip&gt;, "1.1.1.1"]</code> and <code>DnsSearch: ["&lt;env&gt;.mesh", "mesh"]</code>. Queries for <code>&lt;service&gt;.&lt;env&gt;.mesh</code> return lock-free round-robin <code>A</code> records with <code>TTL = 5s</code>, strict environment isolation, RFC 4074 <code>NODATA</code> on <code>AAAA</code>, and automatic <code>ExtraHosts</code> fallback on unprivileged hosts.</li>
+        </ol>
       </section>
 
-      <!-- 7. Backups & R2 Lakehouse -->
-      <section id="backups-lakehouse" class="docs-section">
-        <h2>7. Streaming R2 Snapshots &amp; Parquet Log Lakehouse</h2>
+      <section id="vault-ram" class="docs-section below-fold">
+        <h2>6. Zero-Plaintext Vault &amp; RAM tmpfs Secret Files</h2>
+        <p>
+          Secrets uploaded via the Dashboard or CLI are encrypted at the edge using Web Crypto <strong>AES-256-GCM</strong>. At deployment time:
+        </p>
         <ul>
-          <li><strong>Zero-Disk Pre-Deploy Snapshots:</strong> When <code>pre_deploy_snapshot: true</code> or <code>run_migrations: true</code> is set, <code>flarelensd</code> streams <code>pg_dump | gzip</code> straight to Cloudflare R2 via an in-memory <code>io.Pipe</code> before running schema migrations, automatically restoring the snapshot if migrations fail.</li>
-          <li><strong>Columnar Parquet Log Lakehouse:</strong> Logs are compacted into Snappy-compressed Apache Parquet partitions in R2 and queried directly in the browser with DuckDB-WASM for sub-second SQL analytics with $0 egress fees.</li>
+          <li>Standard keys inject straight into container process memory (<code>EnvVars</code>)—never writing <code>.env</code> files to disk.</li>
+          <li>Keys prefixed with <code>__FLARELENS_FILE__/container/path</code> (such as TLS/JWT/SAML PEM keys, PostgreSQL <code>/docker-entrypoint-initdb.d/01-init.sql</code>, or CDC YAML configs) are materialized into ephemeral RAM <code>tmpfs</code> under <code>/dev/shm/flarelens-secrets</code> (<code>0700</code> root directory, <code>0600</code> on private keys) and bind-mounted read-only into Blue/Green containers, workers, migration runners, and singletons.</li>
         </ul>
       </section>
 
-      <!-- 8. Schema & API -->
-      <section id="schema-api" class="docs-section">
-        <h2>8. Canonical JSON Schema &amp; Control Plane Endpoints</h2>
+      <section id="backups-logs" class="docs-section below-fold">
+        <h2>7. Streaming R2 Backups &amp; Parquet Log Lakehouse</h2>
         <ul>
-          <li><strong>Canonical Schema URL:</strong> <a href="https://flarelens.dev/schemas/fleet.schema.json"><code>https://flarelens.dev/schemas/fleet.schema.json</code></a></li>
-          <li><strong>Host Installer Script:</strong> <a href="https://flarelens.dev/install.sh"><code>https://flarelens.dev/install.sh</code></a> (PowerShell: <a href="https://flarelens.dev/install.ps1"><code>/install.ps1</code></a>)</li>
-          <li><code>POST /api/v1/ingest</code> — Authenticated 15s agent telemetry ingest &amp; piggybacked command/mesh/flag sync</li>
-          <li><code>POST /api/v1/control/fleet/sync</code> — Keyless GitHub OIDC or Bearer declarative fleet sync</li>
-          <li><code>POST /api/v1/control/fleet/promote</code> &amp; <code>POST /api/v1/control/fleet/rollback</code> — Environment promotion &amp; revision rollback</li>
-          <li><code>POST /api/v1/control/nodes/:id/drain</code>, <code>/uncordon</code>, &amp; <code>/prune-images</code> — Host lifecycle operations</li>
+          <li><strong>Zero-Disk Database Guardrails:</strong> Setting <code>pre_deploy_snapshot: true</code> or <code>run_migrations: true</code> streams a gzip-compressed <code>pg_dump</code> via an in-memory <code>io.Pipe</code> directly to Cloudflare R2 before running schema migrations, restoring automatically if migrations fail.</li>
+          <li><strong>DuckDB-WASM Log Analytics:</strong> Container logs compact into Snappy-compressed Apache Parquet partitions in R2 and execute SQL queries directly in the browser via HTTP Range requests with <code>$0</code> egress fees.</li>
         </ul>
       </section>
-    </main>
-  </div>
+
+      <section id="api-reference" class="docs-section below-fold">
+        <h2>8. Control Plane REST API Summary</h2>
+
+        <div tabindex="0" role="region" aria-labelledby="api-table-caption" class="table-wrapper">
+          <table class="data-table" style="--label-2: 'Endpoint'; --label-3: 'Auth'; --label-4: 'Purpose';">
+            <caption id="api-table-caption">Core FlareLens Control Plane HTTP endpoints</caption>
+            <thead>
+              <tr>
+                <th scope="col">Method</th>
+                <th scope="col">Endpoint</th>
+                <th scope="col">Auth</th>
+                <th scope="col">Purpose</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">POST</th>
+                <td><code>/api/v1/ingest</code></td>
+                <td>Bearer Ingest Token</td>
+                <td>15s host telemetry ingest + piggybacked commands, mesh peers, and endpoints</td>
+              </tr>
+              <tr>
+                <th scope="row">POST</th>
+                <td><code>/api/v1/control/fleet/sync</code></td>
+                <td>Bearer / GitHub OIDC</td>
+                <td>Validate &amp; reconcile declarative fleet manifests, creating a new <code>rev-N</code></td>
+              </tr>
+              <tr>
+                <th scope="row">POST</th>
+                <td><code>/api/v1/control/fleet/promote</code></td>
+                <td>Admin Session / Token</td>
+                <td>Promote verified service image tags from <code>uat</code> to <code>prod</code></td>
+              </tr>
+              <tr>
+                <th scope="row">POST</th>
+                <td><code>/api/v1/control/fleet/rollback</code></td>
+                <td>Admin Session / Token</td>
+                <td>Atomically restore fleet manifests (including deleted services) to <code>rev-N</code></td>
+              </tr>
+              <tr>
+                <th scope="row">POST</th>
+                <td><code>/api/v1/control/nodes/:id/drain</code></td>
+                <td>Admin Session / Token</td>
+                <td>Cordon host, reschedule stateless replicas, and fence stateful DB volumes</td>
+              </tr>
+              <tr>
+                <th scope="row">POST</th>
+                <td><code>/api/v1/control/nodes/:id/prune-images</code></td>
+                <td>Admin Session / Token</td>
+                <td>Trigger two-pass Docker image garbage collection (preserving 72h rollback cache)</td>
+              </tr>
+              <tr>
+                <th scope="row">GET</th>
+                <td><code>/schemas/fleet.schema.json</code></td>
+                <td>Public</td>
+                <td>Canonical JSON Schema Draft-07 for IDE autocomplete &amp; CI validation</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
 
   <footer class="site-footer">
     <div class="container footer-inner">
       <div>
-        <strong>FlareLens</strong> · Apache-2.0 Open Source · <a href="/">flarelens.dev</a>
+        <strong>FlareLens</strong> · Open-Source Serverless Infrastructure Platform (Apache-2.0)
       </div>
-      <ul class="footer-links" role="list">
-        <li><a href="/">Overview</a></li>
-        <li><a href="/schemas/fleet.schema.json">JSON Schema</a></li>
-        <li><a href="https://github.com/antwig2/flarelens" rel="noopener">Control Plane Repo</a></li>
-        <li><a href="https://github.com/antwig2/flarelensd" rel="noopener">Host Agent Repo</a></li>
-      </ul>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="/">Overview</a>
+        <a href="/schemas/fleet.schema.json">JSON Schema</a>
+        <a href="/install.sh">install.sh</a>
+        <a href="https://github.com/antwig2/flarelens" target="_blank" rel="noopener noreferrer">GitHub (Control Plane)</a>
+        <a href="https://github.com/antwig2/flarelensd" target="_blank" rel="noopener noreferrer">GitHub (flarelensd)</a>
+      </nav>
     </div>
   </footer>
-
-  <div id="live-announcer" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>
-
