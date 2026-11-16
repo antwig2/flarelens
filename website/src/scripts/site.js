@@ -1,10 +1,10 @@
 /**
  * FlareLens Website Interactive Enhancements (flarelens.dev)
- * - Conditional Invoker Commands + Popover API polyfills
+ * - Conditional Popover & Invoker Commands polyfills
  * - Light-dismiss fallback for <dialog closedby="any"> + Cmd/Ctrl+K quick search
  * - ResizeObserver single-tree popover/inline navbar
  * - Two-state OS-aware theme toggle + cross-tab storage sync
- * - Accessible ARIA tablists & live cluster slot pulse
+ * - Invoker Command `--copy` buttons with live-region VoiceOver repeat guard
  */
 
 // 1. Conditionally load Popover & Invoker Commands polyfills ONLY when missing
@@ -15,22 +15,19 @@ if (!('commandForElement' in HTMLButtonElement.prototype)) {
   import('https://esm.run/invokers-polyfill').catch(() => {});
 }
 
-// 2. Light-dismiss fallback for <dialog closedby="any"> (`dialog` & `light-dismiss-a-dialog` guides)
+// 2. Light-dismiss fallback for <dialog closedby="any"> (`light-dismiss-a-dialog` guide)
 if (!('closedBy' in HTMLDialogElement.prototype)) {
-  const isOutside = (e, dlg) => {
-    const r = dlg.getBoundingClientRect();
-    return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
-  };
-  for (const dlg of document.querySelectorAll('dialog[closedby="any"]')) {
-    let pressedOutside = false;
-    dlg.addEventListener('pointerdown', (e) => {
-      pressedOutside = e.target === dlg && isOutside(e, dlg);
-    });
-    dlg.addEventListener('pointerup', (e) => {
-      if (pressedOutside && e.target === dlg && isOutside(e, dlg)) {
-        dlg.close();
-      }
-      pressedOutside = false;
+  for (const dialog of document.querySelectorAll('dialog[closedby="any"]')) {
+    dialog.addEventListener('click', (event) => {
+      if (event.target !== dialog) return;
+      const rect = dialog.getBoundingClientRect();
+      const isDialogContent =
+        rect.top <= event.clientY &&
+        event.clientY <= rect.top + rect.height &&
+        rect.left <= event.clientX &&
+        event.clientX <= rect.left + rect.width;
+      if (isDialogContent) return;
+      dialog.close();
     });
   }
 }
@@ -41,17 +38,19 @@ const searchInput = document.getElementById('search-modal-input');
 const searchResultsList = document.getElementById('search-results-list');
 
 const SEARCH_INDEX = [
-  { title: 'Getting started ($0 Cloudflare Free Tier)', desc: '1-click Worker deploy, D1 migrations, and edge secrets', url: '/docs/#quick-start' },
-  { title: 'Enroll Linux, macOS & Windows servers', desc: 'curl -fsSL https://flarelens.dev/install.sh and systemd setup', url: '/docs/#enroll-nodes' },
-  { title: 'Zero-Git Declarative Fleet & Revisions', desc: 'Create services, promote uat → prod, and roll back rev-N in D1 + R2', url: '/docs/#declarative-fleet' },
-  { title: 'WireGuard P2P Mesh & MagicDNS (TTL 5s)', desc: 'Direct ChaCha20-Poly1305 overlay and embedded <overlay_ip>:53 DNS', url: '/docs/#placement-mesh' },
-  { title: 'Multi-Server Placement & Stateful Volume Fencing', desc: 'Spread, binpack, pinned scheduling and safe node drain', url: '/docs/#placement-mesh' },
-  { title: 'Hard Docker Cgroup Limits & Auto Image Prune', desc: 'HostConfig.Memory, NanoCPUs, zero-restart DB updates, and 72h GC', url: '/docs/#cgroups-prune' },
-  { title: 'Zero-Plaintext Vault & RAM Secret Files', desc: 'AES-256-GCM secrets and /dev/shm tmpfs __FLARELENS_FILE__ mounts', url: '/docs/#vault-ram-secrets' },
-  { title: 'R2 Parquet Log Lakehouse & Streaming Backups', desc: 'In-browser DuckDB-WASM SQL ($0 egress) and io.Pipe pg_dump', url: '/docs/#backups-lakehouse' },
-  { title: 'How FlareLens Compares', desc: 'Side-by-side comparison vs Coolify, Kamal 2, Kubernetes, and SaaS stacks', url: '/compare/' },
+  { title: 'Documentation Hub', desc: 'Overview of the self-hosted PaaS layers and 6 core platform pillars', url: '/docs/' },
+  { title: 'Getting Started', desc: 'Deploy the Cloudflare control plane ($0 free tier), enroll servers, and ship your first app', url: '/docs/getting-started/' },
+  { title: 'Platform Architecture', desc: 'How the Serverless Control Plane, flarelensd host daemon, and WireGuard P2P mesh work together', url: '/docs/architecture/' },
+  { title: 'Fleet Management — Servers & Workloads', desc: 'Spread/binpack/pinned placement, hard kernel cgroups, zero-restart DB caps, drain & image prune', url: '/docs/fleet/' },
+  { title: 'Deployments — Revisions & Rollbacks', desc: 'Zero-Git dashboard CRUD, immutable rev-N snapshots, <1ms Blue/Green swaps & uat → prod promotion', url: '/docs/deployments/' },
+  { title: 'Private Mesh — WireGuard Networking', desc: 'Direct P2P ChaCha20-Poly1305 overlay (100.64.0.0/10), 5s MagicDNS (*.mesh) & operator workstation access', url: '/docs/mesh/' },
+  { title: 'Observability — Logs, Metrics & Health', desc: '15s container/host telemetry, SSE live tailing & R2 Apache Parquet + in-browser DuckDB-WASM SQL', url: '/docs/observability/' },
+  { title: 'Secrets & Flags — Runtime Configuration', desc: 'AES-256-GCM Vault, zero .env files on disk, 0700 /dev/shm secret files & sub-ms feature flags', url: '/docs/secrets-and-flags/' },
+  { title: 'Backups — R2 Streaming Storage', desc: 'Zero-disk io.Pipe pg_dump | gzip to R2, cron schedules, pre-migration guardrails & auto-restore', url: '/docs/backups/' },
+  { title: 'CLI, Schema & HTTP API Reference', desc: 'flarelensd CLI commands, fleet.schema.json fields, GitHub OIDC sync & REST endpoints', url: '/docs/reference/' },
+  { title: 'How FlareLens Compares', desc: 'Honest comparison vs Fly.io/Render, Coolify, Kamal 2, Kubernetes, and SaaS stacks', url: '/compare/' },
   { title: 'Fleet Manifest JSON Schema', desc: 'Canonical IDE validation schema at /schemas/fleet.schema.json', url: '/schemas/fleet.schema.json' },
-  { title: 'Full LLM Agent Documentation (/llms-full.txt)', desc: 'Single-file Markdown & JSON Schema bundle for AI coding agents', url: '/llms-full.txt' },
+  { title: 'Full LLM Agent Context (/llms-full.txt)', desc: 'Single-file Markdown & JSON Schema bundle for AI coding agents', url: '/llms-full.txt' },
 ];
 
 function renderSearchResults(query = '') {
@@ -59,7 +58,7 @@ function renderSearchResults(query = '') {
   const q = query.trim().toLowerCase();
   const matches = q
     ? SEARCH_INDEX.filter((item) => (item.title + ' ' + item.desc).toLowerCase().includes(q))
-    : SEARCH_INDEX.slice(0, 7);
+    : SEARCH_INDEX.slice(0, 9);
 
   searchResultsList.replaceChildren();
   for (const item of matches) {
@@ -151,7 +150,7 @@ if (header && headerInner && siteMenu) {
 
 // 5. Two-State OS-Aware Color Scheme Toggle (`dark-mode-toggle` guide)
 const schemeMeta = document.querySelector('meta[name="color-scheme"]');
-const themeToggleBtn = document.getElementById('theme-toggle');
+const themeToggleButtons = document.querySelectorAll('.theme-toggle, #theme-toggle');
 
 function getStoredScheme() {
   try {
@@ -166,26 +165,27 @@ function getSystemScheme() {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-if (themeToggleBtn && schemeMeta) {
-  themeToggleBtn.addEventListener('click', () => {
-    const stored = getStoredScheme();
-    const system = getSystemScheme();
-    const isHomeDefaultDark = document.body.classList.contains('home-dark-surface') && !stored;
-    const rendered = isHomeDefaultDark ? 'dark' : (stored ?? system);
-    const target = rendered === 'dark' ? 'light' : 'dark';
+if (themeToggleButtons.length > 0 && schemeMeta) {
+  for (const btn of themeToggleButtons) {
+    btn.addEventListener('click', () => {
+      const stored = getStoredScheme();
+      const system = getSystemScheme();
+      const rendered = stored ?? system;
+      const target = rendered === 'dark' ? 'light' : 'dark';
 
-    if (!document.body.classList.contains('home-dark-surface') && target === system) {
-      try {
-        localStorage.removeItem('color-scheme');
-      } catch {}
-      schemeMeta.content = 'light dark';
-    } else {
-      try {
-        localStorage.setItem('color-scheme', target);
-      } catch {}
-      schemeMeta.content = target;
-    }
-  });
+      if (target === system) {
+        try {
+          localStorage.removeItem('color-scheme');
+        } catch {}
+        schemeMeta.content = 'light dark';
+      } else {
+        try {
+          localStorage.setItem('color-scheme', target);
+        } catch {}
+        schemeMeta.content = target;
+      }
+    });
+  }
 
   window.addEventListener('storage', (event) => {
     if (event.key !== 'color-scheme') return;
@@ -193,7 +193,7 @@ if (themeToggleBtn && schemeMeta) {
   });
 }
 
-// 6. Accessible ARIA Tablist Switchers (CLI Lifecycle + Interactive Demo Stage)
+// 6. Accessible ARIA Tablist Switchers
 for (const tablist of document.querySelectorAll('[role="tablist"]')) {
   const tabs = Array.from(tablist.querySelectorAll('[role="tab"]'));
   if (tabs.length === 0) continue;
@@ -227,32 +227,70 @@ for (const tablist of document.querySelectorAll('[role="tablist"]')) {
   }
 }
 
-// 7. Copy-to-Clipboard with Centralized Polite Live Region
-const announcer = document.getElementById('live-announcer');
+// 7. Invoker Command `--copy` Buttons (`copy-button` & `custom-button-actions` guides)
+const copyTimers = new WeakMap();
+let lastCopyMessage = '';
 
-document.addEventListener('click', async (event) => {
-  const btn = event.target instanceof Element ? event.target.closest('[data-copy-text], [data-copy-target]') : null;
-  if (!btn) return;
+function reportCopy(button, ok) {
+  const tip = button.nextElementSibling;
+  clearTimeout(copyTimers.get(button));
+  button.removeAttribute('data-copied');
+  button.removeAttribute('data-failed');
 
-  let text = btn.getAttribute('data-copy-text') || '';
-  if (!text) {
-    const targetId = btn.getAttribute('data-copy-target');
-    const targetEl = targetId ? document.getElementById(targetId) : null;
-    text = targetEl?.textContent?.trim() || '';
+  let message = ok ? 'Copied' : 'Copy failed';
+  if (message === lastCopyMessage) message += '\u00A0';
+  lastCopyMessage = message;
+
+  if (tip) tip.textContent = '';
+  void button.offsetWidth;
+  button.setAttribute(ok ? 'data-copied' : 'data-failed', '');
+  if (tip) {
+    requestAnimationFrame(() => {
+      tip.textContent = message;
+    });
   }
-  if (!text) return;
 
+  copyTimers.set(
+    button,
+    setTimeout(() => {
+      button.removeAttribute('data-copied');
+      button.removeAttribute('data-failed');
+      if (tip) tip.textContent = '';
+    }, 2000),
+  );
+}
+
+async function copyFromCommand(button, target) {
+  if (!(button instanceof HTMLElement) || !(target instanceof HTMLElement)) return;
+  const text = target.matches('input, textarea') ? target.value : target.innerText.trim();
+  if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
-    const labelEl = btn.querySelector('[data-copy-label]');
-    const prevLabel = labelEl ? labelEl.textContent : '';
-    btn.setAttribute('data-copied', 'true');
-    if (labelEl) labelEl.textContent = 'Copied';
-    if (announcer) announcer.textContent = 'Copied command to clipboard.';
+    reportCopy(button, true);
+  } catch {
+    reportCopy(button, false);
+  }
+}
 
-    setTimeout(() => {
-      btn.removeAttribute('data-copied');
-      if (labelEl && prevLabel) labelEl.textContent = prevLabel;
-    }, 1800);
-  } catch {}
-});
+// `command` events do not bubble: listen in the capture phase on document
+document.addEventListener(
+  'command',
+  (event) => {
+    if (typeof event.command === 'string' && event.command.startsWith('--copy')) {
+      copyFromCommand(event.source, event.target);
+    }
+  },
+  true,
+);
+
+// Fallback for browsers without CommandEvent (guarded at click time so polyfill never double-fires)
+if (!('CommandEvent' in window)) {
+  document.addEventListener('click', (event) => {
+    if ('CommandEvent' in window) return;
+    const button = event.target instanceof Element ? event.target.closest('button[command^="--copy"]') : null;
+    if (!button) return;
+    const targetId = button.getAttribute('commandfor');
+    const target = targetId ? document.getElementById(targetId) : null;
+    if (target) copyFromCommand(button, target);
+  });
+}
