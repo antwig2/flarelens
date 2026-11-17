@@ -1,0 +1,91 @@
+---
+title: Getting Started
+description: Deploy the Cloudflare control plane ($0 free tier), enroll servers, and launch your first workload.
+sidebar:
+  order: 1
+---
+
+FlareLens runs its serverless control plane inside **your own Cloudflare account** and executes workloads on **your own servers**—eliminating both proprietary PaaS markups and dedicated management VMs. Small and medium fleets fit inside Cloudflare's **$0/month Free Tier**.
+
+## Prerequisites
+
+- A [Cloudflare account](https://dash.cloudflare.com/) (Free or Workers Paid).
+- At least one Linux, macOS, or Windows Server host running **Docker Engine** (`24.0+`).
+
+## Setup Procedure
+
+<Steps>
+  <Step title="Deploy the Control Plane">
+    Deploy with the [1-click Deploy to Cloudflare button](https://deploy.workers.cloudflare.com/?url=https://github.com/antwig2/flarelens) or directly from your terminal using Wrangler:
+
+    ```bash title="Provision Control Plane"
+    git clone https://github.com/antwig2/flarelens.git && cd flarelens
+    npm install
+
+    # Apply D1 SQLite migrations
+    npx wrangler d1 migrations apply flarelens-control --remote
+
+    # Configure required edge secrets
+    npx wrangler secret put INGEST_SECRET        # Shared token for enrolled agents
+    npx wrangler secret put DASHBOARD_PASSWORD   # Operator console password
+    npx wrangler secret put VAULT_MASTER_KEY     # 32-byte key for AES-256-GCM Vault
+
+    # Publish Worker + Operator Console
+    npx wrangler deploy
+    ```
+
+    <Aside type="note" title="Custom domain">
+      Attach a custom domain (for example `ops.example.com`) under **Workers & Pages → Settings → Domains & Routes** for automatic edge TLS and SSE streaming.
+    </Aside>
+  </Step>
+
+  <Step title="Enroll Your Servers">
+    Install `flarelensd` (~15 MB static Go binary) on each VM or bare-metal server. The installer verifies the binary's SHA-256 digest, writes `/etc/flarelens/agent.toml`, generates a local Curve25519 WireGuard keypair, and starts the `systemd` unit.
+
+    <Tabs syncKey="os">
+      <TabItem label="Linux / macOS">
+        ```bash title="Enroll Linux or macOS host"
+        curl -fsSL https://flarelens.dev/install.sh | sudo bash -s -- \
+          --endpoint https://ops.example.com \
+          --token "<YOUR_INGEST_SECRET>" \
+          --tags "role=app,env=prod,region=eu-central"
+        ```
+      </TabItem>
+      <TabItem label="Windows Server">
+        ```powershell title="Enroll Windows Server host"
+        irm https://flarelens.dev/install.ps1 | iex
+        ```
+      </TabItem>
+    </Tabs>
+
+    Within 15 seconds, the host reports **Online** under **Fleet Management** with live CPU, RAM, disk, and container metrics.
+  </Step>
+
+  <Step title="Launch Your First Workload">
+    Open your FlareLens console, go to **Deployments → + New Service**, and choose a 1-click starter template or paste a declarative manifest—no Git repository required:
+
+    ```yaml title="checkout-api.yml"
+    # $schema: https://flarelens.dev/schemas/fleet.schema.json
+    name: checkout-api
+    env: prod
+    strategy: blue_green
+    enabled: true
+
+    image: ghcr.io/acme/checkout-api:v1.4.0
+    domain: api.example.com
+    internal_port: 8080
+    health_path: /healthz
+
+    placement:
+      strategy: spread
+      replicas: 2
+      required_tags: ["role=app", "env=prod"]
+
+    resources:
+      memory_mb: 512
+      cpu_cores: 1.0
+    ```
+
+    Saving records immutable revision `rev-1` in D1 + R2, schedules replicas across eligible servers, verifies `/healthz`, and swaps Traefik ingress atomically in under a millisecond.
+  </Step>
+</Steps>

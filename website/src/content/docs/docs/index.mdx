@@ -1,0 +1,62 @@
+---
+title: FlareLens Docs
+description: Everything about deploying, operating, and extending FlareLens—your open-source Platform-as-a-Service in your own Cloudflare account and on your own servers.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+FlareLens is an **open-source, self-hosted Platform-as-a-Service (BYOC PaaS)** licensed under Apache-2.0. You deploy the serverless control plane in your own Cloudflare account (`Workers + D1 + KV + R2`) and run the lightweight Go host daemon (`flarelensd`) on your own cloud VMs or bare-metal servers.
+
+<Aside type="tip" title="Agent-ready documentation">
+  AI coding agents can read every page's clean Markdown directly (append `index.md` to any URL), browse the index at [`/llms.txt`](/llms.txt), or ingest the entire documentation suite in a single request at [`/llms-full.txt`](/llms-full.txt).
+</Aside>
+
+## Foundation
+
+Understand how the three sovereign layers fit together and spin up a working cluster in minutes.
+
+<CardGrid>
+  <Card title="Getting Started" icon="ph:rocket-launch" href="/docs/getting-started/">
+    Deploy the Cloudflare control plane ($0 free tier), enroll servers, and launch your first service.
+  </Card>
+  <Card title="Platform Architecture" icon="ph:tree-structure" href="/docs/architecture/">
+    How the serverless Control Plane, flarelensd daemon, and P2P WireGuard mesh interact.
+  </Card>
+</CardGrid>
+
+## Core Platform Capabilities
+
+Six integrated PaaS modules for running stateless applications and stateful databases on infrastructure you own.
+
+<CardGrid>
+  <Card title="Fleet Management" icon="ph:hard-drives" href="/docs/fleet/">
+    Servers and workloads: multi-node placement, hard Linux cgroups, live DB resizing, drain fencing, and image GC.
+  </Card>
+  <Card title="Deployments" icon="ph:arrows-clockwise" href="/docs/deployments/">
+    Revisions and rollbacks: Zero-Git CRUD, immutable rev-N snapshots, &lt;1ms Blue/Green swaps, and uat → prod promotion.
+  </Card>
+  <Card title="Private Mesh" icon="ph:share-network" href="/docs/mesh/">
+    WireGuard networking: P2P ChaCha20-Poly1305 overlay (100.64.0.0/10), 5s MagicDNS (*.mesh), and workstation access.
+  </Card>
+  <Card title="Observability" icon="ph:chart-line-up" href="/docs/observability/">
+    Logs, metrics and health: 15s host/container telemetry, SSE live tailing, and R2 Parquet + DuckDB-WASM SQL.
+  </Card>
+  <Card title="Secrets & Flags" icon="ph:key" href="/docs/secrets-and-flags/">
+    Secure runtime configuration: AES-256-GCM Vault, zero .env files on disk, /dev/shm secret mounts, and feature flags.
+  </Card>
+  <Card title="Backups" icon="ph:database" href="/docs/backups/">
+    R2 streaming storage: zero-disk io.Pipe pg_dump | gzip to R2, cron schedules, migration guardrails, and auto-restore.
+  </Card>
+</CardGrid>
+
+## Reference & Ecosystem
+
+<CardGrid>
+  <Card title="CLI, Schema & HTTP API" icon="ph:terminal-window" href="/docs/reference/">
+    Complete fleet.schema.json field table, flarelensd CLI commands, keyless GitHub OIDC sync, and REST endpoints.
+  </Card>
+  <Card title="How FlareLens Compares" icon="ph:scales" href="/compare/">
+    Side-by-side comparison against Fly.io/Render, Coolify, Kamal 2, Managed Kubernetes, and SaaS stacks.
+  </Card>
+</CardGrid>

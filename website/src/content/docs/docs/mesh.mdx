@@ -1,0 +1,43 @@
+---
+title: Private Mesh
+description: WireGuard networking — zero-config P2P ChaCha20-Poly1305 overlay (100.64.0.0/10), 5s MagicDNS (*.mesh), and workstation access.
+sidebar:
+  order: 5
+---
+
+**Private Mesh** connects cloud VMs, bare-metal database servers, and operator laptops across providers into an authenticated peer-to-peer **WireGuard** network with built-in split-horizon service discovery.
+
+## Zero-Config Peer-to-Peer WireGuard Overlay
+
+On first startup, each `flarelensd` daemon generates an asymmetric Curve25519 keypair locally—the private key is stored `0600` on the host and never leaves the machine—and receives a deterministic CGNAT address in `100.64.0.0/10`.
+
+The Control Plane distributes peer public keys and endpoints inside the 15-second heartbeat envelope so nodes form direct **ChaCha20-Poly1305 UDP tunnels**:
+
+- **Zero Public Database Ports**: Keep PostgreSQL (`5432`) and Redis (`6379`) completely unexposed on public interfaces; bind them strictly to private interfaces and the WireGuard mesh.
+- **Overlay Service Router (`<overlay_ip>:<mesh_port>`)**: Deterministic private listeners forward mesh traffic with zero-copy `io.Copy` round-robin across healthy local Blue/Green slots and remote peers.
+- **Cross-Node Ingress Load Balancing**: Edge Traefik instances automatically balance HTTP requests across healthy container replicas on peer nodes via `remote_upstreams`.
+
+## Split-Horizon MagicDNS (`<service>.<env>.mesh`)
+
+`flarelensd` embeds a dual-stack **UDP + TCP** DNS server bound strictly to `<overlay_ip>:53` (avoiding conflicts with host `systemd-resolved` on `127.0.0.53:53`) and wires it into managed containers via Docker `HostConfig.DNS`:
+
+```ini title="Container environment service discovery"
+DATABASE_URL=postgres://app:secret@postgres.prod.mesh:5432/core?sslmode=require
+REDIS_URL=redis://cache.prod.mesh:6379/0
+BILLING_INTERNAL_URL=http://billing-api.prod.mesh:8080
+```
+
+- **`TTL = 5s` Round-Robin Failover**: Queries for `<service>.<env>.mesh` return lock-free round-robin A-records of healthy replicas with a 5-second TTL and RFC 4074 `NODATA` on `TypeAAAA`—so cross-host failovers propagate within seconds.
+- **Strict Environment Isolation**: `uat` and `prod` DNS zones remain isolated (`postgres.uat.mesh` vs `postgres.prod.mesh`), and single-label misses return instant in-memory `NXDOMAIN` so internal names never leak upstream.
+- **`ExtraHosts` Shadowing Guard**: When `<overlay_ip>:53` is active, static `100.64.0.0/10` entries are stripped from `/etc/hosts` so Linux `files dns` lookup order never shadows live `TTL 5s` failover, while retaining `/etc/hosts` fallback on non-WireGuard hosts.
+
+## Operator Workstation Access
+
+Join the private mesh temporarily from macOS or Linux workstations without SSH bastions or per-seat VPN SaaS:
+
+```bash title="Authenticate operator workstation onto the mesh"
+sudo flarelens-agent login --endpoint https://ops.example.com
+
+# Connect directly to private mesh services:
+psql postgres://readonly@postgres.uat.mesh:5432/app
+```

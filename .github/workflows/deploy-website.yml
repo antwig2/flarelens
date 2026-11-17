@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   deploy-site:
-    name: Build & Deploy flarelens.dev
+    name: Build & Deploy flarelens.dev (Nimbus)
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -29,14 +29,18 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            website/package-lock.json
 
-      - name: Install Root Dependencies (Wrangler)
-        run: npm ci
-
-      - name: Build Website Bundle
-        run: node ./website/scripts/build.mjs
+      - name: Build & Audit Nimbus Website
+        working-directory: ./website
+        run: |
+          npm ci
+          npm run build
+          npx @cloudflare/nimbus-docs check
 
       - name: Deploy Static Assets Worker to flarelens.dev
         if: env.CLOUDFLARE_API_TOKEN != ''

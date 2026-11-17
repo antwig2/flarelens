@@ -3,10 +3,42 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Public documentation, schema registry, and landing site for flarelens.dev",
   "scripts": {
-    "build": "node ./scripts/build.mjs",
-    "dev": "node ./scripts/build.mjs && npx wrangler dev",
-    "deploy": "node ./scripts/build.mjs && npx wrangler deploy"
+    "sync": "node ./scripts/sync-static.mjs",
+    "predev": "node ./scripts/sync-static.mjs",
+    "dev": "astro dev",
+    "prebuild": "node ./scripts/sync-static.mjs",
+    "build": "astro build",
+    "preview": "astro preview",
+    "typecheck": "astro check",
+    "check": "nimbus-docs check",
+    "lint:docs": "nimbus-docs lint",
+    "lint:docs:fix": "nimbus-docs lint --fix",
+    "prepreview:cf": "npm run build",
+    "preview:cf": "wrangler dev",
+    "predeploy": "npm run build",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@cloudflare/nimbus-docs": "^0.20.0",
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@iconify-json/ph": "^1.2.2",
+    "@resvg/resvg-js": "^2.6.2",
+    "astro": "7.4.2",
+    "clsx": "^2.1.1",
+    "satori": "^0.63.2",
+    "sharp": "^0.35.5",
+    "tailwind-merge": "^3.7.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.12",
+    "@astrojs/language-server": "2.17.3",
+    "@emnapi/runtime": "1.11.3",
+    "@tailwindcss/vite": "^4.3.3",
+    "pagefind": "^1.5.2",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.95.0"
   }
 }

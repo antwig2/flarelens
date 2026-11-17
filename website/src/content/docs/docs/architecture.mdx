@@ -1,0 +1,39 @@
+---
+title: Platform Architecture
+description: How the serverless Cloudflare control plane, flarelensd daemon, and P2P WireGuard mesh fit together.
+sidebar:
+  order: 2
+---
+
+FlareLens separates orchestration state from workload execution across three clean layers—delivering a unified Platform-as-a-Service workflow while keeping compute, private network traffic, and persistent volumes strictly on infrastructure you own.
+
+## The Three PaaS Layers
+
+| Layer | Runtime | Responsibilities |
+|---|---|---|
+| **1. Serverless Control Plane** | Cloudflare Workers + D1 + KV + R2 | Operator console, multi-server placement scheduler, immutable fleet revisions (`rev-N`), AES-256-GCM Vault, WireGuard peer coordination, R2 Parquet log lakehouse, and backup catalog. |
+| **2. Host Agent (`flarelensd`)** | Static Go binary on each host | Docker container reconciliation, atomic `<1ms` Blue/Green Traefik swaps, Linux kernel cgroup caps, ephemeral `/dev/shm` secret mounts, streaming `io.Pipe` `pg_dump` backups, and 15s telemetry. |
+| **3. Private Overlay Mesh** | Kernel/Userspace WireGuard + MagicDNS | Direct peer-to-peer ChaCha20-Poly1305 UDP tunnels (`100.64.0.0/10`) between hosts and operator laptops, plus embedded `<overlay_ip>:53` split-horizon DNS (`*.mesh`, `TTL = 5s`). |
+
+<Aside type="tip" title="Zero Cloudflare data-plane proxy tax">
+  Application HTTP requests and cross-server database queries flow directly to your servers or over peer-to-peer WireGuard UDP tunnels—private workload traffic never routes through Cloudflare Workers.
+</Aside>
+
+## 15-Second Piggybacked Sync Protocol
+
+Enrolled servers require **zero inbound management ports** (no public SSH bastions or exposed Docker TCP sockets). Every 15 seconds, `flarelensd` sends an outbound TLS heartbeat to `POST /api/v1/ingest` reporting host metrics and active container states, and receives a single piggybacked control envelope:
+
+- **`commands[]`** — Pending deploy, Blue/Green swap, live cgroup resize, backup, restore, image prune, drain, or OTA self-update instructions.
+- **`mesh_peers[]`** — Authenticated WireGuard Curve25519 public keys, endpoints, and `100.64.0.x/32` peer routes.
+- **`cluster_endpoints{}`** — Healthy replica IP:port mappings powering local WireGuard service forwarding and split-horizon `MagicDNS`.
+- **`flags_version`** — Monotonic revision counter triggering delta fetches only when runtime feature flags change.
+
+Because desired state lives in indexed D1 tables (`(node_id, created_at ASC)`) and KV pointers rather than polling object storage prefixes, steady-state operation performs **zero R2 `list()` calls**.
+
+## Sovereign Data-Plane Resilience
+
+Your data plane operates autonomously if the control plane or external WAN is temporarily unreachable:
+
+1. **Uninterrupted Traffic**: Running Docker containers, kernel cgroup limits, and local Traefik/Caddy ingress continue serving customer traffic locally.
+2. **Intact Private Mesh**: Active peer-to-peer WireGuard sessions and local `MagicDNS` caches keep cross-server database and internal RPC calls healthy.
+3. **Automatic Catch-Up**: `flarelensd` buffers telemetry in bounded memory and reconciles queued revisions automatically once connectivity returns.

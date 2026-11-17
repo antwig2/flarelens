@@ -1,0 +1,52 @@
+---
+title: Fleet Management
+description: Servers and workloads — multi-node placement, hard Linux cgroups, zero-restart DB resizing, drain fencing, and auto image pruning.
+sidebar:
+  order: 3
+---
+
+**Fleet Management** unites cloud VMs across providers and dedicated bare-metal servers into one logical compute pool with tag-aware placement, hard Linux kernel resource isolation, live database cgroup updates, and safe maintenance draining.
+
+## Workload Lifecycles: Blue/Green vs Singleton
+
+FlareLens models workloads explicitly according to whether they are stateless or stateful:
+
+| Strategy | Target Workloads | Runtime Behavior |
+|---|---|---|
+| `blue_green` | HTTP APIs, web apps, background workers | Boots candidate slot (`-blue` or `-green`) alongside live containers, runs migrations and readiness probes, swaps Traefik upstream in `<1ms`, and drains retiring connections. |
+| `singleton` | PostgreSQL, Redis, stateful brokers | Enforces single-writer volume safety, pins to stateful storage nodes, and applies CPU/RAM cgroup changes in-place without container restarts. |
+| `singleton` + `adopt_only` | Traefik ingress, host-level system daemons | Observes health, logs, and cgroup metrics of pre-existing foundational containers without recreating or replacing them during syncs. |
+
+## Multi-Server Placement Scheduler
+
+Every enrolled server carries arbitrary key-value tags (`role=app`, `disk=nvme`, `region=eu-central`). When scheduling replicas, the Control Plane filters healthy, uncordoned servers matching `placement.required_tags` with sufficient unreserved RAM and applies your chosen strategy:
+
+- **`spread`** — Distributes replicas across distinct hosts and failure domains for high availability.
+- **`binpack`** — Consolidates workloads onto the highest-utilized eligible servers so spare capacity stays contiguous.
+- **`pinned`** — Binds stateful workloads deterministically to an explicit `node_id` where local NVMe volumes reside.
+
+## Hard Kernel Cgroups & Zero-Restart DB Resizing
+
+Resource budgets declared under `resources` (and optional companion worker overrides under `worker.resources`) are enforced both by the Control Plane scheduler and directly in the Linux kernel via Docker Engine `HostConfig`:
+
+```yaml title="Hard RAM & CPU cgroup limits"
+resources:
+  memory_mb: 1024   # HostConfig.Memory = MemorySwap = 1073741824 bytes
+  cpu_cores: 1.5    # HostConfig.NanoCPUs = 1500000000
+
+worker:
+  command: ["bundle", "exec", "sidekiq"]
+  resources:
+    memory_mb: 768
+    cpu_cores: 1.0
+```
+
+<Aside type="tip" title="Zero-restart singleton cgroup updates">
+  Updating `memory_mb` or `cpu_cores` on a running `singleton` database invokes Docker's `POST /containers/{id}/update` endpoint directly against the Linux cgroup hierarchy—raising or lowering ceilings in milliseconds with **zero dropped SQL connections**.
+</Aside>
+
+## Node Cordoning, Stateful Fencing & Image Pruning
+
+- **Safe Node Drain & Volume Fencing**: Draining a node (`POST /api/v1/control/nodes/:id/drain`) reschedules stateless `blue_green` replicas onto healthy WireGuard peers while marking local `singleton` database placements as **`fenced`**—never auto-wiping persistent data on disk.
+- **Two-Pass Automatic Image Pruning**: After slot drains and on a 12-hour maintenance loop, `flarelensd` runs a guarded two-pass `POST /images/prune` (dangling layers `>24h`, unused tags `>72h`), keeping 72 hours of rollback images cached locally while preventing NVMe disk exhaustion.
+- **Zero-SSH Host Operations & OTA Updates**: Upgrade `flarelensd` fleet-wide via SHA-256 verified atomic binary swaps, retire allowlisted legacy `systemd` units, and execute drain-locked OS kernel reboots directly from the console.

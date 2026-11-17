@@ -23,7 +23,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'npm'
 
       - name: Setup Bun
@@ -31,7 +31,7 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install Dependencies
+      - name: Install Root Dependencies
         run: npm ci
 
       - name: TypeScript Typecheck
@@ -40,5 +40,9 @@ jobs:
       - name: Run D1 Control Plane & Piggyback Tests
         run: npm test
 
-      - name: Verify Website Build (flarelens.dev)
-        run: node ./website/scripts/build.mjs
+      - name: Install & Build Nimbus Website (flarelens.dev)
+        working-directory: ./website
+        run: |
+          npm ci
+          npm run build
+          npx @cloudflare/nimbus-docs check

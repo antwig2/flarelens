@@ -1,0 +1,39 @@
+---
+title: Backups
+description: R2 streaming storage — zero-disk io.Pipe pg_dump | gzip to R2, cron schedules, migration guardrails, and point-in-time restore.
+sidebar:
+  order: 8
+---
+
+**Backups** protects stateful PostgreSQL databases with zero local disk staging, automated cron schedules, pre-migration snapshot guardrails, and verified streaming restores from Cloudflare R2.
+
+## Zero-Disk Streaming Architecture (`io.Pipe` → R2)
+
+Traditional backup scripts stage multi-gigabyte dumps on local NVMe disks before uploading—risking `ENOSPC` crashes on production database hosts. `flarelensd` executes `pg_dump` inside the target PostgreSQL container, pipes stdout through streaming `gzip` compression in Go memory (`io.Pipe`), and uploads multipart chunks straight to your R2 `BACKUP_BUCKET` via short-lived presigned URLs.
+
+- **Constant ~16 MB Memory Footprint**: Multi-gigabyte databases stream directly to R2 with zero temporary files written to host storage.
+- **Multi-Environment DB Resolution**: Automatically resolves the right database container and target database name (`DATABASE_URL`, `POSTGRES_DB`, or `*_DB_NAME`) across `uat` and `prod` environments on shared or dedicated hosts.
+- **Verified Metadata Catalog**: Every completed snapshot records byte size, duration, SHA-256 checksum, environment, and revision lineage in D1.
+
+## Pre-Migration Guardrails & Automated Rollback
+
+Pair `pre_deploy_snapshot: true` with `run_migrations: true` on stateful application manifests so every schema change is backed by a fresh R2 restore point:
+
+```yaml title="Automated pre-migration R2 snapshot guardrail"
+name: ledger-api
+env: prod
+strategy: blue_green
+image: ghcr.io/acme/ledger-api:v2.1.0
+
+pre_deploy_snapshot: true
+run_migrations: true
+migration_command: ["goose", "-dir", "/app/migrations", "up"]
+```
+
+<Aside type="caution" title="Automatic failure recovery">
+  If `migration_command` exits non-zero or the candidate slot fails HTTP readiness probes after altering schemas, FlareLens aborts the cutover, keeps the live slot serving traffic, and can stream-restore the pre-deploy R2 snapshot automatically.
+</Aside>
+
+## Scheduled Cron Policies & On-Demand Restore
+
+Configure recurring cron schedules (hourly, daily, weekly) per database from the **Backups** console view, trigger manual snapshots ahead of maintenance windows, or stream-restore any historical R2 archive into a staging or production PostgreSQL container with real-time progress reporting.

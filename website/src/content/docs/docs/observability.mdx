@@ -1,0 +1,38 @@
+---
+title: Observability
+description: Logs, metrics and health — 15s host/container telemetry, SSE live log tailing, and R2 Parquet + DuckDB-WASM SQL analytics.
+sidebar:
+  order: 6
+---
+
+**Observability** unifies 15-second host and container telemetry, sub-5ms live log tailing, active health checks, and a zero-egress **Apache Parquet** log lakehouse queryable with full SQL directly inside your browser.
+
+## Host Metrics, Container Cgroups & Health Probes
+
+Every 15 seconds, `flarelensd` reports host CPU load, memory pressure, swap, root/NVMe disk utilization, WireGuard peer handshakes, OS reboot-pending flags, and per-container CPU/RAM cgroup usage—correlating resource shifts directly against deployment revisions (`rev-N`).
+
+- **Continuous Readiness & Liveness Checks**: Active HTTP health probes monitor running slots and flag degraded containers immediately.
+- **Alert Thresholds & Cooldowns**: Built-in alert rules for offline nodes, disk saturation, memory pressure, and failed rollouts include configurable cooldown windows to prevent notification storms.
+
+## SSE Live Tailing & R2 Apache Parquet Lakehouse
+
+Instead of paying `$0.50–$2.50+/GB` to third-party log SaaS vendors, FlareLens provides two complementary log pipelines:
+
+1. **Real-Time SSE Tailing**: Stream stdout and stderr from any container or logical service across your fleet live in the console with sub-5ms edge fan-out.
+2. **Columnar R2 Log Lakehouse**: Logs are micro-batched, Snappy-compressed into Hive-partitioned **Apache Parquet** objects (`logs/env=prod/dt=YYYY-MM-DD/*.parquet`), and stored in your Cloudflare R2 bucket with **$0 egress fees**.
+
+## In-Browser DuckDB-WASM SQL Analytics
+
+Opening **Observability → Log Explorer** boots **DuckDB-WASM** locally inside your browser tab and executes analytical SQL queries directly over R2 Parquet partitions via HTTP range requests—scanning millions of structured log rows in milliseconds with zero dedicated ClickHouse or Elasticsearch servers to maintain:
+
+```sql title="Query R2 Parquet logs with DuckDB-WASM"
+SELECT
+  service,
+  status_code,
+  count(*) AS requests,
+  approx_quantile(latency_ms, 0.99) AS p99_ms
+FROM read_parquet('r2://logs/env=prod/dt=2026-11-17/*.parquet')
+WHERE level IN ('WARN', 'ERROR')
+GROUP BY service, status_code
+ORDER BY requests DESC;
+```

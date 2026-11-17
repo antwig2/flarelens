@@ -1,0 +1,183 @@
+---
+import DocsLayout from "../layouts/DocsLayout.astro";
+import Footer from "../components/Footer.astro";
+
+const rows = [
+  {
+    dim: "Where control plane lives",
+    flarelens: "Your own Cloudflare account (Workers, D1, KV & R2)",
+    paas: "Vendor's proprietary cloud",
+    coolify: "Dedicated PHP/Postgres/Redis control VM you patch (or paid cloud)",
+    kamal: "Stateless Ruby CLI invoked over SSH from laptop or CI",
+    k8s: "Cloud provider control plane ($75+/mo) + cluster CRDs",
+    saas: "4–5 separate SaaS clouds (Datadog, Tailscale, Doppler…)",
+  },
+  {
+    dim: "Where workloads run",
+    flarelens: "Your own cloud VMs or bare-metal hosts",
+    paas: "Vendor-managed compute regions",
+    coolify: "Your own servers",
+    kamal: "Your own servers",
+    k8s: "Cluster worker nodes",
+    saas: "Your own servers",
+  },
+  {
+    dim: "Source code",
+    flarelens: "Open source, Apache-2.0",
+    paas: "Proprietary PaaS",
+    coolify: "Open source, Apache-2.0",
+    kamal: "Open source, MIT",
+    k8s: "Open source core + cloud IAM/LB glue",
+    saas: "Proprietary SaaS",
+  },
+  {
+    dim: "Control plane cost",
+    flarelens: "$0/mo on Cloudflare Free (or $5/mo Workers Paid)",
+    paas: "Bundled compute, RAM & egress markup",
+    coolify: "$10–$25/mo dedicated control VM (or $5/server Cloud)",
+    kamal: "$0 CLI (requires inbound SSH from CI runners)",
+    k8s: "$75–$300+/mo before worker nodes & load balancers",
+    saas: "$200–$600+/mo as nodes and log volume grow",
+  },
+  {
+    dim: "Private WireGuard mesh",
+    flarelens: "Built-in P2P WireGuard + 5s MagicDNS (*.mesh)",
+    paas: "Built-in WireGuard 6PN inside vendor cloud only",
+    coolify: "Not built-in (bring Tailscale or manual WireGuard)",
+    kamal: "Not built-in (bring Tailscale or VPC)",
+    k8s: "Cilium / Calico CNI overlay",
+    saas: "Paid per-user/node VPN SaaS",
+  },
+  {
+    dim: "Deployments & DB safety",
+    flarelens: "Immutable rev-N, <1ms Blue/Green swap & streaming R2 pg_dump",
+    paas: "Built-in rolling / blue-green inside vendor cloud",
+    coolify: "Rolling Docker restarts / Traefik labels; separate backups",
+    kamal: "kamal-proxy zero-downtime HTTP; backups external",
+    k8s: "Argo Rollouts + custom CronJob backups",
+    saas: "Custom bash / Ansible scripts",
+  },
+  {
+    dim: "Secrets & runtime flags",
+    flarelens: "Zero .env on disk; AES-256-GCM + 0700 /dev/shm + built-in Flags",
+    paas: "Platform runtime env vars; no built-in feature flags",
+    coolify: "Compose .env files written to host disk",
+    kamal: "Injected via kamal secrets env at deploy",
+    k8s: "etcd Secrets + ExternalSecrets + Flagd",
+    saas: "Doppler / LaunchDarkly SaaS",
+  },
+  {
+    dim: "Logs & SQL analytics",
+    flarelens: "R2 Apache Parquet + in-browser DuckDB-WASM ($0 egress)",
+    paas: "Short retention; external sink for SQL analytics",
+    coolify: "Per-container Docker logs only",
+    kamal: "None built-in (bring Vector / Loki / SaaS)",
+    k8s: "Self-host Loki / ClickHouse + PVCs",
+    saas: "$0.50–$2.50+/GB SaaS log ingestion",
+  },
+  {
+    dim: "Multi-server scheduling",
+    flarelens: "spread / binpack / pinned, hard cgroups & DB volume fencing",
+    paas: "Vendor region placement",
+    coolify: "Manual server assignment or Docker Swarm",
+    kamal: "Static host lists in config/deploy.yml",
+    k8s: "Full scheduler + PodDisruptionBudgets + CSI",
+    saas: "Manual",
+  },
+  {
+    dim: "When to pick it",
+    flarelens: "You want PaaS workflows (fleet, deploys, mesh, logs, secrets, backups) on sovereign servers at $0 control-plane cost.",
+    paas: "You want zero Linux hosts to manage and accept PaaS compute & bandwidth pricing.",
+    coolify: "You want 200+ 1-click self-hosted OSS app templates with built-in Nixpacks image builds.",
+    kamal: "You want pure stateless CLI deploys over SSH with zero persistent control plane.",
+    k8s: "You have 50+ engineers needing custom CRDs, HPA autoscaling, and multi-team RBAC namespaces.",
+    saas: "You need SOC2 vendor-managed APM traces, RUM, and PagerDuty on-call suites out of the box.",
+  },
+];
+---
+
+<DocsLayout
+  title="How FlareLens Compares — FlareLens"
+  description="Honest side-by-side comparison of FlareLens against Fly.io/Render, Coolify, Kamal 2, Managed Kubernetes, and Compose + SaaS stacks."
+  mode="custom"
+  searchable={true}
+>
+  <div class="w-full bg-background text-foreground" data-pagefind-body>
+    <section class="w-full py-12 sm:py-16">
+      <div class="mx-auto w-full max-w-[92rem] px-6 sm:px-10 lg:px-12">
+        <div class="max-w-3xl">
+          <p class="font-mono text-xs font-semibold uppercase tracking-[0.11em] text-muted-foreground">
+            COMPARE · SELF-HOSTED PAAS
+          </p>
+          <h1 class="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+            How FlareLens compares
+          </h1>
+          <p class="mt-3 text-base leading-relaxed text-muted-foreground sm:text-lg">
+            FlareLens is an open-source Platform-as-a-Service whose control plane runs in your own Cloudflare account and whose workloads run on your own servers. Here is how it stacks up—including where the alternatives are the better choice.
+          </p>
+        </div>
+
+        <div
+          tabindex="0"
+          role="region"
+          aria-labelledby="compare-caption"
+          class="mt-10 overflow-x-auto rounded-xl border border-border bg-card shadow-sm"
+        >
+          <table class="w-full border-separate border-spacing-0 text-left text-sm">
+            <caption id="compare-caption" class="sr-only">
+              Side-by-side comparison of FlareLens against hosted PaaS, Coolify, Kamal 2, Kubernetes, and SaaS stacks
+            </caption>
+            <thead>
+              <tr class="bg-muted">
+                <th scope="col" class="sticky left-0 z-20 border-b border-e border-border bg-muted px-4 py-3.5 font-semibold text-foreground min-w-44">
+                  Dimension
+                </th>
+                <th scope="col" class="border-b border-e border-border bg-accent/70 px-4 py-3.5 font-semibold text-foreground min-w-56">
+                  FlareLens
+                </th>
+                <th scope="col" class="border-b border-border px-4 py-3.5 font-semibold text-foreground min-w-48">
+                  Fly.io / Render
+                </th>
+                <th scope="col" class="border-b border-border px-4 py-3.5 font-semibold text-foreground min-w-52">
+                  Coolify
+                </th>
+                <th scope="col" class="border-b border-border px-4 py-3.5 font-semibold text-foreground min-w-48">
+                  Kamal 2
+                </th>
+                <th scope="col" class="border-b border-border px-4 py-3.5 font-semibold text-foreground min-w-52">
+                  Managed Kubernetes
+                </th>
+                <th scope="col" class="border-b border-border px-4 py-3.5 font-semibold text-foreground min-w-52">
+                  Compose + SaaS Stack
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => {
+                const isLast = i === rows.length - 1;
+                const b = isLast ? "" : "border-b border-border";
+                return (
+                  <tr class="align-top">
+                    <th scope="row" class:list={["sticky left-0 z-10 border-e border-border bg-card px-4 py-3.5 font-medium text-foreground", b]}>
+                      {r.dim}
+                    </th>
+                    <td class:list={["border-e border-border bg-accent/35 px-4 py-3.5 font-medium text-foreground", b]}>
+                      {r.flarelens}
+                    </td>
+                    <td class:list={["px-4 py-3.5 text-muted-foreground", b]}>{r.paas}</td>
+                    <td class:list={["px-4 py-3.5 text-muted-foreground", b]}>{r.coolify}</td>
+                    <td class:list={["px-4 py-3.5 text-muted-foreground", b]}>{r.kamal}</td>
+                    <td class:list={["px-4 py-3.5 text-muted-foreground", b]}>{r.k8s}</td>
+                    <td class:list={["px-4 py-3.5 text-muted-foreground", b]}>{r.saas}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <Footer />
+  </div>
+</DocsLayout>

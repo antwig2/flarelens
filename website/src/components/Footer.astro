@@ -1,0 +1,28 @@
+---
+import Logo from "./Logo.astro";
+import { withBase } from "@cloudflare/nimbus-docs/runtime";
+
+const base = import.meta.env.BASE_URL;
+---
+
+<footer class="w-full border-t border-border bg-card text-sm text-muted-foreground">
+  <div class="mx-auto flex w-full max-w-[92rem] flex-wrap items-center justify-between gap-4 px-6 py-8 sm:px-10 lg:px-12">
+    <div class="flex items-center gap-2.5">
+      <Logo class="h-4 w-4 text-foreground" />
+      <span>
+        <strong class="font-semibold text-foreground">FlareLens</strong> · Open-Source Self-Hosted PaaS · Apache 2.0
+      </span>
+    </div>
+
+    <nav aria-label="Footer" class="flex flex-wrap items-center gap-x-6 gap-y-2">
+      <a href={withBase("/docs/", base)} class="text-muted-foreground no-underline hover:text-foreground">Docs</a>
+      <a href={withBase("/compare/", base)} class="text-muted-foreground no-underline hover:text-foreground">Compare</a>
+      <a href={withBase("/llms.txt", base)} class="text-muted-foreground no-underline hover:text-foreground">llms.txt</a>
+      <a href={withBase("/llms-full.txt", base)} class="text-muted-foreground no-underline hover:text-foreground">llms-full.txt</a>
+      <a href={withBase("/schemas/fleet.schema.json", base)} class="text-muted-foreground no-underline hover:text-foreground">Schema</a>
+      <a href={withBase("/install.sh", base)} class="text-muted-foreground no-underline hover:text-foreground">install.sh</a>
+      <a href="https://github.com/antwig2/flarelens" target="_blank" rel="noopener noreferrer" class="text-muted-foreground no-underline hover:text-foreground">Control Plane</a>
+      <a href="https://github.com/antwig2/flarelensd" target="_blank" rel="noopener noreferrer" class="text-muted-foreground no-underline hover:text-foreground">Host Agent</a>
+    </nav>
+  </div>
+</footer>

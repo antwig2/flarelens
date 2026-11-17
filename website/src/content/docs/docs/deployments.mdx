@@ -1,0 +1,57 @@
+---
+title: Deployments
+description: Revisions and rollbacks — Zero-Git CRUD, immutable rev-N snapshots, <1ms Blue/Green swaps, and uat → prod promotion.
+sidebar:
+  order: 4
+---
+
+**Deployments** gives teams PaaS-grade release velocity—combining Zero-Git dashboard workflows, immutable D1 + R2 fleet revisions, sub-millisecond Blue/Green cutovers, pre-migration database snapshots, and 1-click rollbacks.
+
+## Immutable Revisions (Zero-Git or GitOps)
+
+Every create, edit, delete, promotion, or CI sync writes an immutable revision (`rev-1`, `rev-2`, …) to D1 (`fleet_revisions`) and archives a SHA-256 verified full-fleet snapshot in R2 (`state/revisions/rev-N.json`).
+
+- **Dashboard-First (Zero-Git)**: Define, clone, edit, and deploy services directly from the FlareLens UI using structured forms or the built-in JSON manifest editor.
+- **Pre-Staged Services (`enabled: false`)**: Commit production manifests in a `Suspended` state so operators can audit ports, domains, secrets, and cgroup budgets before cutover day—tagged CI releases update the recorded image without starting containers prematurely.
+- **Optional Keyless GitOps**: Synchronize repository manifests from GitHub Actions using short-lived OIDC tokens (`id-token: write`).
+
+## 7-Step Zero-Downtime Blue/Green Pipeline
+
+When rolling out a `blue_green` service, `flarelensd` runs a deterministic 7-step state machine on each assigned host:
+
+<Steps>
+  <Step title="Pre-Deploy Database Guardrail">
+    When `pre_deploy_snapshot: true` or `run_migrations: true` is configured, streams a compressed `pg_dump` archive directly to Cloudflare R2 before touching database schemas.
+  </Step>
+  <Step title="Authenticated OCI Image Pull">
+    Pulls the target image tag or `@sha256` digest using ephemeral registry credentials kept strictly in memory.
+  </Step>
+  <Step title="Ephemeral Schema Migration Container">
+    Executes `migration_command` inside a one-shot container attached to the internal network; aborts cutover and triggers snapshot recovery on non-zero exit.
+  </Step>
+  <Step title="Candidate Slot Boot">
+    Starts the inactive slot (`-green` while `-blue` serves live traffic) with decrypted Vault env vars, `/dev/shm` secret files, and kernel cgroup caps.
+  </Step>
+  <Step title="HTTP Readiness Verification">
+    Probes `health_path` on `internal_port` until consecutive `200 OK` responses confirm application health.
+  </Step>
+  <Step title="Atomic <1ms Traefik Swap">
+    Atomically updates the dynamic Traefik upstream route (including multi-domain `Host(...)` rules and cross-node `remote_upstreams`) so new traffic shifts in under a millisecond.
+  </Step>
+  <Step title="Graceful Connection Drain & Cleanup">
+    Allows in-flight requests on the retiring slot to complete cleanly before stopping the old container and scheduling debounced image pruning.
+  </Step>
+</Steps>
+
+## Environment Promotion & 1-Click Rollback
+
+Promote verified UAT container digests and runtime settings to `prod` in one click while preserving production domains, replica counts, volumes, and environment-scoped Vault secrets:
+
+```bash title="Promote UAT release to Prod via HTTP API"
+curl -X POST https://ops.example.com/api/v1/control/fleet/promote \
+  -H "Authorization: Bearer $FLARELENS_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"source_env":"uat","target_env":"prod","services":["checkout-api"]}'
+```
+
+If error rates climb after a release, selecting **Rollback** on any historical `rev-N` snapshot restores exact image digests, environment variables, and even deleted service definitions in a single atomic revision.

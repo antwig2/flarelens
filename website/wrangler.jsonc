@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "flarelens-website",
+  "compatibility_date": "2026-11-16",
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "flarelens.dev", "custom_domain": true },
+    { "pattern": "www.flarelens.dev", "custom_domain": true }
+  ],
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash"
+  }
+}

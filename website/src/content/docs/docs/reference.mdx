@@ -1,0 +1,90 @@
+---
+title: CLI, Schema & HTTP API
+description: Complete fleet.schema.json field table, flarelensd CLI commands, GitHub Actions OIDC workflow, and Control Plane REST endpoints.
+sidebar:
+  order: 9
+---
+
+Canonical technical reference for declarative workload manifests, the `flarelensd` host daemon CLI, keyless GitHub Actions OIDC synchronization, and Control Plane HTTP endpoints.
+
+## Declarative Manifest Schema (`fleet.schema.json`)
+
+Add `# $schema: https://flarelens.dev/schemas/fleet.schema.json` at the top of YAML manifests (or `"$schema"` in JSON) for IDE autocompletion and validation.
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | `string` *(required)* | Logical service name (e.g. `checkout-api`, `postgres`). Resolved in MagicDNS as `<name>.<env>.mesh`. |
+| `env` | `"dev" \| "uat" \| "prod"` | Environment isolation boundary for Vault secrets, revisions, and DNS zones. |
+| `strategy` | `"blue_green" \| "singleton"` | Dual-slot zero-downtime swap for stateless apps, or single-instance stateful lifecycle. |
+| `enabled` | `boolean` | Defaults to `true`. Set `false` to stage manifests in D1 as `Suspended` without starting containers. |
+| `adopt_only` | `boolean` | Monitor and enforce cgroups on pre-existing host containers without recreating them. |
+| `image` | `string` *(required)* | Full OCI image reference (tag or immutable `@sha256` digest). |
+| `domain` / `domains` | `string` / `string[]` | Public HTTPS hostnames routed via Traefik `Host(...)` rules. |
+| `internal_port` | `integer` | Container listening port probed and routed by Traefik and the WireGuard service router. |
+| `health_path` | `string` | HTTP readiness path polled before atomic Blue/Green cutover (e.g. `/healthz`). |
+| `placement` | `object` | `{ strategy: "spread" \| "binpack" \| "pinned", replicas: number, required_tags: string[], node_id?: string }`. |
+| `resources` | `object` | Hard Linux kernel cgroup caps: `{ memory_mb: integer, cpu_cores: number }`. |
+| `worker` | `object` | Optional companion worker container with dedicated `command[]` and `resources` override. |
+| `pre_deploy_snapshot` | `boolean` | Stream a gzipped `pg_dump` snapshot to R2 prior to running schema migrations. |
+| `run_migrations` / `migration_command` | `boolean` / `string[]` | Execute a one-shot migration container before booting the candidate Blue/Green slot. |
+| `env_vars` | `Record<string, string>` | Non-secret runtime environment variables merged with encrypted Vault secrets. |
+
+## Host Agent CLI (`flarelensd`)
+
+Daemon configuration is stored at `/etc/flarelens/agent.toml` with `0600` WireGuard key material under `/var/lib/flarelens/`.
+
+```bash title="Common flarelensd host & workstation commands"
+# Inspect daemon health and live reconciliation logs
+sudo systemctl status flarelensd
+sudo journalctl -u flarelensd -f
+
+# Join the private WireGuard mesh from an operator laptop
+sudo flarelens-agent login --endpoint https://ops.example.com
+
+# Print binary version
+flarelensd --version
+```
+
+## Keyless GitHub Actions OIDC Sync
+
+Authorize your repository in the FlareLens console and sync declarative manifests via GitHub's native OIDC provider—zero static tokens stored in GitHub Secrets:
+
+```yaml title=".github/workflows/fleet-sync.yml"
+name: Sync Fleet Manifests
+on:
+  push:
+    branches: [main]
+    paths: ["fleet/**"]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exchange GitHub OIDC & Sync Fleet
+        run: |
+          OIDC_TOKEN=$(curl -sLS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=flarelens" | jq -r .value)
+          jq -s '{ manifests: . }' fleet/prod/*.json | \
+            curl -fsSL -X POST https://ops.example.com/api/v1/control/fleet/sync \
+              -H "Authorization: Bearer $OIDC_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d @-
+```
+
+## Control Plane HTTP Endpoints
+
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `POST /api/v1/ingest` | `INGEST_SECRET` | 15s host heartbeat; returns piggybacked `commands`, `mesh_peers`, `cluster_endpoints`, and `flags_version`. |
+| `POST /api/v1/control/fleet/sync` | Bearer / GitHub OIDC | Validate and commit declarative manifests into an immutable `rev-N` snapshot. |
+| `POST /api/v1/control/fleet/promote` | Operator / API Token | Promote verified service digests and config across environments (`uat → prod`). |
+| `POST /api/v1/control/fleet/rollback` | Operator / API Token | Restore fleet desired state to any historical `rev-N` snapshot in D1 + R2. |
+| `POST /api/v1/control/nodes/:id/drain` | Operator / API Token | Cordon host, reschedule stateless replicas, and fence local `singleton` volumes. |
+| `POST /api/v1/control/nodes/:id/uncordon` | Operator / API Token | Return a drained host back to active placement scheduling. |
+| `POST /api/v1/control/nodes/:id/prune-images` | Operator / API Token | Queue two-pass Docker image garbage collection (dangling `>24h`, unused `>72h`). |
+| `POST /api/v1/control/agent/releases` | Operator / API Token | Publish SHA-256 verified `flarelensd` binary release for zero-SSH OTA rollouts. |

@@ -1,0 +1,438 @@
+---
+import DocsLayout from "../layouts/DocsLayout.astro";
+import Footer from "../components/Footer.astro";
+import Icon from "@cloudflare/nimbus-docs/components/Icon.astro";
+
+const pillars = [
+  {
+    title: "Fleet Management",
+    sub: "Servers and workloads",
+    href: "/docs/fleet/",
+    icon: "ph:hard-drives",
+  },
+  {
+    title: "Deployments",
+    sub: "Revisions and rollbacks",
+    href: "/docs/deployments/",
+    icon: "ph:arrows-clockwise",
+  },
+  {
+    title: "Private Mesh",
+    sub: "WireGuard networking",
+    href: "/docs/mesh/",
+    icon: "ph:share-network",
+  },
+  {
+    title: "Observability",
+    sub: "Logs, metrics and health",
+    href: "/docs/observability/",
+    icon: "ph:chart-line-up",
+  },
+  {
+    title: "Secrets & Flags",
+    sub: "Secure runtime configuration",
+    href: "/docs/secrets-and-flags/",
+    icon: "ph:key",
+  },
+  {
+    title: "Backups",
+    sub: "R2 streaming storage",
+    href: "/docs/backups/",
+    icon: "ph:database",
+  },
+];
+
+const steps = [
+  {
+    num: "01",
+    title: "Deploy your control plane",
+    p1: "Deploy FlareLens to your own Cloudflare account using Workers, D1, KV, and R2.",
+    p2: "No dedicated management VM required.",
+  },
+  {
+    num: "02",
+    title: "Connect your servers",
+    p1: "Install the lightweight Go agent on your hosts and enroll them with your control plane.",
+    p2: "Bring together infrastructure across cloud providers and on-premises environments.",
+  },
+  {
+    num: "03",
+    title: "Define your workloads",
+    p1: "Create applications directly from the dashboard or synchronize declarative configurations through your CI/CD workflow.",
+    p2: "Set deployment environments, resource limits, replicas, networking, and health checks.",
+  },
+  {
+    num: "04",
+    title: "Operate from one place",
+    p1: "Deploy applications, review health, inspect logs, manage secrets, coordinate maintenance, and roll back changes from the FlareLens dashboard.",
+    p2: "",
+  },
+];
+
+const faqs = [
+  {
+    q: "Do I need Kubernetes?",
+    a: "No. FlareLens provides its own declarative fleet and container deployment capabilities without requiring a Kubernetes cluster.",
+    open: true,
+  },
+  {
+    q: "Do I need a Git repository?",
+    a: "No. You can define and manage services from the FlareLens dashboard. Git and CI/CD integrations are optional.",
+  },
+  {
+    q: "Do I need Cloudflare Tunnel?",
+    a: "No. Direct ingress through Traefik or Caddy is supported. Cloudflare Tunnel is an optional deployment choice.",
+  },
+  {
+    q: "Where do my applications run?",
+    a: "On your enrolled servers. Cloudflare hosts the control plane, not your application containers.",
+  },
+  {
+    q: "Is FlareLens free?",
+    a: "FlareLens is open-source software. Its control plane is designed to run within Cloudflare's free-tier allowances for smaller deployments. Usage exceeding free-tier limits and the underlying compute or storage infrastructure may incur charges.",
+  },
+  {
+    q: "What happens if the control plane is unavailable?",
+    a: "Existing applications continue running on their hosts. Management operations, reconciliation, and other functions requiring connectivity may be delayed until the control plane becomes available.",
+  },
+];
+---
+
+<DocsLayout
+  title="FlareLens — Your infrastructure. Under your control."
+  description="Manage servers, deploy applications, connect private networks, secure secrets, and observe your infrastructure from one open-source control plane, deployed in your own Cloudflare account."
+  mode="custom"
+  searchable={true}
+>
+  <div class="w-full bg-background text-foreground">
+    {/* 1. WIDE HERO + 6 PAAS PILLAR CARDS */}
+    <section class="w-full py-16 sm:py-20 lg:py-24">
+      <div class="mx-auto w-full max-w-[92rem] px-6 sm:px-10 lg:px-12">
+        <div class="mx-auto max-w-4xl text-center">
+          <p class="font-mono text-xs font-semibold uppercase tracking-[0.11em] text-muted-foreground">
+            OPEN SOURCE · SELF-HOSTED CONTROL PLANE
+          </p>
+          <h1 class="mt-4 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl lg:text-[3.5rem] lg:leading-[1.08] [text-wrap:balance]">
+            Your infrastructure. Under your control.
+          </h1>
+          <p class="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-muted-foreground sm:text-xl [text-wrap:pretty]">
+            Manage servers, deploy applications, connect private networks, and observe everything from one serverless control plane.
+          </p>
+
+          <div class="mt-8 flex flex-wrap items-center justify-center gap-3.5">
+            <a
+              href="https://deploy.workers.cloudflare.com/?url=https://github.com/antwig2/flarelens"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex h-11 items-center gap-2 rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground no-underline transition-colors hover:bg-primary-hover"
+            >
+              <span>Deploy to Cloudflare</span>
+              <span aria-hidden="true">↗</span>
+            </a>
+            <a
+              href="/docs/"
+              class="inline-flex h-11 items-center gap-2 rounded-full border border-border-strong bg-card px-6 text-sm font-semibold text-foreground no-underline transition-colors hover:bg-accent"
+            >
+              <span>Read the Docs</span>
+              <span aria-hidden="true">→</span>
+            </a>
+            <a
+              href="https://github.com/antwig2/flarelens"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-transparent px-5 text-sm font-medium text-muted-foreground no-underline transition-colors hover:border-border-strong hover:text-foreground"
+            >
+              <Icon name="ph:github-logo" class="h-4 w-4" />
+              <span>View on GitHub</span>
+            </a>
+          </div>
+        </div>
+
+        <div id="product" class="mt-14 grid scroll-mt-20 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {pillars.map((pillar) => (
+            <a
+              href={pillar.href}
+              class="group flex flex-col gap-1.5 rounded-xl border border-border bg-card p-6 no-underline shadow-sm transition-colors hover:border-border-strong hover:bg-accent/50"
+            >
+              <span class="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground transition-colors group-hover:text-foreground">
+                <Icon name={pillar.icon} class="h-5 w-5" />
+              </span>
+              <h2 class="text-base font-semibold tracking-tight text-foreground">
+                {pillar.title}
+              </h2>
+              <p class="text-sm text-muted-foreground">{pillar.sub}</p>
+            </a>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    {/* 2. HOW IT WORKS (4 WIDE COLUMNS) */}
+    <section class="w-full border-t border-border py-16 sm:py-20">
+      <div class="mx-auto w-full max-w-[92rem] px-6 sm:px-10 lg:px-12">
+        <div class="max-w-2xl">
+          <p class="font-mono text-xs font-semibold uppercase tracking-[0.11em] text-muted-foreground">
+            How It Works
+          </p>
+          <h2 class="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+            From infrastructure to running applications.
+          </h2>
+        </div>
+
+        <div class="mt-10 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+          {steps.map((step) => (
+            <article class="flex flex-col gap-2.5 rounded-xl border border-border bg-card p-6 shadow-sm">
+              <span class="font-mono text-xs font-semibold tracking-wider text-muted-foreground">
+                {step.num}
+              </span>
+              <h3 class="text-base font-semibold tracking-tight text-foreground">
+                {step.title}
+              </h3>
+              <p class="text-sm leading-relaxed text-muted-foreground">{step.p1}</p>
+              {step.p2 && <p class="text-sm leading-relaxed text-muted-foreground">{step.p2}</p>}
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    {/* 3. WIDE ARCHITECTURE SCHEMATIC */}
+    <section id="architecture" class="w-full scroll-mt-16 border-t border-border py-16 sm:py-20">
+      <div class="mx-auto w-full max-w-[92rem] px-6 sm:px-10 lg:px-12">
+        <div class="max-w-2xl">
+          <p class="font-mono text-xs font-semibold uppercase tracking-[0.11em] text-muted-foreground">
+            Architecture
+          </p>
+          <h2 class="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+            Designed for infrastructure you own.
+          </h2>
+          <p class="mt-2 text-base text-muted-foreground sm:text-lg">
+            A serverless control plane. A sovereign data plane.
+          </p>
+        </div>
+
+        <figure class="mt-10 rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8 lg:p-10" aria-labelledby="arch-caption">
+          <div class="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-[minmax(19rem,24rem)_11rem_minmax(0,1fr)]">
+            {/* LEFT: CONTROL PLANE */}
+            <div class="flex flex-col justify-between rounded-xl border border-border bg-muted/60 p-5">
+              <div>
+                <div class="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-border">
+                  <span class="rounded-md border border-border-strong bg-card px-2.5 py-0.5 font-mono text-[0.7rem] font-semibold uppercase tracking-wider text-foreground">
+                    Control Plane
+                  </span>
+                  <span class="font-mono text-xs text-muted-foreground">Your Cloudflare Account</span>
+                </div>
+
+                <ul class="mt-4 grid gap-2.5">
+                  <li class="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm">
+                    <span class="font-mono text-xs font-semibold text-foreground">Workers</span>
+                    <span class="text-xs text-muted-foreground">Management API &amp; Dashboard</span>
+                  </li>
+                  <li class="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm">
+                    <span class="font-mono text-xs font-semibold text-foreground">D1</span>
+                    <span class="text-xs text-muted-foreground">Fleet state &amp; revisions</span>
+                  </li>
+                  <li class="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm">
+                    <span class="font-mono text-xs font-semibold text-foreground">KV</span>
+                    <span class="text-xs text-muted-foreground">Encrypted secrets &amp; peer index</span>
+                  </li>
+                  <li class="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm">
+                    <span class="font-mono text-xs font-semibold text-foreground">R2</span>
+                    <span class="text-xs text-muted-foreground">Parquet logs &amp; DB backups</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            {/* CENTER: BRIDGE */}
+            <div class="flex flex-col items-center justify-center gap-6 py-2 text-center" aria-hidden="true">
+              <div class="flex w-full flex-col items-center gap-1">
+                <span class="font-mono text-[0.7rem] font-semibold uppercase tracking-wider text-foreground">15s TLS Sync</span>
+                <svg class="h-4 w-32 text-muted-foreground" viewBox="0 0 120 16" fill="none">
+                  <line x1="2" y1="8" x2="110" y2="8" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3" />
+                  <path d="M105 3.5L113 8l-8 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <span class="text-[0.72rem] text-muted-foreground">Commands, revisions &amp; secrets</span>
+              </div>
+
+              <div class="flex w-full flex-col items-center gap-1">
+                <span class="font-mono text-[0.7rem] font-semibold uppercase tracking-wider text-foreground">Outbound Stream</span>
+                <svg class="h-4 w-32 text-muted-foreground" viewBox="0 0 120 16" fill="none">
+                  <line x1="10" y1="8" x2="118" y2="8" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3" />
+                  <path d="M15 3.5L7 8l8 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <span class="text-[0.72rem] text-muted-foreground">Telemetry &amp; R2 pg_dump</span>
+              </div>
+            </div>
+
+            {/* RIGHT: DATA PLANE */}
+            <div class="flex flex-col justify-between gap-4 rounded-xl border border-border-strong bg-muted/60 p-5">
+              <div>
+                <div class="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-border">
+                  <span class="rounded-md bg-primary px-2.5 py-0.5 font-mono text-[0.7rem] font-semibold uppercase tracking-wider text-primary-foreground">
+                    Data Plane
+                  </span>
+                  <span class="font-mono text-xs text-muted-foreground">Your Servers &amp; Infrastructure</span>
+                </div>
+
+                <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <div class="rounded-lg border border-border bg-card p-3.5">
+                    <div class="font-mono text-xs font-semibold text-foreground">Host A · Cloud VM</div>
+                    <div class="mt-2 rounded border border-border bg-muted px-2.5 py-1 font-mono text-[0.72rem] text-muted-foreground">flarelensd (Go daemon)</div>
+                    <div class="mt-1.5 rounded border border-border bg-muted px-2.5 py-1 font-mono text-[0.72rem] text-muted-foreground">Blue/Green Apps &amp; Ingress</div>
+                  </div>
+
+                  <div class="rounded-lg border border-border bg-card p-3.5">
+                    <div class="font-mono text-xs font-semibold text-foreground">Host B · Bare Metal</div>
+                    <div class="mt-2 rounded border border-border bg-muted px-2.5 py-1 font-mono text-[0.72rem] text-muted-foreground">flarelensd (Go daemon)</div>
+                    <div class="mt-1.5 rounded border border-border bg-muted px-2.5 py-1 font-mono text-[0.72rem] text-muted-foreground">Services &amp; PostgreSQL</div>
+                  </div>
+
+                  <div class="rounded-lg border border-border bg-card p-3.5 sm:col-span-2 xl:col-span-1">
+                    <div class="font-mono text-xs font-semibold text-foreground">Host C · Worker Pool</div>
+                    <div class="mt-2 rounded border border-border bg-muted px-2.5 py-1 font-mono text-[0.72rem] text-muted-foreground">flarelensd (Go daemon)</div>
+                    <div class="mt-1.5 rounded border border-border bg-muted px-2.5 py-1 font-mono text-[0.72rem] text-muted-foreground">Queue Workers &amp; Cgroups</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-lg border border-border bg-card px-4 py-3 text-center">
+                <div class="font-mono text-xs font-semibold text-foreground">Direct WireGuard P2P Mesh · MagicDNS (*.mesh)</div>
+                <div class="mt-1 text-xs text-muted-foreground">
+                  Encrypted peer-to-peer traffic between hosts &amp; operators — private workload traffic never routes through Cloudflare
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <figcaption id="arch-caption" class="mt-6 border-t border-border pt-4 text-xs text-muted-foreground">
+            Control Plane coordinates desired state, secrets, and peer discovery; all application containers and WireGuard mesh traffic execute directly inside your Data Plane.
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    {/* 4. OPEN SOURCE BY DESIGN */}
+    <section class="w-full border-t border-border py-16 sm:py-20">
+      <div class="mx-auto grid w-full max-w-[92rem] grid-cols-1 items-start gap-10 px-6 sm:px-10 lg:grid-cols-12 lg:px-12">
+        <div class="lg:col-span-5">
+          <p class="font-mono text-xs font-semibold uppercase tracking-[0.11em] text-muted-foreground">
+            Apache 2.0 License
+          </p>
+          <h2 class="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+            Open source by design.
+          </h2>
+          <div class="mt-4 space-y-2.5 text-base text-muted-foreground">
+            <p class="font-semibold text-foreground">Inspect it. Deploy it. Extend it.</p>
+            <p>FlareLens is licensed under Apache 2.0 and developed openly on GitHub.</p>
+            <p>Deploy the control plane in your own Cloudflare account and run the host agent on your own infrastructure—with no mandatory hosted service.</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:col-span-7">
+          <a
+            href="https://github.com/antwig2/flarelens"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="group flex flex-col justify-between gap-3 rounded-xl border border-border bg-card p-6 no-underline shadow-sm transition-colors hover:border-border-strong hover:bg-accent/50"
+          >
+            <div>
+              <div class="flex items-center justify-between font-semibold text-foreground">
+                <span>Explore the control plane</span>
+                <span aria-hidden="true">↗</span>
+              </div>
+              <p class="mt-1 font-mono text-xs text-muted-foreground">github.com/antwig2/flarelens</p>
+            </div>
+            <p class="text-sm text-muted-foreground">
+              Control plane, dashboard, declarative fleet, policies, and observability
+            </p>
+          </a>
+
+          <a
+            href="https://github.com/antwig2/flarelensd"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="group flex flex-col justify-between gap-3 rounded-xl border border-border bg-card p-6 no-underline shadow-sm transition-colors hover:border-border-strong hover:bg-accent/50"
+          >
+            <div>
+              <div class="flex items-center justify-between font-semibold text-foreground">
+                <span>Explore the host agent</span>
+                <span aria-hidden="true">↗</span>
+              </div>
+              <p class="mt-1 font-mono text-xs text-muted-foreground">github.com/antwig2/flarelensd</p>
+            </div>
+            <p class="text-sm text-muted-foreground">
+              Go host daemon, workload reconciliation, WireGuard mesh networking, and telemetry
+            </p>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    {/* 5. FAQ */}
+    <section class="w-full border-t border-border py-16 sm:py-20" aria-labelledby="faq-heading">
+      <div class="mx-auto grid w-full max-w-[92rem] grid-cols-1 items-start gap-10 px-6 sm:px-10 lg:grid-cols-12 lg:px-12">
+        <div class="lg:col-span-4">
+          <p class="font-mono text-xs font-semibold uppercase tracking-[0.11em] text-muted-foreground">
+            FAQ
+          </p>
+          <h2 id="faq-heading" class="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+            Frequently asked questions
+          </h2>
+          <p class="mt-3 text-sm text-muted-foreground">
+            Want a side-by-side breakdown? See <a href="/compare/" class="font-medium text-foreground underline underline-offset-4">how FlareLens compares</a>.
+          </p>
+        </div>
+
+        <div class="grid gap-3 lg:col-span-8">
+          {faqs.map((item) => (
+            <details
+              name="flarelens-faq"
+              open={item.open}
+              class="group rounded-xl border border-border bg-card px-5 shadow-sm"
+            >
+              <summary class="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 py-3.5 text-[0.95rem] font-semibold text-foreground [&::-webkit-details-marker]:hidden">
+                <span>{item.q}</span>
+                <Icon name="ph:caret-down" class="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+              </summary>
+              <div class="border-t border-border py-3.5 text-sm leading-relaxed text-muted-foreground">
+                <p>{item.a}</p>
+              </div>
+            </details>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    {/* 6. CLOSING CTA */}
+    <section class="w-full border-t border-border py-16 sm:py-20">
+      <div class="mx-auto w-full max-w-3xl px-6 text-center sm:px-10">
+        <h2 class="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+          Take control of your infrastructure.
+        </h2>
+        <p class="mt-3 text-base text-muted-foreground sm:text-lg">
+          Deploy an open-source self-hosted PaaS control plane in your own Cloudflare account.
+        </p>
+        <div class="mt-7 flex flex-wrap items-center justify-center gap-3.5">
+          <a
+            href="https://deploy.workers.cloudflare.com/?url=https://github.com/antwig2/flarelens"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex h-11 items-center gap-2 rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground no-underline transition-colors hover:bg-primary-hover"
+          >
+            <span>Deploy to Cloudflare</span>
+            <span aria-hidden="true">↗</span>
+          </a>
+          <a
+            href="/docs/getting-started/"
+            class="inline-flex h-11 items-center gap-2 rounded-full border border-border-strong bg-card px-6 text-sm font-semibold text-foreground no-underline transition-colors hover:bg-accent"
+          >
+            <span>Quickstart Guide</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <Footer />
+  </div>
+</DocsLayout>

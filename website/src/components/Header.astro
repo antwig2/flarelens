@@ -1,0 +1,122 @@
+---
+import Logo from "./Logo.astro";
+import type { SidebarSection } from "@cloudflare/nimbus-docs/types";
+import Icon from "@cloudflare/nimbus-docs/components/Icon.astro";
+import { Button } from "./ui/button";
+import { LinkButton } from "./ui/link-button";
+import { ThemeToggle } from "./ui/theme-toggle";
+import SearchTrigger from "./ui/search/SearchTrigger.astro";
+import { ShortcutsToggle } from "./ui/shortcuts";
+import { config } from "virtual:nimbus/config";
+import { stripBase, withBase } from "@cloudflare/nimbus-docs/runtime";
+
+interface Props {
+  collection?: string;
+  entryId?: string;
+  showSidebar?: boolean;
+  sections?: SidebarSection[];
+}
+
+const { showSidebar = true } = Astro.props;
+
+const pathname = stripBase(Astro.url.pathname, import.meta.env.BASE_URL).replace(/\/$/, "") || "/";
+const isDocs = pathname === "/docs" || pathname.startsWith("/docs/");
+const isCompare = pathname === "/compare" || pathname.startsWith("/compare/");
+const homeHref = withBase("/", import.meta.env.BASE_URL);
+
+const primaryNav = [
+  { label: "Product", href: "/#product", active: false },
+  { label: "Architecture", href: "/#architecture", active: false },
+  { label: "Docs", href: "/docs/", active: isDocs },
+  { label: "Compare", href: "/compare/", active: isCompare },
+];
+---
+
+<header class="sticky top-0 z-30 w-full border-b border-border bg-card/85 backdrop-blur-lg">
+  <div class="flex h-14 w-full items-center justify-between gap-4 px-5 sm:px-8 lg:px-10">
+    <div class="flex min-w-0 items-center gap-6">
+      <slot name="brand">
+        <a href={homeHref} class="flex shrink-0 items-center gap-2.5 text-foreground no-underline transition-opacity hover:opacity-80">
+          <Logo class="h-5 w-5 shrink-0" />
+          <span class="text-[0.98rem] font-semibold tracking-tight">{config.title}</span>
+        </a>
+      </slot>
+
+      <nav aria-label="Primary" class="hidden md:flex items-center gap-1 border-s border-border ps-5">
+        {primaryNav.map((item) => (
+          <a
+            href={withBase(item.href, import.meta.env.BASE_URL)}
+            aria-current={item.active ? "page" : undefined}
+            class:list={[
+              "rounded-md px-2.5 py-1 text-[0.84rem] font-medium no-underline transition-colors whitespace-nowrap",
+              item.active
+                ? "bg-accent text-foreground"
+                : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+            ]}
+          >
+            {item.label}
+          </a>
+        ))}
+      </nav>
+    </div>
+
+    <div class="flex shrink-0 items-center gap-2">
+      <slot name="actions" />
+      {config.search !== false && <SearchTrigger />}
+      {config.search === false && <ShortcutsToggle compact />}
+      {config.github && (
+        <LinkButton
+          href={config.github}
+          variant="minimal"
+          shape="square"
+          size="sm"
+          aria-label="GitHub"
+          target="_blank"
+          rel="noopener"
+          class="text-muted-foreground"
+        >
+          <Icon name="ph:github-logo" class="h-4 w-4" />
+        </LinkButton>
+      )}
+      <ThemeToggle />
+      <a
+        href="https://deploy.workers.cloudflare.com/?url=https://github.com/antwig2/flarelens"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="hidden lg:inline-flex h-8 items-center gap-1.5 rounded-full bg-primary px-3.5 text-xs font-medium text-primary-foreground no-underline transition-colors hover:bg-primary-hover"
+      >
+        <span>Deploy</span>
+        <span aria-hidden="true">↗</span>
+      </a>
+      {showSidebar && (
+        <Button
+          variant="ghost"
+          shape="square"
+          size="sm"
+          icon="ph:list"
+          aria-label="Open navigation"
+          data-menu-btn
+          class="md:hidden text-muted-foreground"
+        />
+      )}
+    </div>
+  </div>
+
+  {/* Mobile section strip so Docs & Compare remain 1-tap reachable on narrow viewports even on pages without a sidebar */}
+  <nav aria-label="Primary mobile" data-nb-header-tabs class="flex md:hidden items-center gap-1 border-t border-border/60 h-10 px-4 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    {primaryNav.map((item) => (
+      <a
+        href={withBase(item.href, import.meta.env.BASE_URL)}
+        aria-current={item.active ? "page" : undefined}
+        class:list={[
+          "rounded-md px-2.5 py-1 text-[0.8125rem] font-medium no-underline transition-colors shrink-0 whitespace-nowrap",
+          item.active
+            ? "bg-accent text-foreground"
+            : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+        ]}
+      >
+        {item.label}
+      </a>
+    ))}
+  </nav>
+</header>
