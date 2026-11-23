@@ -9,12 +9,12 @@ const nimbusConfig = defineNimbusConfig({
   site: "https://flarelens.dev",
   title: "FlareLens",
   description:
-    "Open-source self-hosted Platform-as-a-Service running in your own Cloudflare account and on your own servers.",
+    "Deploy, manage, secure, and monitor applications across cloud and on-premises servers. FlareLens brings infrastructure operations together in an open-source, self-hosted platform, without the complexity of Kubernetes or a dedicated management server.",
   locale: "en",
   homeLabel: "Docs",
   github: "https://github.com/antwig2/flarelens",
   editPattern: "https://github.com/antwig2/flarelens/edit/main/website/{path}",
-  socialImageAlt: "FlareLens — Your infrastructure. Under your control.",
+  socialImageAlt: "FlareLens — Your infrastructure. One control plane.",
   sidebar: {
     items: [
       "docs",

@@ -1,10 +1,10 @@
 # FlareLens
 
-**Open-Source Infrastructure Operations · Serverless Infrastructure Control Plane**
+**Open-Source, Self-Hosted Infrastructure Platform**
 
-### Your infrastructure. Under your control.
+### Your infrastructure. One control plane.
 
-Manage servers, deploy applications, connect private networks, secure secrets, and observe your infrastructure from one open-source control plane, deployed in your own Cloudflare account.
+Deploy, manage, secure, and monitor applications across cloud and on-premises servers. FlareLens brings infrastructure operations together in an open-source, self-hosted platform, without the complexity of Kubernetes or a dedicated management server.
 
 [Website](https://flarelens.dev/) · [Documentation](https://flarelens.dev/docs/) · [Deploy to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/antwig2/flarelens) · [Host Agent (`flarelensd`)](https://github.com/antwig2/flarelensd) · [Releases](https://github.com/antwig2/flarelens/releases)
 
