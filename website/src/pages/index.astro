@@ -6,37 +6,37 @@ import Icon from "@cloudflare/nimbus-docs/components/Icon.astro";
 const pillars = [
   {
     title: "Fleet Management",
-    sub: "Servers and workloads",
+    sub: "Register and manage cloud VMs and physical servers from one dashboard. Schedule workloads across machines, control CPU and memory allocation, and perform server maintenance.",
     href: "/docs/fleet/",
     icon: "ph:hard-drives",
   },
   {
-    title: "Deployments",
-    sub: "Revisions and rollbacks",
+    title: "Application Deployments",
+    sub: "Deploy Docker applications, manage immutable revisions, promote changes between environments, perform Blue/Green releases, and roll back failed deployments without requiring Kubernetes.",
     href: "/docs/deployments/",
     icon: "ph:arrows-clockwise",
   },
   {
-    title: "Private Mesh",
-    sub: "WireGuard networking",
+    title: "Private Mesh Networking",
+    sub: "Connect servers and operator devices across different networks using WireGuard, encrypted peer-to-peer communication, and private service discovery.",
     href: "/docs/mesh/",
     icon: "ph:share-network",
   },
   {
     title: "Observability",
-    sub: "Logs, metrics and health",
+    sub: "Monitor server health, resource usage, containers, and application logs. Store logs in Cloudflare R2 using Parquet and query them through DuckDB.",
     href: "/docs/observability/",
     icon: "ph:chart-line-up",
   },
   {
-    title: "Secrets & Flags",
-    sub: "Secure runtime configuration",
+    title: "Secrets & Feature Flags",
+    sub: "Manage encrypted application secrets and runtime configuration centrally, alongside feature flags that control application behavior.",
     href: "/docs/secrets-and-flags/",
     icon: "ph:key",
   },
   {
-    title: "Backups",
-    sub: "R2 streaming storage",
+    title: "Backups & Recovery",
+    sub: "Stream PostgreSQL backups to R2, schedule backups, protect database migrations, and support restoration.",
     href: "/docs/backups/",
     icon: "ph:database",
   },
@@ -148,20 +148,24 @@ const faqs = [
           </div>
         </div>
 
-        <div id="product" class="mt-14 grid scroll-mt-20 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div id="product" class="mt-14 grid scroll-mt-20 grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {pillars.map((pillar) => (
-            <a
-              href={pillar.href}
-              class="group flex flex-col gap-1.5 rounded-xl border border-border bg-card p-6 no-underline shadow-sm transition-colors hover:border-border-strong hover:bg-accent/50"
+            <article
+              class="group relative flex flex-col gap-2 rounded-xl border border-border bg-card p-6 shadow-sm transition-colors has-[a:hover]:border-border-strong has-[a:hover]:bg-accent/50 has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-ring"
             >
-              <span class="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground transition-colors group-hover:text-foreground">
+              <span class="mb-1.5 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground transition-colors group-hover:text-foreground">
                 <Icon name={pillar.icon} class="h-5 w-5" />
               </span>
               <h2 class="text-base font-semibold tracking-tight text-foreground">
-                {pillar.title}
+                <a
+                  href={pillar.href}
+                  class="text-foreground no-underline after:absolute after:inset-0 focus-visible:outline-none"
+                >
+                  {pillar.title}
+                </a>
               </h2>
-              <p class="text-sm text-muted-foreground">{pillar.sub}</p>
-            </a>
+              <p class="text-sm leading-relaxed text-muted-foreground [text-wrap:pretty]">{pillar.sub}</p>
+            </article>
           ))}
         </div>
       </div>

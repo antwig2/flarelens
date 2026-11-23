@@ -27,26 +27,26 @@ Understand how the three sovereign layers fit together and spin up a working clu
 
 ## Core Platform Capabilities
 
-Six integrated PaaS modules for running stateless applications and stateful databases on infrastructure you own.
+Six integrated capabilities for operating cloud VMs and on-premises servers from one control plane.
 
 <CardGrid>
   <Card title="Fleet Management" icon="ph:hard-drives" href="/docs/fleet/">
-    Servers and workloads: multi-node placement, hard Linux cgroups, live DB resizing, drain fencing, and image GC.
+    Register and manage cloud VMs and physical servers from one dashboard. Schedule workloads across machines, control CPU and memory allocation, and perform server maintenance.
   </Card>
-  <Card title="Deployments" icon="ph:arrows-clockwise" href="/docs/deployments/">
-    Revisions and rollbacks: Zero-Git CRUD, immutable rev-N snapshots, &lt;1ms Blue/Green swaps, and uat → prod promotion.
+  <Card title="Application Deployments" icon="ph:arrows-clockwise" href="/docs/deployments/">
+    Deploy Docker applications, manage immutable revisions, promote changes between environments, perform Blue/Green releases, and roll back failed deployments without requiring Kubernetes.
   </Card>
-  <Card title="Private Mesh" icon="ph:share-network" href="/docs/mesh/">
-    WireGuard networking: P2P ChaCha20-Poly1305 overlay (100.64.0.0/10), 5s MagicDNS (*.mesh), and workstation access.
+  <Card title="Private Mesh Networking" icon="ph:share-network" href="/docs/mesh/">
+    Connect servers and operator devices across different networks using WireGuard, encrypted peer-to-peer communication, and private service discovery.
   </Card>
   <Card title="Observability" icon="ph:chart-line-up" href="/docs/observability/">
-    Logs, metrics and health: 15s host/container telemetry, SSE live tailing, and R2 Parquet + DuckDB-WASM SQL.
+    Monitor server health, resource usage, containers, and application logs. Store logs in Cloudflare R2 using Parquet and query them through DuckDB.
   </Card>
-  <Card title="Secrets & Flags" icon="ph:key" href="/docs/secrets-and-flags/">
-    Secure runtime configuration: AES-256-GCM Vault, zero .env files on disk, /dev/shm secret mounts, and feature flags.
+  <Card title="Secrets & Feature Flags" icon="ph:key" href="/docs/secrets-and-flags/">
+    Manage encrypted application secrets and runtime configuration centrally, alongside feature flags that control application behavior.
   </Card>
-  <Card title="Backups" icon="ph:database" href="/docs/backups/">
-    R2 streaming storage: zero-disk io.Pipe pg_dump | gzip to R2, cron schedules, migration guardrails, and auto-restore.
+  <Card title="Backups & Recovery" icon="ph:database" href="/docs/backups/">
+    Stream PostgreSQL backups to R2, schedule backups, protect database migrations, and support restoration.
   </Card>
 </CardGrid>
 

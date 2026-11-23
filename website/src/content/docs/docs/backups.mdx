@@ -1,11 +1,11 @@
 ---
-title: Backups
-description: R2 streaming storage — zero-disk io.Pipe pg_dump | gzip to R2, cron schedules, migration guardrails, and point-in-time restore.
+title: Backups & Recovery
+description: Stream PostgreSQL backups to R2, schedule backups, protect database migrations, and support restoration.
 sidebar:
   order: 8
 ---
 
-**Backups** protects stateful PostgreSQL databases with zero local disk staging, automated cron schedules, pre-migration snapshot guardrails, and verified streaming restores from Cloudflare R2.
+Stream PostgreSQL backups directly to Cloudflare R2 with zero local disk staging, schedule automated backups, protect database migrations with pre-deploy snapshots, and support verified point-in-time restoration.
 
 ## Zero-Disk Streaming Architecture (`io.Pipe` → R2)
 
