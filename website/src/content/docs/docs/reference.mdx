@@ -35,14 +35,21 @@ Daemon configuration is stored at `/etc/flarelens/agent.toml` with `0600` WireGu
 
 ```bash title="Common flarelensd host & workstation commands"
 # Inspect daemon health and live reconciliation logs
-sudo systemctl status flarelensd
-sudo journalctl -u flarelensd -f
+sudo systemctl status flarelens-agent
+sudo journalctl -u flarelens-agent -f
 
-# Join the private WireGuard mesh from an operator laptop
-sudo flarelens-agent login --endpoint https://ops.example.com
+# Join, disconnect, or log out of the private WireGuard mesh from a laptop
+sudo flarelensd login --control https://ops.example.com
+sudo flarelensd down
+sudo flarelensd logout
 
-# Print binary version
+# Cleanly unenroll a server or completely uninstall flarelensd (running Docker apps stay untouched)
+sudo flarelensd leave --yes
+sudo flarelensd uninstall --yes
+
+# Print binary version & CLI help
 flarelensd --version
+flarelensd --help
 ```
 
 ## Keyless GitHub Actions OIDC Sync
@@ -86,5 +93,7 @@ jobs:
 | `POST /api/v1/control/fleet/rollback` | Operator / API Token | Restore fleet desired state to any historical `rev-N` snapshot in D1 + R2. |
 | `POST /api/v1/control/nodes/:id/drain` | Operator / API Token | Cordon host, reschedule stateless replicas, and fence local `singleton` volumes. |
 | `POST /api/v1/control/nodes/:id/uncordon` | Operator / API Token | Return a drained host back to active placement scheduling. |
+| `POST /api/v1/control/nodes/:id/leave` | Agent / Operator Token | Drain stateless replicas, fence stateful volumes, and unenroll node + mesh peer from D1. |
+| `POST /api/v1/control/mesh/leave` | Agent Token / Ed25519 Proof | Deregister a server or SSO workstation peer from the WireGuard mesh. |
 | `POST /api/v1/control/nodes/:id/prune-images` | Operator / API Token | Queue two-pass Docker image garbage collection (dangling `>24h`, unused `>72h`). |
 | `POST /api/v1/control/agent/releases` | Operator / API Token | Publish SHA-256 verified `flarelensd` binary release for zero-SSH OTA rollouts. |

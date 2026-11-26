@@ -913,6 +913,107 @@ async function runTests() {
   );
   console.log('   ✅ Passed: Multi-node spread scheduling, WireGuard ExtraHosts & remote_upstreams, hard cgroup limits, image prune, drain fencing & dead-node failover verified!\n');
 
+  console.log('7️⃣  Testing Mesh Logout (Ed25519 Signed Leave) & Server Unenroll (flarelensd leave/uninstall)...');
+  // 7a. Generate real Ed25519 keypair in Web Crypto and build OpenSSH authorized_keys line
+  const edKeyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
+  const rawEdPub = new Uint8Array(await crypto.subtle.exportKey('raw', edKeyPair.publicKey));
+  const algBytes = new TextEncoder().encode('ssh-ed25519');
+  const wireBlob = new Uint8Array(4 + algBytes.length + 4 + rawEdPub.length);
+  const dv = new DataView(wireBlob.buffer);
+  dv.setUint32(0, algBytes.length, false);
+  wireBlob.set(algBytes, 4);
+  dv.setUint32(4 + algBytes.length, rawEdPub.length, false);
+  wireBlob.set(rawEdPub, 8 + algBytes.length);
+  const sshPubLine = `ssh-ed25519 ${Buffer.from(wireBlob).toString('base64')} flarelens-mesh`;
+
+  const laptopWgPub = 'wgPubKeyLaptopEd25519Test00000000000000000000=';
+  await env.CONTROL_DB
+    .prepare(
+      `INSERT INTO mesh_peers (id, name, overlay_ip, public_key, type, online, last_seen, updated_at, record_json)
+       VALUES (?, ?, ?, ?, 'client', 1, ?, ?, ?)`
+    )
+    .bind(
+      'client-dev-laptop',
+      'dev-laptop',
+      '100.64.0.99',
+      laptopWgPub,
+      new Date().toISOString(),
+      new Date().toISOString(),
+      JSON.stringify({
+        id: 'client-dev-laptop',
+        name: 'dev-laptop',
+        overlay_ip: '100.64.0.99',
+        public_key: laptopWgPub,
+        ssh_public_key: sshPubLine,
+        type: 'client',
+        online: true,
+      })
+    )
+    .run();
+
+  // Unauthenticated spoofing attempt without signature must be rejected (401)
+  const spoofLeaveRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/mesh/leave', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ peer_id: 'client-dev-laptop', public_key: laptopWgPub }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(spoofLeaveRes.status, 401, 'Unsigned keyless mesh leave must be rejected');
+
+  // Valid Ed25519-signed logout from SSO laptop without Authorization token must succeed (200)
+  const leaveTs = String(Math.floor(Date.now() / 1000));
+  const leaveMsg = new TextEncoder().encode(`flarelens-mesh-leave:${laptopWgPub}:${leaveTs}`);
+  const leaveSigBuf = await crypto.subtle.sign({ name: 'Ed25519' }, edKeyPair.privateKey, leaveMsg);
+  const signedLeaveRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/mesh/leave', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        peer_id: 'client-dev-laptop',
+        public_key: laptopWgPub,
+        timestamp: leaveTs,
+        ssh_signature: Buffer.from(leaveSigBuf).toString('base64'),
+      }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(signedLeaveRes.status, 200, 'Ed25519-signed workstation logout must succeed');
+  const signedLeaveBody = await signedLeaveRes.json();
+  assert.deepStrictEqual(signedLeaveBody.removed_ids, ['client-dev-laptop']);
+
+  // 7b. Server unenroll via ENROLL_TOKEN (`flarelensd leave` / `uninstall`)
+  const nodeLeaveRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/nodes/pool-eu-3/leave', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-enroll-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ reason: 'Operator ran flarelensd uninstall' }),
+    }),
+    env,
+    ctx
+  );
+  await Promise.all(pendingWaitTasks.splice(0));
+  assert.strictEqual(nodeLeaveRes.status, 200);
+  const nodeLeaveBody = await nodeLeaveRes.json();
+  assert.strictEqual(nodeLeaveBody.status, 'unenrolled');
+  assert.strictEqual(nodeLeaveBody.node_id, 'pool-eu-3');
+
+  const verifyGoneRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/nodes/pool-eu-3', {
+      headers: { Authorization: 'Bearer test-admin-password' },
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(verifyGoneRes.status, 404, 'Unenrolled node must be removed from D1 & memory');
+  console.log('   ✅ Passed: Ed25519 keyless mesh logout, spoof rejection & safe server unenroll verified!\n');
+
   console.log('🎉 ALL FLARELENS OPEN-SOURCE D1 CONTROL PLANE TESTS PASSED!');
 }
 

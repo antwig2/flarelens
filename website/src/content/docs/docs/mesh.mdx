@@ -36,8 +36,12 @@ BILLING_INTERNAL_URL=http://billing-api.prod.mesh:8080
 Join the private mesh temporarily from macOS or Linux workstations without SSH bastions or per-seat VPN SaaS:
 
 ```bash title="Authenticate operator workstation onto the mesh"
-sudo flarelens-agent login --endpoint https://ops.example.com
+sudo flarelens-agent login --control https://ops.example.com
 
 # Connect directly to private mesh services:
 psql postgres://readonly@postgres.uat.mesh:5432/app
+
+# Disconnect interface temporarily (keeps keys) or log out & revoke session:
+sudo flarelens-agent down
+sudo flarelens-agent logout
 ```

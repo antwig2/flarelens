@@ -341,6 +341,31 @@ export async function getNodeRecordD1(env: Env, nodeId: string): Promise<NodeRec
   return null;
 }
 
+export async function deleteNodeRecordD1(env: Env, nodeId: string): Promise<void> {
+  getNodeWriteMap(env).delete(nodeId);
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    await db.batch([
+      db.prepare(`DELETE FROM nodes WHERE node_id = ?`).bind(nodeId),
+      db.prepare(`DELETE FROM node_commands WHERE node_id = ?`).bind(nodeId),
+      db.prepare(`DELETE FROM fleet_placements WHERE node_id = ? AND status != 'fenced'`).bind(nodeId),
+    ]);
+  }
+
+  if (env.FLEET_KV) {
+    try {
+      await env.FLEET_KV.delete(`node:${nodeId}`);
+      await env.FLEET_KV.delete(`fleet:commands:${nodeId}`);
+      const existingRaw = await env.FLEET_KV.get('fleet:nodes');
+      if (existingRaw) {
+        const ids: string[] = JSON.parse(existingRaw);
+        const filtered = ids.filter((id) => id !== nodeId);
+        await env.FLEET_KV.put('fleet:nodes', JSON.stringify(filtered));
+      }
+    } catch {}
+  }
+}
+
 export async function listNodeRecordsD1(env: Env): Promise<NodeRecord[]> {
   const db = await ensureControlDbReady(env);
   if (db) {

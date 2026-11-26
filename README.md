@@ -92,10 +92,23 @@ Want IDE validation or optional CI sync? Every FlareLens Worker serves its canon
 }
 ```
 
-### 4. Connect an Operator Workstation (Optional WireGuard Mesh)
+### 4. Connect or Disconnect an Operator Workstation (Optional WireGuard Mesh)
 
 ```sh
-sudo flarelens-agent login --control=https://<your-worker-url>
+sudo flarelensd login --control=https://<your-worker-url>
+
+# Disconnect interface temporarily or revoke session completely:
+sudo flarelensd down
+sudo flarelensd logout
+```
+
+### 5. Cleanly Exit / Uninstall `flarelensd` (Zero Lock-In)
+
+Unenroll a server and remove the agent daemon at any time—all running Docker application containers, networks, and database volumes remain untouched:
+
+```sh
+sudo flarelensd leave --yes       # Unenrolls node & stops daemon (keeps binary)
+sudo flarelensd uninstall --yes   # Unenrolls node, removes systemd unit, config & binary
 ```
 
 ---

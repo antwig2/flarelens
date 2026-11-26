@@ -44,6 +44,7 @@ import {
 import {
   upsertNodeRecord,
   getNodeRecordD1,
+  deleteNodeRecordD1,
   listNodeRecordsD1,
   upsertMeshPeerD1,
   deleteMeshPeerD1,
@@ -79,6 +80,7 @@ import {
 import { encryptSecrets, decryptSecrets, parseEnvContent, getVaultLookupKeys, resolveVaultSecrets } from './control/vault';
 import { verifyGitHubSignature, parseDeployWebhook, reportGitHubStatus, resolveWebhookDeployPayload, getServiceDeclarativeDefaults } from './control/webhook';
 import { isGitHubOidcToken, verifyGitHubOidcToken } from './control/github_oidc';
+import { verifyMeshLeaveSignature } from './control/leave';
 import {
   MESH_SUBNET,
   COORDINATOR_URL,
@@ -250,6 +252,11 @@ export default {
       return handleDeviceToken(request, env);
     }
 
+    // 3c-leave. Self-service Mesh Peer Leave (accepts Agent/Dashboard Auth OR Ed25519 SSH signature)
+    if (url.pathname === '/api/v1/control/mesh/leave' && request.method === 'POST') {
+      return handleMeshLeave(request, env, ctx, url);
+    }
+
     // 3d. Agent-authenticated Control Callbacks (accept ENROLL_TOKEN, INGEST_SECRET, or Dashboard Auth)
     if (
       (url.pathname === '/api/v1/control/commands' && request.method === 'GET') ||
@@ -258,6 +265,7 @@ export default {
       (url.pathname === '/api/v1/control/backup/status' && request.method === 'POST') ||
       (url.pathname === '/api/v1/control/agent/update/status' && request.method === 'POST') ||
       (url.pathname === '/api/v1/control/mesh/register' && request.method === 'POST') ||
+      (url.pathname.startsWith('/api/v1/control/nodes/') && url.pathname.endsWith('/leave') && request.method === 'POST') ||
       (url.pathname === '/api/v1/control/flags' && request.method === 'GET')
     ) {
       const agentErr = validateAgentOrDashboardAuth(request, env, url);
@@ -268,6 +276,10 @@ export default {
       if (url.pathname === '/api/v1/control/backup/status') return handleUpdateBackupStatus(request, env, ctx);
       if (url.pathname === '/api/v1/control/agent/update/status') return handleAgentUpdateStatus(request, env);
       if (url.pathname === '/api/v1/control/mesh/register') return handleMeshRegister(request, env, ctx);
+      if (url.pathname.startsWith('/api/v1/control/nodes/') && url.pathname.endsWith('/leave')) {
+        const nodeId = url.pathname.replace('/api/v1/control/nodes/', '').replace('/leave', '').replace(/\/+$/, '').trim();
+        if (nodeId) return handleNodeLeave(nodeId, request, env, ctx);
+      }
       if (url.pathname === '/api/v1/control/flags') return handleListFlags(env);
     }
 
@@ -325,6 +337,12 @@ export default {
     if (url.pathname.startsWith('/api/v1/control/nodes/') && url.pathname.endsWith('/prune-images') && request.method === 'POST') {
       const nodeId = url.pathname.replace('/api/v1/control/nodes/', '').replace('/prune-images', '').replace(/\/+$/, '').trim();
       if (nodeId) return handlePruneNodeImages(nodeId, request, env);
+    }
+    if (url.pathname.startsWith('/api/v1/control/nodes/') && request.method === 'DELETE') {
+      const nodeId = url.pathname.replace('/api/v1/control/nodes/', '').replace(/\/+$/, '').trim();
+      if (nodeId) {
+        return handleNodeLeave(nodeId, request, env, ctx);
+      }
     }
     if (url.pathname.startsWith('/api/v1/control/nodes/') && request.method === 'GET') {
       const nodeId = url.pathname.replace('/api/v1/control/nodes/', '').trim();
@@ -5826,6 +5844,172 @@ async function handlePruneNodeImages(
     }),
     {
       status: 202,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+function hasExplicitMeshLeaveAuth(request: Request, env: Env, url: URL): boolean {
+  if (!env.INGEST_SECRET && !env.ENROLL_TOKEN && !env.DASHBOARD_PASSWORD) {
+    return true;
+  }
+  if (request.headers.get('cf-access-authenticated-user-email')) {
+    return true;
+  }
+  const authHeader = request.headers.get('Authorization') || '';
+  const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.substring(7).trim() : '';
+  const apiKeyHeader = request.headers.get('x-api-key') || '';
+  const queryToken = url.searchParams.get('token') || '';
+  const providedToken = bearerToken || apiKeyHeader || queryToken;
+  if (providedToken) {
+    if (
+      (env.INGEST_SECRET && providedToken === env.INGEST_SECRET) ||
+      (env.ENROLL_TOKEN && providedToken === env.ENROLL_TOKEN) ||
+      (env.DASHBOARD_PASSWORD && providedToken === env.DASHBOARD_PASSWORD)
+    ) {
+      return true;
+    }
+  }
+  if (env.DASHBOARD_PASSWORD && authHeader.startsWith('Basic ')) {
+    try {
+      const credentials = atob(authHeader.substring(6).trim());
+      const [username, password] = credentials.split(':');
+      if (username === (env.DASHBOARD_USERNAME || 'admin') && password === env.DASHBOARD_PASSWORD) {
+        return true;
+      }
+    } catch {}
+  }
+  return false;
+}
+
+/**
+ * POST /api/v1/control/mesh/leave
+ * Self-service peer deregistration via Agent/Dashboard token OR Ed25519 SSH signature proof.
+ */
+async function handleMeshLeave(
+  request: Request,
+  env: Env,
+  _ctx: ExecutionContext,
+  url: URL
+): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as {
+    peer_id?: string;
+    public_key?: string;
+    timestamp?: string;
+    ssh_signature?: string;
+  };
+  const peerId = String(body.peer_id || '').trim();
+  const publicKey = String(body.public_key || '').trim();
+  if (!peerId && !publicKey) {
+    return new Response(JSON.stringify({ error: 'peer_id or public_key required' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const allPeers = await loadAllMeshPeers(env);
+  const matched = allPeers.filter(
+    (p) => (publicKey && p.public_key === publicKey) || (peerId && p.id === peerId)
+  );
+
+  const hasTokenAuth = hasExplicitMeshLeaveAuth(request, env, url);
+  if (!hasTokenAuth) {
+    let sigVerified = false;
+    if (publicKey && body.timestamp && body.ssh_signature && matched.length > 0) {
+      for (const p of matched) {
+        if (await verifyMeshLeaveSignature(p, publicKey, String(body.timestamp), String(body.ssh_signature))) {
+          sigVerified = true;
+          break;
+        }
+      }
+    }
+    if (!sigVerified) {
+      return new Response(JSON.stringify({ error: 'Unauthorized: valid token or Ed25519 mesh leave signature required' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+  }
+
+  const removedIds: string[] = [];
+  for (const p of matched) {
+    fleetMeshPeers.delete(p.id);
+    await deleteMeshPeerD1(env, p.id);
+    removedIds.push(p.id);
+    broadcastTelemetry({ type: 'mesh_peer_removed', peer_id: p.id });
+  }
+  if (matched.length === 0 && peerId && hasTokenAuth) {
+    fleetMeshPeers.delete(peerId);
+    await deleteMeshPeerD1(env, peerId);
+    removedIds.push(peerId);
+  }
+
+  return new Response(JSON.stringify({ status: 'deleted', removed_ids: removedIds }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  });
+}
+
+/**
+ * POST /api/v1/control/nodes/:id/leave  |  DELETE /api/v1/control/nodes/:id
+ */
+async function handleNodeLeave(
+  nodeId: string,
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext
+): Promise<Response> {
+  const existing = fleetNodes.get(nodeId) || (await getNodeRecordD1(env, nodeId));
+  let migratedCount = 0;
+  let fencedCount = 0;
+
+  if (existing) {
+    const drainReq = new Request(request.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: 'Node unenrolled via flarelensd leave/uninstall' }),
+    });
+    const drainRes = await handleDrainNode(nodeId, drainReq, env, ctx);
+    if (drainRes.ok) {
+      const drainBody = (await drainRes.json().catch(() => ({}))) as {
+        migrated_count?: number;
+        fenced_count?: number;
+      };
+      migratedCount = Number(drainBody.migrated_count || 0);
+      fencedCount = Number(drainBody.fenced_count || 0);
+    }
+  }
+
+  fleetNodes.delete(nodeId);
+  await deleteNodeRecordD1(env, nodeId);
+
+  const peers = await loadAllMeshPeers(env);
+  const removedPeers: string[] = [];
+  for (const p of peers) {
+    if (p.id === nodeId || (existing?.hostname && p.name === existing.hostname)) {
+      fleetMeshPeers.delete(p.id);
+      await deleteMeshPeerD1(env, p.id);
+      removedPeers.push(p.id);
+    }
+  }
+
+  broadcastTelemetry({
+    type: 'node_unenrolled',
+    node_id: nodeId,
+    migrated_count: migratedCount,
+    fenced_count: fencedCount,
+  });
+
+  return new Response(
+    JSON.stringify({
+      status: 'unenrolled',
+      node_id: nodeId,
+      migrated_count: migratedCount,
+      fenced_count: fencedCount,
+      removed_mesh_peers: removedPeers,
+    }),
+    {
+      status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     }
   );
