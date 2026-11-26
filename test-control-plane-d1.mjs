@@ -1012,7 +1012,30 @@ async function runTests() {
     ctx
   );
   assert.strictEqual(verifyGoneRes.status, 404, 'Unenrolled node must be removed from D1 & memory');
-  console.log('   ✅ Passed: Ed25519 keyless mesh logout, spoof rejection & safe server unenroll verified!\n');
+
+  // 7c. Dashboard Remove Node button (`DELETE /api/v1/control/nodes/:id`)
+  const dashDelNodeRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/nodes/pool-eu-2', {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer test-admin-password' },
+    }),
+    env,
+    ctx
+  );
+  await Promise.all(pendingWaitTasks.splice(0));
+  assert.strictEqual(dashDelNodeRes.status, 200, 'Dashboard DELETE /api/v1/control/nodes/:id must succeed');
+  const dashDelNodeBody = await dashDelNodeRes.json();
+  assert.strictEqual(dashDelNodeBody.status, 'unenrolled');
+  assert.strictEqual(dashDelNodeBody.node_id, 'pool-eu-2');
+  const verifyDashDelGone = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/nodes/pool-eu-2', {
+      headers: { Authorization: 'Bearer test-admin-password' },
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(verifyDashDelGone.status, 404, 'Dashboard-removed node must return 404');
+  console.log('   ✅ Passed: Ed25519 keyless mesh logout, spoof rejection & safe server unenroll / Dashboard DELETE verified!\n');
 
   console.log('🎉 ALL FLARELENS OPEN-SOURCE D1 CONTROL PLANE TESTS PASSED!');
 }

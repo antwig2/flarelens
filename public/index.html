@@ -2949,6 +2949,20 @@
     </form>
   </dialog>
 
+  <!-- MODAL: CONFIRM NODE REMOVAL (DELETE /api/v1/control/nodes/:id) -->
+  <dialog id="removeNodeConfirmDialog" class="ota-dialog" aria-labelledby="removeNodeConfirmTitle" closedby="any">
+    <div>
+      <h1 id="removeNodeConfirmTitle" style="font-size:1.05rem; font-weight:700; color:#fb7185; margin:0;">Remove Host Node from Fleet?</h1>
+      <p id="removeNodeConfirmDesc" style="font-size:0.8rem; color:var(--text-muted); margin-top:0.35rem; line-height:1.45;">
+        Unenrolls this host and its WireGuard mesh peer from the Control Plane, reschedules stateless replicas onto surviving healthy peers, and fences stateful database volumes.
+      </p>
+    </div>
+    <form method="dialog" style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.5rem;">
+      <button value="cancel" autofocus class="btn">Cancel</button>
+      <button value="remove" class="btn" style="background:#be123c; color:#fff; border-color:#9f1239;">🗑 Remove Node</button>
+    </form>
+  </dialog>
+
   <!-- MODAL: CREATE / EDIT DECLARATIVE FLEET SERVICE (ZERO-GIT) -->
   <dialog id="fleetServiceDialog" class="ota-dialog fleet-wide-dialog" aria-labelledby="fleetServiceDialogTitle">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.75rem;">
@@ -3710,6 +3724,7 @@
                   ? `<button type="button" class="btn btn-sm btn-uncordon-node" data-node="${escapeHtml(node.node_id)}" style="padding:2px 8px; font-size:0.68rem; border-color:rgba(16,185,129,0.5); color:#34d399;" title="Restore node to active multi-server scheduling">✅ Uncordon</button>`
                   : `<button type="button" class="btn btn-sm btn-drain-node" data-node="${escapeHtml(node.node_id)}" style="padding:2px 8px; font-size:0.68rem; border-color:rgba(245,158,11,0.45); color:#fbbf24;" title="Cordon host & reschedule stateless replicas to peer nodes">💧 Drain Node</button>`
                 }
+                <button type="button" class="btn btn-sm btn-remove-node" data-node="${escapeHtml(node.node_id)}" style="padding:2px 8px; font-size:0.68rem; border-color:rgba(244,63,94,0.45); color:#fb7185;" title="Remove decommissioned node & WireGuard peer from Control Plane">🗑 Remove</button>
                 <span style="color:var(--text-muted);">Active Containers: <strong style="color:#fff;">${containers.length || 5}</strong></span>
               </span>
             </div>
@@ -3739,6 +3754,12 @@
           btn.addEventListener('click', () => {
             const targetNode = btn.getAttribute('data-node');
             if (targetNode) triggerUncordonNode(targetNode, btn);
+          });
+        });
+        fleetNodeGrid.querySelectorAll('.btn-remove-node').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const targetNode = btn.getAttribute('data-node');
+            if (targetNode) openRemoveNodeDialog(targetNode);
           });
         });
         fleetNodeGrid.querySelectorAll('.btn-copy-mesh-ip').forEach(btn => {
@@ -6430,11 +6451,14 @@
     const fleetDeleteConfirmDesc = document.getElementById('fleetDeleteConfirmDesc');
     const drainNodeConfirmDialog = document.getElementById('drainNodeConfirmDialog');
     const drainNodeConfirmDesc = document.getElementById('drainNodeConfirmDesc');
+    const removeNodeConfirmDialog = document.getElementById('removeNodeConfirmDialog');
+    const removeNodeConfirmDesc = document.getElementById('removeNodeConfirmDesc');
 
     let isFleetJsonEditorOpen = false;
     let currentEditingBaseManifest = null;
     let pendingDeleteTarget = null;
     let pendingDrainNodeId = null;
+    let pendingRemoveNodeId = null;
 
     function attachDialogLightDismissFallback(dialogEl) {
       if (!dialogEl || ('closedBy' in HTMLDialogElement.prototype)) return;
@@ -6457,6 +6481,45 @@
     attachDialogLightDismissFallback(fleetRevisionsDialog);
     attachDialogLightDismissFallback(fleetDeleteConfirmDialog);
     attachDialogLightDismissFallback(drainNodeConfirmDialog);
+    attachDialogLightDismissFallback(removeNodeConfirmDialog);
+
+    function openRemoveNodeDialog(nodeId) {
+      if (!removeNodeConfirmDialog || typeof removeNodeConfirmDialog.showModal !== 'function') return;
+      pendingRemoveNodeId = nodeId;
+      if (removeNodeConfirmDesc) {
+        removeNodeConfirmDesc.textContent =
+          `Removes ${nodeId} and its WireGuard mesh peer from the Control Plane, rescheduling stateless Blue/Green replicas onto surviving healthy nodes while keeping stateful database volumes fenced. Note: if flarelensd is still running on ${nodeId}, stop or uninstall it first so it does not re-enroll on its next heartbeat.`;
+      }
+      removeNodeConfirmDialog.returnValue = '';
+      removeNodeConfirmDialog.showModal();
+    }
+
+    if (removeNodeConfirmDialog) {
+      removeNodeConfirmDialog.addEventListener('close', async () => {
+        const decision = removeNodeConfirmDialog.returnValue;
+        removeNodeConfirmDialog.returnValue = '';
+        const targetNode = pendingRemoveNodeId;
+        pendingRemoveNodeId = null;
+        if (decision !== 'remove' || !targetNode) return;
+
+        try {
+          const resp = await fetch(`/api/v1/control/nodes/${encodeURIComponent(targetNode)}`, {
+            method: 'DELETE',
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok) {
+            showToast(`Remove node failed: ${data.error || resp.statusText}`, true);
+            return;
+          }
+          const fencedInfo = data.fenced_count ? `, ${data.fenced_count} stateful DB volume(s) fenced` : '';
+          showToast(`Removed ${targetNode} (${data.migrated_count || 0} stateless service(s) rescheduled${fencedInfo}).`);
+          fetchFleetNodes();
+          fetchFleetGitopsAndOta();
+        } catch (err) {
+          showToast(`Remove node network error: ${err.message}`, true);
+        }
+      });
+    }
 
     function openDrainNodeDialog(nodeId) {
       if (!drainNodeConfirmDialog || typeof drainNodeConfirmDialog.showModal !== 'function') return;
