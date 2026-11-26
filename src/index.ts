@@ -22,7 +22,13 @@ import {
 } from './types';
 import { processAlerts } from './alerts';
 import {
+  matchesCronExpression,
+  computeNextCronRunUtc,
+  formatCronSlotKey,
+} from './control/jobs';
+import {
   FLEET_JSON_SCHEMA,
+  type FleetJobSpec,
   stripManifestInternalMeta,
   computeManifestSha256,
   computeManifestDiffSummary,
@@ -65,6 +71,12 @@ import {
   saveServicePlacements,
   deleteServicePlacements,
   updatePlacementRuntimePort,
+  type JobRunRecord,
+  upsertJobRunD1,
+  getJobRunD1,
+  listJobRunsD1,
+  hasCronSlotFiredD1,
+  listActiveJobRunsForSpecD1,
 } from './control/db';
 import {
   type ClusterEndpoint,
@@ -264,6 +276,7 @@ export default {
       (url.pathname === '/api/v1/control/deploy/status' && request.method === 'POST') ||
       (url.pathname === '/api/v1/control/backup/status' && request.method === 'POST') ||
       (url.pathname === '/api/v1/control/agent/update/status' && request.method === 'POST') ||
+      (url.pathname === '/api/v1/control/jobs/status' && request.method === 'POST') ||
       (url.pathname === '/api/v1/control/mesh/register' && request.method === 'POST') ||
       (url.pathname.startsWith('/api/v1/control/nodes/') && url.pathname.endsWith('/leave') && request.method === 'POST') ||
       (url.pathname === '/api/v1/control/flags' && request.method === 'GET')
@@ -275,6 +288,7 @@ export default {
       if (url.pathname === '/api/v1/control/deploy/status') return handleUpdateDeployStatus(request, env, ctx);
       if (url.pathname === '/api/v1/control/backup/status') return handleUpdateBackupStatus(request, env, ctx);
       if (url.pathname === '/api/v1/control/agent/update/status') return handleAgentUpdateStatus(request, env);
+      if (url.pathname === '/api/v1/control/jobs/status') return handleUpdateJobStatus(request, env);
       if (url.pathname === '/api/v1/control/mesh/register') return handleMeshRegister(request, env, ctx);
       if (url.pathname.startsWith('/api/v1/control/nodes/') && url.pathname.endsWith('/leave')) {
         const nodeId = url.pathname.replace('/api/v1/control/nodes/', '').replace('/leave', '').replace(/\/+$/, '').trim();
@@ -409,6 +423,21 @@ export default {
     }
     if (url.pathname === '/api/v1/control/fleet/promote' && request.method === 'POST') {
       return handlePromoteFleetService(request, env, ctx);
+    }
+
+    // 7e. Declarative CronJobs & One-Off Container Jobs
+    if (url.pathname === '/api/v1/control/jobs' && request.method === 'GET') {
+      return handleListJobsAndRuns(env, url);
+    }
+    if (url.pathname.startsWith('/api/v1/control/jobs/runs/') && request.method === 'GET') {
+      const runId = url.pathname.replace('/api/v1/control/jobs/runs/', '').replace(/\/+$/, '').trim();
+      if (runId) return handleGetJobRun(runId, env);
+    }
+    if (url.pathname === '/api/v1/control/jobs/run' && request.method === 'POST') {
+      return handleTriggerJobRun(request, env, ctx);
+    }
+    if (url.pathname === '/api/v1/control/jobs/cron-tick' && request.method === 'POST') {
+      return handleManualCronTick(request, env, ctx);
     }
     if (url.pathname === '/api/v1/control/fleet/export' && request.method === 'GET') {
       return handleExportFleetManifests(env, url);
@@ -630,6 +659,10 @@ export default {
 
     // 3. Automated Failover & Self-Healing for Dead / Unresponsive Fleet Nodes
     ctx.waitUntil(handleNodeCrashFailover(env, ctx));
+
+    // 4. Declarative Scheduled CronJobs Evaluator (1-minute UTC resolution)
+    const cronDate = event?.scheduledTime ? new Date(event.scheduledTime) : new Date();
+    ctx.waitUntil(evaluateScheduledCronJobs(env, ctx, cronDate).then(() => {}));
   },
 
   /**
@@ -6013,6 +6046,493 @@ async function handleNodeLeave(
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     }
   );
+}
+
+// ============================================================================
+// Declarative CronJobs & One-Off Container Jobs Engine
+// ============================================================================
+
+async function dispatchContainerJobRun(
+  env: Env,
+  _ctx: ExecutionContext,
+  params: {
+    envName: string;
+    service: string;
+    jobName: string;
+    image?: string;
+    command?: string[] | string;
+    entrypoint?: string[] | string;
+    volumes?: string[];
+    networks?: string[];
+    timeoutSeconds?: number;
+    memoryMb?: number;
+    cpuCores?: number;
+    nodeId?: string;
+    trigger: 'cron' | 'manual' | 'api';
+    cronSlot?: string;
+    manifest?: FleetServiceManifest | null;
+  }
+): Promise<JobRunRecord> {
+  const normEnv = normalizeFleetEnv(params.envName || 'uat');
+  const cleanService = params.service.trim().toLowerCase();
+  const manifest =
+    params.manifest !== undefined
+      ? params.manifest
+      : env.FLEET_KV
+      ? await getFleetManifest(env.FLEET_KV, normEnv, cleanService)
+      : null;
+
+  const liveImg = env.FLEET_KV ? await getLiveServiceImage(env.FLEET_KV, normEnv, cleanService) : null;
+  const resolvedImage = (params.image || liveImg || manifest?.image || '').trim();
+  if (!resolvedImage) {
+    throw new Error(`No container image found for ${normEnv}/${cleanService} (specify image or create manifest first)`);
+  }
+
+  const cmdArr = normalizeCommandArray(params.command);
+  const entryArr = normalizeCommandArray(params.entrypoint);
+  if ((!cmdArr || cmdArr.length === 0) && (!entryArr || entryArr.length === 0)) {
+    throw new Error(`Job '${params.jobName}' requires a non-empty command or entrypoint`);
+  }
+
+  const memoryMb = params.memoryMb || manifest?.memory_mb || 256;
+  const cpuCores = params.cpuCores || manifest?.cpu_cores || undefined;
+  const timeoutSec = Math.max(1, Math.min(86400, Number(params.timeoutSeconds || 600)));
+
+  let targetNode = (params.nodeId || manifest?.node_id || '').trim();
+  if (!targetNode || targetNode === 'auto' || targetNode === 'smart' || targetNode === 'all' || targetNode === 'all-prod') {
+    targetNode = await selectBestNodeForService(cleanService, env, memoryMb);
+  }
+
+  let resolvedSecrets: Record<string, string> = {};
+  if (env.FLEET_KV) {
+    try {
+      const masterKey = env.VAULT_MASTER_KEY || env.INGEST_SECRET || 'flarelens-default-vault-key';
+      const vaultRes = await resolveVaultSecrets(
+        env.FLEET_KV,
+        cleanService,
+        normEnv,
+        masterKey,
+        manifest?.aliases
+      );
+      if (vaultRes?.secrets) {
+        resolvedSecrets = { ...vaultRes.secrets };
+      }
+    } catch {}
+  }
+  if (manifest?.env_vars && typeof manifest.env_vars === 'object') {
+    resolvedSecrets = { ...resolvedSecrets, ...manifest.env_vars };
+  }
+
+  const [allPlacements, allManifests, enrolledNodes, meshPeers] = await Promise.all([
+    listFleetPlacements(env),
+    env.FLEET_KV ? listFleetManifests(env.FLEET_KV) : Promise.resolve([]),
+    loadAllNodesMerged(env),
+    loadAllMeshPeers(env),
+  ]);
+  const clusterEndpoints = buildClusterEndpoints({
+    manifests: allManifests,
+    placements: allPlacements,
+    nodes: enrolledNodes,
+    meshPeers,
+  });
+  const extraHosts = computeExtraHostsForNode(targetNode, normEnv, clusterEndpoints);
+
+  const nowIso = new Date().toISOString();
+  const runId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const networks = params.networks && params.networks.length > 0 ? params.networks : manifest?.networks;
+  const volumes = params.volumes && params.volumes.length > 0 ? params.volumes : manifest?.volumes;
+
+  const runRecord: JobRunRecord = {
+    run_id: runId,
+    env: normEnv,
+    service: cleanService,
+    job_name: params.jobName,
+    image: resolvedImage,
+    command: cmdArr || entryArr || [],
+    trigger: params.trigger,
+    cron_slot: params.cronSlot,
+    node_id: targetNode,
+    status: 'queued',
+    created_at: nowIso,
+    updated_at: nowIso,
+  };
+
+  await upsertJobRunD1(env, runRecord);
+
+  await enqueueFleetCommand(
+    targetNode,
+    {
+      id: runId,
+      type: 'run_job',
+      run_id: runId,
+      job_name: params.jobName,
+      service: cleanService,
+      env: normEnv,
+      image: resolvedImage,
+      command: cmdArr,
+      entrypoint: entryArr,
+      networks,
+      volumes,
+      secrets: resolvedSecrets,
+      timeout_seconds: timeoutSec,
+      ...(memoryMb ? { memory_mb: memoryMb } : {}),
+      ...(cpuCores ? { cpu_cores: cpuCores } : {}),
+      ...(extraHosts.length > 0 ? { extra_hosts: extraHosts } : {}),
+      trigger: params.trigger,
+      node_id: targetNode,
+      timestamp: nowIso,
+    },
+    env
+  );
+
+  broadcastTelemetry({
+    type: 'job_run_queued',
+    run: runRecord,
+  });
+
+  return runRecord;
+}
+
+async function evaluateScheduledCronJobs(
+  env: Env,
+  ctx: ExecutionContext,
+  nowDate: Date = new Date()
+): Promise<{
+  evaluated_at: string;
+  triggered: JobRunRecord[];
+  skipped: Array<{ env: string; service: string; job_name: string; reason: string }>;
+}> {
+  const triggered: JobRunRecord[] = [];
+  const skipped: Array<{ env: string; service: string; job_name: string; reason: string }> = [];
+  if (!env.FLEET_KV) {
+    return { evaluated_at: nowDate.toISOString(), triggered, skipped };
+  }
+
+  const manifests = await listFleetManifests(env.FLEET_KV);
+  for (const m of manifests) {
+    if (m.enabled === false || !Array.isArray(m.jobs) || m.jobs.length === 0) continue;
+    const normEnv = normalizeFleetEnv(m.env);
+
+    for (const job of m.jobs) {
+      if (!job?.schedule || !job.name) continue;
+      if (!matchesCronExpression(job.schedule, nowDate)) continue;
+
+      const slotKey = formatCronSlotKey(normEnv, m.service, job.name, nowDate);
+      if (await hasCronSlotFiredD1(env, slotKey)) {
+        skipped.push({ env: normEnv, service: m.service, job_name: job.name, reason: 'slot_already_fired' });
+        continue;
+      }
+
+      const policy = job.concurrency_policy || 'forbid';
+      if (policy === 'forbid') {
+        const activeRuns = await listActiveJobRunsForSpecD1(env, normEnv, m.service, job.name);
+        const maxAgeMs = (Number(job.timeout_seconds || 600) + 120) * 1000;
+        const stillFreshActive = activeRuns.some((r) => {
+          const createdMs = Date.parse(r.created_at);
+          return Number.isFinite(createdMs) && nowDate.getTime() - createdMs < maxAgeMs;
+        });
+        if (stillFreshActive) {
+          skipped.push({
+            env: normEnv,
+            service: m.service,
+            job_name: job.name,
+            reason: 'concurrency_forbid_active_run',
+          });
+          continue;
+        }
+      }
+
+      try {
+        const run = await dispatchContainerJobRun(env, ctx, {
+          envName: normEnv,
+          service: m.service,
+          jobName: job.name,
+          command: job.command,
+          entrypoint: job.entrypoint,
+          volumes: job.volumes,
+          networks: job.networks,
+          timeoutSeconds: job.timeout_seconds,
+          memoryMb: job.memory_mb,
+          cpuCores: job.cpu_cores,
+          trigger: 'cron',
+          cronSlot: slotKey,
+          manifest: m,
+        });
+        triggered.push(run);
+      } catch (err: any) {
+        skipped.push({
+          env: normEnv,
+          service: m.service,
+          job_name: job.name,
+          reason: err?.message || 'dispatch_error',
+        });
+      }
+    }
+  }
+
+  return { evaluated_at: nowDate.toISOString(), triggered, skipped };
+}
+
+async function handleListJobsAndRuns(env: Env, url: URL): Promise<Response> {
+  const envFilter = url.searchParams.get('env') || '';
+  const svcFilter = url.searchParams.get('service') || '';
+  const jobFilter = url.searchParams.get('job_name') || '';
+  const limit = Number(url.searchParams.get('limit') || 50);
+
+  const [manifests, runs] = await Promise.all([
+    env.FLEET_KV ? listFleetManifests(env.FLEET_KV, envFilter || undefined) : Promise.resolve([]),
+    listJobRunsD1(env, { env: envFilter, service: svcFilter, job_name: jobFilter, limit }),
+  ]);
+
+  const definedJobs: Array<Record<string, any>> = [];
+  const now = new Date();
+  for (const m of manifests) {
+    if (!Array.isArray(m.jobs) || m.jobs.length === 0) continue;
+    const normEnv = normalizeFleetEnv(m.env);
+    if (svcFilter && m.service.toLowerCase() !== svcFilter.toLowerCase()) continue;
+    const liveImg = env.FLEET_KV ? await getLiveServiceImage(env.FLEET_KV, normEnv, m.service) : null;
+
+    for (const j of m.jobs) {
+      if (jobFilter && j.name.toLowerCase() !== jobFilter.toLowerCase()) continue;
+      const lastRun = runs.find(
+        (r) =>
+          r.env.toLowerCase() === normEnv &&
+          r.service.toLowerCase() === m.service.toLowerCase() &&
+          r.job_name.toLowerCase() === j.name.toLowerCase()
+      );
+      definedJobs.push({
+        env: normEnv,
+        service: m.service,
+        enabled: m.enabled !== false,
+        image: liveImg || m.image,
+        name: j.name,
+        schedule: j.schedule || null,
+        next_run_at: m.enabled !== false && j.schedule ? computeNextCronRunUtc(j.schedule, now) : null,
+        command: normalizeCommandArray(j.command) || [],
+        entrypoint: normalizeCommandArray(j.entrypoint) || undefined,
+        timeout_seconds: j.timeout_seconds || 600,
+        concurrency_policy: j.concurrency_policy || 'forbid',
+        memory_mb: j.memory_mb || m.memory_mb || 256,
+        cpu_cores: j.cpu_cores || m.cpu_cores || null,
+        last_run: lastRun
+          ? {
+              run_id: lastRun.run_id,
+              status: lastRun.status,
+              exit_code: lastRun.exit_code,
+              duration_ms: lastRun.duration_ms,
+              node_id: lastRun.node_id,
+              created_at: lastRun.created_at,
+              finished_at: lastRun.finished_at,
+            }
+          : null,
+      });
+    }
+  }
+
+  return new Response(
+    JSON.stringify({
+      defined_jobs: definedJobs,
+      runs,
+      count: runs.length,
+    }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+async function handleGetJobRun(runId: string, env: Env): Promise<Response> {
+  const run = await getJobRunD1(env, runId);
+  if (!run) {
+    return new Response(JSON.stringify({ error: `Job run ${runId} not found` }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+  return new Response(JSON.stringify({ run }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  });
+}
+
+async function handleTriggerJobRun(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  try {
+    const body = (await request.json().catch(() => ({}))) as {
+      env?: string;
+      service?: string;
+      job_name?: string;
+      image?: string;
+      command?: string[] | string;
+      entrypoint?: string[] | string;
+      volumes?: string[];
+      networks?: string[];
+      timeout_seconds?: number;
+      memory_mb?: number;
+      cpu_cores?: number;
+      node_id?: string;
+      trigger?: 'manual' | 'api';
+    };
+
+    const normEnv = normalizeFleetEnv(body.env || 'uat');
+    const service = String(body.service || '').trim().toLowerCase();
+    if (!service) {
+      return new Response(JSON.stringify({ error: 'service is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+
+    const manifest = env.FLEET_KV ? await getFleetManifest(env.FLEET_KV, normEnv, service) : null;
+    let spec: FleetJobSpec | undefined;
+    if (body.job_name && Array.isArray(manifest?.jobs)) {
+      spec = manifest!.jobs!.find((j) => j.name.toLowerCase() === String(body.job_name).trim().toLowerCase());
+    }
+
+    const jobName = String(body.job_name || spec?.name || 'adhoc').trim();
+    const command = body.command ?? spec?.command;
+    const entrypoint = body.entrypoint ?? spec?.entrypoint;
+
+    const run = await dispatchContainerJobRun(env, ctx, {
+      envName: normEnv,
+      service,
+      jobName,
+      image: body.image,
+      command,
+      entrypoint,
+      volumes: body.volumes ?? spec?.volumes,
+      networks: body.networks ?? spec?.networks,
+      timeoutSeconds: body.timeout_seconds ?? spec?.timeout_seconds,
+      memoryMb: body.memory_mb ?? spec?.memory_mb,
+      cpuCores: body.cpu_cores ?? spec?.cpu_cores,
+      nodeId: body.node_id,
+      trigger: body.trigger || 'manual',
+      manifest,
+    });
+
+    return new Response(JSON.stringify({ status: 'queued', run }), {
+      status: 202,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  } catch (err: any) {
+    return new Response(JSON.stringify({ error: err?.message || 'Failed to queue job run' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+}
+
+async function handleUpdateJobStatus(request: Request, env: Env): Promise<Response> {
+  try {
+    const payload = (await request.json()) as {
+      run_id?: string;
+      job_name?: string;
+      service?: string;
+      env?: string;
+      node_id?: string;
+      container_id?: string;
+      status?: 'running' | 'succeeded' | 'failed' | 'timed_out';
+      exit_code?: number;
+      output?: string;
+      error?: string;
+      duration_ms?: number;
+      started_at?: string;
+    };
+
+    const runId = String(payload.run_id || '').trim();
+    if (!runId) {
+      return new Response(JSON.stringify({ error: 'run_id required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+
+    const nowIso = new Date().toISOString();
+    const existing = await getJobRunD1(env, runId);
+    const status = payload.status || 'succeeded';
+    const isTerminal = status === 'succeeded' || status === 'failed' || status === 'timed_out';
+
+    const updated: JobRunRecord = {
+      run_id: runId,
+      env: normalizeFleetEnv(payload.env || existing?.env || 'uat'),
+      service: String(payload.service || existing?.service || 'job').toLowerCase(),
+      job_name: String(payload.job_name || existing?.job_name || 'adhoc'),
+      image: existing?.image || '',
+      command: existing?.command || [],
+      trigger: existing?.trigger || 'manual',
+      cron_slot: existing?.cron_slot,
+      node_id: payload.node_id || existing?.node_id || '',
+      container_id: payload.container_id || existing?.container_id,
+      status,
+      exit_code:
+        payload.exit_code !== undefined ? Number(payload.exit_code) : existing?.exit_code ?? null,
+      output: payload.output !== undefined ? String(payload.output) : existing?.output || '',
+      error: payload.error !== undefined ? String(payload.error) : existing?.error || '',
+      duration_ms: Number(payload.duration_ms ?? existing?.duration_ms ?? 0),
+      created_at: existing?.created_at || nowIso,
+      started_at: payload.started_at || existing?.started_at || (status === 'running' ? nowIso : null),
+      finished_at: isTerminal ? nowIso : existing?.finished_at || null,
+      updated_at: nowIso,
+    };
+
+    await upsertJobRunD1(env, updated);
+
+    broadcastTelemetry({
+      type: 'job_run_updated',
+      run: updated,
+    });
+
+    if (isTerminal) {
+      const logRec: LogRecord = {
+        id: `log_job_${Date.now()}_${runId}`,
+        timestamp: nowIso,
+        time_iso: nowIso,
+        level: status === 'succeeded' ? 'info' : 'error',
+        service: 'flarelens-jobs',
+        environment: updated.env,
+        message: `Container job ${updated.env}/${updated.service}:${updated.job_name} (${runId}) ${status} on ${updated.node_id} (exit=${updated.exit_code ?? 0}, ${updated.duration_ms || 0}ms)${updated.error ? `: ${updated.error}` : ''}`,
+        attributes: {
+          run_id: runId,
+          job_name: updated.job_name,
+          target_service: updated.service,
+          node_id: updated.node_id,
+          exit_code: updated.exit_code ?? 0,
+          duration_ms: updated.duration_ms || 0,
+          trigger: updated.trigger,
+        },
+      };
+      ringBuffer.push(logRec);
+      if (ringBuffer.length > RING_BUFFER_MAX) ringBuffer.shift();
+      parquetLogCompactorBuffer.push(logRec);
+      broadcastSSE(logRec);
+    }
+
+    return new Response(JSON.stringify({ status: 'updated', run_id: runId }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  } catch (err: any) {
+    return new Response(JSON.stringify({ error: err?.message || 'Failed to update job status' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+}
+
+async function handleManualCronTick(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as { timestamp?: string };
+  const targetDate = body.timestamp ? new Date(body.timestamp) : new Date();
+  if (Number.isNaN(targetDate.getTime())) {
+    return new Response(JSON.stringify({ error: 'Invalid ISO timestamp' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+  const result = await evaluateScheduledCronJobs(env, ctx, targetDate);
+  return new Response(JSON.stringify(result), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  });
 }
 
 

@@ -1,6 +1,112 @@
 import type { NodeRecord } from '../types';
 import type { FleetPlacementRecord } from './db';
 
+const CRON_MACROS: Record<string, string> = {
+  '@hourly': '0 * * * *',
+  '@daily': '0 0 * * *',
+  '@midnight': '0 0 * * *',
+  '@weekly': '0 0 * * 0',
+  '@monthly': '0 0 1 * *',
+};
+
+export interface ParsedCronSchedule {
+  minutes: Set<number>;
+  hours: Set<number>;
+  daysOfMonth: Set<number>;
+  months: Set<number>;
+  daysOfWeek: Set<number>;
+  domWildcard: boolean;
+  dowWildcard: boolean;
+}
+
+function parseCronField(
+  rawField: string,
+  minVal: number,
+  maxVal: number,
+  mapSunday7 = false
+): { values: Set<number>; isWildcard: boolean } {
+  const field = rawField.trim();
+  if (!field) throw new Error('Empty cron field');
+  const isWildcard = field === '*';
+  const values = new Set<number>();
+
+  for (const part of field.split(',')) {
+    const token = part.trim();
+    if (!token) throw new Error(`Invalid empty list item in "${rawField}"`);
+    const [rangePart, stepPart, extraSlash] = token.split('/');
+    if (extraSlash !== undefined) throw new Error(`Invalid step syntax "${token}"`);
+    const step = stepPart !== undefined ? Number.parseInt(stepPart, 10) : 1;
+    if (!Number.isInteger(step) || step <= 0 || String(step) !== (stepPart ?? '1').trim()) {
+      throw new Error(`Invalid cron step "${stepPart}"`);
+    }
+    let start = minVal;
+    let end = maxVal;
+    if (rangePart !== '*') {
+      if (rangePart.includes('-')) {
+        const [sStr, eStr, extraDash] = rangePart.split('-');
+        if (extraDash !== undefined) throw new Error(`Invalid cron range "${rangePart}"`);
+        start = Number.parseInt(sStr, 10);
+        end = Number.parseInt(eStr, 10);
+        if (
+          !Number.isInteger(start) ||
+          !Number.isInteger(end) ||
+          String(start) !== sStr.trim() ||
+          String(end) !== eStr.trim() ||
+          start > end
+        ) {
+          throw new Error(`Invalid cron range "${rangePart}"`);
+        }
+      } else {
+        const single = Number.parseInt(rangePart, 10);
+        if (!Number.isInteger(single) || String(single) !== rangePart.trim()) {
+          throw new Error(`Invalid cron value "${rangePart}"`);
+        }
+        start = single;
+        end = stepPart !== undefined ? maxVal : single;
+      }
+    }
+    if (start < minVal || end > maxVal) {
+      throw new Error(`Cron value "${token}" out of bounds (${minVal}..${maxVal})`);
+    }
+    for (let v = start; v <= end; v += step) {
+      values.add(mapSunday7 && v === 7 ? 0 : v);
+    }
+  }
+  return { values, isWildcard };
+}
+
+export function parseCronExpression(rawExpr: string): ParsedCronSchedule {
+  const trimmed = String(rawExpr || '').trim().toLowerCase();
+  const normalized = CRON_MACROS[trimmed] || trimmed;
+  const parts = normalized.split(/\s+/).filter(Boolean);
+  if (parts.length !== 5) {
+    throw new Error(`Cron expression "${rawExpr}" must have 5 fields (minute hour day-of-month month day-of-week)`);
+  }
+  const minRes = parseCronField(parts[0], 0, 59);
+  const hourRes = parseCronField(parts[1], 0, 23);
+  const domRes = parseCronField(parts[2], 1, 31);
+  const monthRes = parseCronField(parts[3], 1, 12);
+  const dowRes = parseCronField(parts[4], 0, 7, true);
+  return {
+    minutes: minRes.values,
+    hours: hourRes.values,
+    daysOfMonth: domRes.values,
+    months: monthRes.values,
+    daysOfWeek: dowRes.values,
+    domWildcard: domRes.isWildcard,
+    dowWildcard: dowRes.isWildcard,
+  };
+}
+
+export function validateCronExpression(rawExpr: string): { valid: boolean; error?: string } {
+  try {
+    parseCronExpression(rawExpr);
+    return { valid: true };
+  } catch (err: any) {
+    return { valid: false, error: err?.message || 'Invalid cron expression' };
+  }
+}
+
 export type FleetPlacementStrategy = 'spread' | 'binpack' | 'pinned';
 
 export interface FleetWorkerSpec {
@@ -9,6 +115,19 @@ export interface FleetWorkerSpec {
   entrypoint?: string[];
   volumes?: string[];
   networks?: string[];
+  memory_mb?: number;
+  cpu_cores?: number;
+}
+
+export interface FleetJobSpec {
+  name: string;
+  schedule?: string;
+  command?: string[] | string;
+  entrypoint?: string[] | string;
+  volumes?: string[];
+  networks?: string[];
+  timeout_seconds?: number;
+  concurrency_policy?: 'forbid' | 'allow' | 'replace';
   memory_mb?: number;
   cpu_cores?: number;
 }
@@ -59,6 +178,7 @@ export interface FleetServiceManifest {
   entrypoint?: string[] | string;
   healthcheck?: FleetHealthcheckSpec;
   workers?: FleetWorkerSpec[];
+  jobs?: FleetJobSpec[];
   env_vars?: Record<string, string>;
   secrets?: Record<string, string>;
 }
@@ -152,6 +272,25 @@ export const FLEET_JSON_SCHEMA = {
           entrypoint: { type: 'array', items: { type: 'string' } },
           volumes: { type: 'array', items: { type: 'string' } },
           networks: { type: 'array', items: { type: 'string' } },
+          memory_mb: { type: 'integer', minimum: 32, maximum: 262144 },
+          cpu_cores: { type: 'number', minimum: 0.05, maximum: 256 },
+        },
+      },
+    },
+    jobs: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['name'],
+        properties: {
+          name: { type: 'string', pattern: '^[a-z0-9-]+$' },
+          schedule: { type: 'string' },
+          command: { oneOf: [{ type: 'array', items: { type: 'string' } }, { type: 'string' }] },
+          entrypoint: { oneOf: [{ type: 'array', items: { type: 'string' } }, { type: 'string' }] },
+          volumes: { type: 'array', items: { type: 'string' } },
+          networks: { type: 'array', items: { type: 'string' } },
+          timeout_seconds: { type: 'integer', minimum: 1, maximum: 86400, default: 600 },
+          concurrency_policy: { type: 'string', enum: ['forbid', 'allow', 'replace'], default: 'forbid' },
           memory_mb: { type: 'integer', minimum: 32, maximum: 262144 },
           cpu_cores: { type: 'number', minimum: 0.05, maximum: 256 },
         },
@@ -282,6 +421,7 @@ export function buildPromotedManifest(
       command: src.command ?? tgt.command,
       entrypoint: src.entrypoint ?? tgt.entrypoint,
       workers: tgt.workers ?? src.workers,
+      jobs: tgt.jobs ?? src.jobs,
       replicas: tgt.replicas ?? src.replicas,
       memory_mb: tgt.memory_mb ?? src.memory_mb,
       cpu_cores: tgt.cpu_cores ?? src.cpu_cores,
@@ -315,6 +455,15 @@ export function buildPromotedManifest(
           ...w,
           ...(w.networks ? { networks: w.networks.map(swapEnvToken) } : {}),
           ...(w.volumes ? { volumes: w.volumes.map(swapEnvToken) } : {}),
+        })),
+      }
+      : {}),
+    ...(src.jobs
+      ? {
+        jobs: src.jobs.map((j) => ({
+          ...j,
+          ...(j.networks ? { networks: j.networks.map(swapEnvToken) } : {}),
+          ...(j.volumes ? { volumes: j.volumes.map(swapEnvToken) } : {}),
         })),
       }
       : {}),
@@ -402,6 +551,45 @@ export function validateFleetManifest(m: any): { valid: boolean; errors: string[
       if (!Number.isInteger(val) || val < 1 || val > 65535) {
         errors.push(`Invalid '${portField}' (${String(m[portField])}): must be integer 1..65535`);
       }
+    }
+  }
+  if (m.jobs !== undefined) {
+    if (!Array.isArray(m.jobs)) {
+      errors.push(`Invalid 'jobs': must be an array of JobSpec objects`);
+    } else {
+      const seenNames = new Set<string>();
+      m.jobs.forEach((j: any, idx: number) => {
+        if (!j || typeof j !== 'object' || typeof j.name !== 'string' || !/^[a-z0-9-]+$/.test(j.name)) {
+          errors.push(`Invalid jobs[${idx}].name (${String(j?.name)}): must match ^[a-z0-9-]+$`);
+          return;
+        }
+        if (seenNames.has(j.name)) {
+          errors.push(`Duplicate job name '${j.name}' in jobs[]`);
+        }
+        seenNames.add(j.name);
+        if (!j.command && !j.entrypoint) {
+          errors.push(`Invalid jobs[${idx}] ('${j.name}'): either 'command' or 'entrypoint' is required`);
+        }
+        if (j.schedule !== undefined && j.schedule !== '') {
+          if (typeof j.schedule !== 'string') {
+            errors.push(`Invalid jobs[${idx}].schedule: must be a cron string`);
+          } else {
+            const cronCheck = validateCronExpression(j.schedule);
+            if (!cronCheck.valid) {
+              errors.push(`Invalid jobs[${idx}].schedule ('${j.schedule}'): ${cronCheck.error}`);
+            }
+          }
+        }
+        if (j.concurrency_policy !== undefined && !['forbid', 'allow', 'replace'].includes(j.concurrency_policy)) {
+          errors.push(`Invalid jobs[${idx}].concurrency_policy ('${String(j.concurrency_policy)}'): must be forbid, allow, or replace`);
+        }
+        if (j.timeout_seconds !== undefined) {
+          const ts = Number(j.timeout_seconds);
+          if (!Number.isInteger(ts) || ts < 1 || ts > 86400) {
+            errors.push(`Invalid jobs[${idx}].timeout_seconds (${String(j.timeout_seconds)}): must be integer 1..86400`);
+          }
+        }
+      });
     }
   }
   return { valid: errors.length === 0, errors };

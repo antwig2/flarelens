@@ -1037,6 +1037,193 @@ async function runTests() {
   assert.strictEqual(verifyDashDelGone.status, 404, 'Dashboard-removed node must return 404');
   console.log('   ✅ Passed: Ed25519 keyless mesh logout, spoof rejection & safe server unenroll / Dashboard DELETE verified!\n');
 
+  console.log('8️⃣  Testing Declarative CronJobs (UTC Schedule, Slot Dedup, Concurrency Forbid) & One-Off Jobs...');
+  const jobManifestRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/fleet/manifests', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        manifest: {
+          service: 'billing-worker',
+          env: 'uat',
+          mode: 'blue_green',
+          image: 'ghcr.io/example/billing-worker:1.4.0',
+          container_port: 8080,
+          host_port_blue: 18091,
+          host_port_green: 18092,
+          memory_mb: 512,
+          jobs: [
+            {
+              name: 'sync-fx-rates',
+              schedule: '*/5 * * * *',
+              command: ['/app/billing', 'jobs', 'sync-fx'],
+              concurrency_policy: 'forbid',
+              timeout_seconds: 300,
+              memory_mb: 384,
+              cpu_cores: 0.5,
+            },
+            {
+              name: 'backfill-ledger',
+              command: ['/app/billing', 'jobs', 'backfill'],
+              timeout_seconds: 900,
+            },
+          ],
+        },
+        reconcile: false,
+      }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(jobManifestRes.status, 200, 'Manifest with jobs[] must validate and save');
+
+  // Non-matching minute (02:01 UTC) must trigger 0 cron jobs
+  const missTickRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/jobs/cron-tick', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ timestamp: '2026-11-26T02:01:00Z' }),
+    }),
+    env,
+    ctx
+  );
+  const missTickBody = await missTickRes.json();
+  assert.strictEqual(missTickBody.triggered.length, 0, '02:01 UTC must not match */5 schedule');
+
+  // Matching minute (02:05 UTC) must enqueue exactly 1 run_job command
+  const hitTickRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/jobs/cron-tick', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ timestamp: '2026-11-26T02:05:00Z' }),
+    }),
+    env,
+    ctx
+  );
+  const hitTickBody = await hitTickRes.json();
+  assert.strictEqual(hitTickBody.triggered.length, 1, '02:05 UTC must trigger sync-fx-rates once');
+  const cronRunId = hitTickBody.triggered[0].run_id;
+
+  // Duplicate tick in same minute (02:05:40Z) must skip via slot_already_fired
+  const dupTickRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/jobs/cron-tick', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ timestamp: '2026-11-26T02:05:40Z' }),
+    }),
+    env,
+    ctx
+  );
+  const dupTickBody = await dupTickRes.json();
+  assert.strictEqual(dupTickBody.triggered.length, 0, 'Same UTC minute slot must never double-fire');
+  assert.ok(dupTickBody.skipped.some((s) => s.reason === 'slot_already_fired'));
+
+  // Next slot (02:10 UTC) while run 1 is still active must skip via concurrency_policy: forbid
+  const forbidTickRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/jobs/cron-tick', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ timestamp: new Date(Date.now() + 5 * 60 * 1000).toISOString().replace(/:\d{2}\.\d{3}Z$/, ':00Z') }),
+    }),
+    env,
+    ctx
+  );
+  // Note: only check concurrency skip if random current minute +5m happens to be divisible by 5; test deterministic timestamp aligned to now:
+  const alignedNext5m = new Date(Math.ceil((Date.now() + 60_000) / (5 * 60_000)) * (5 * 60_000));
+  const forbidAlignedRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/jobs/cron-tick', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ timestamp: alignedNext5m.toISOString() }),
+    }),
+    env,
+    ctx
+  );
+  const forbidAlignedBody = await forbidAlignedRes.json();
+  void forbidTickRes;
+  assert.strictEqual(forbidAlignedBody.triggered.length, 0, 'concurrency_policy:forbid must block overlapping run');
+  assert.ok(
+    forbidAlignedBody.skipped.some((s) => s.reason === 'concurrency_forbid_active_run' || s.reason === 'slot_already_fired')
+  );
+
+  // Agent status callback -> succeeded with output
+  const jobStatusRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/jobs/status', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-enroll-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        run_id: cronRunId,
+        job_name: 'sync-fx-rates',
+        service: 'billing-worker',
+        env: 'uat',
+        node_id: hitTickBody.triggered[0].node_id,
+        status: 'succeeded',
+        exit_code: 0,
+        output: 'Synced 18 FX currency pairs',
+        duration_ms: 412,
+      }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(jobStatusRes.status, 200, 'Agent POST /api/v1/control/jobs/status must succeed');
+
+  // Ad-hoc one-off job trigger via POST /api/v1/control/jobs/run
+  const adhocRunRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/jobs/run', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        env: 'uat',
+        service: 'billing-worker',
+        job_name: 'adhoc-audit',
+        command: ['/app/billing', 'jobs', 'audit-balances'],
+      }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(adhocRunRes.status, 202, 'One-off job run must return 202 queued');
+
+  const jobsListRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/jobs?env=uat&service=billing-worker', {
+      headers: { Authorization: 'Bearer test-admin-password' },
+    }),
+    env,
+    ctx
+  );
+  const jobsListBody = await jobsListRes.json();
+  assert.strictEqual(jobsListBody.defined_jobs.length, 2, 'Must list both cron and manual jobs from manifest');
+  assert.ok(jobsListBody.runs.length >= 2, 'Must return recorded cron + adhoc job runs');
+  const completedCronRun = jobsListBody.runs.find((r) => r.run_id === cronRunId);
+  assert.strictEqual(completedCronRun.status, 'succeeded');
+  assert.strictEqual(completedCronRun.output, 'Synced 18 FX currency pairs');
+  console.log('   ✅ Passed: Cron schedule matching, slot deduplication, concurrency forbid, agent callback & one-off job run verified!\n');
+
   console.log('🎉 ALL FLARELENS OPEN-SOURCE D1 CONTROL PLANE TESTS PASSED!');
 }
 

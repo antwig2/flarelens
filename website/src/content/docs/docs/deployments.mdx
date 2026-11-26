@@ -55,3 +55,33 @@ curl -X POST https://ops.example.com/api/v1/control/fleet/promote \
 ```
 
 If error rates climb after a release, selecting **Rollback** on any historical `rev-N` snapshot restores exact image digests, environment variables, and even deleted service definitions in a single atomic revision.
+
+## Scheduled CronJobs & One-Off Container Jobs
+
+Declare recurring `CronJob` schedules or on-demand maintenance commands directly inside a service manifest under `jobs:`. The Cloudflare Control Plane evaluates 5-field UTC cron expressions every minute (enforcing single-execution slot keys and `concurrency_policy: forbid`) while `flarelensd` executes the job inside an isolated ephemeral container (`--rm` semantics) on your host node with hard cgroup caps, decrypted Vault secrets, and private `*.mesh` DNS:
+
+```yaml title="Declarative CronJobs & One-Off Jobs"
+service: checkout-api
+env: prod
+image: ghcr.io/example/checkout-api:1.4.2
+jobs:
+  - name: nightly-reconcile
+    schedule: "0 2 * * *"
+    command: ["/app/checkout", "jobs", "reconcile"]
+    concurrency_policy: forbid
+    timeout_seconds: 900
+    memory_mb: 512
+    cpu_cores: 0.5
+  - name: backfill-invoices
+    command: ["/app/checkout", "jobs", "backfill"]
+    timeout_seconds: 1800
+```
+
+Trigger any declared job—or an ad-hoc one-off command—from the **Fleet GitOps** dashboard or over HTTP:
+
+```bash title="Trigger an ephemeral one-off container job"
+curl -X POST https://ops.example.com/api/v1/control/jobs/run \
+  -H "Authorization: Bearer $FLARELENS_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"env":"prod","service":"checkout-api","job_name":"backfill-invoices"}'
+```

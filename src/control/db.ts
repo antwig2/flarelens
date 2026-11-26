@@ -79,6 +79,30 @@ const SCHEMA_STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_fleet_placements_node ON fleet_placements(node_id)`,
   `CREATE INDEX IF NOT EXISTS idx_fleet_placements_service ON fleet_placements(env, service, replica_index ASC)`,
+  `CREATE TABLE IF NOT EXISTS job_runs (
+    run_id TEXT PRIMARY KEY,
+    env TEXT NOT NULL,
+    service TEXT NOT NULL,
+    job_name TEXT NOT NULL,
+    image TEXT NOT NULL DEFAULT '',
+    command_json TEXT NOT NULL DEFAULT '[]',
+    trigger TEXT NOT NULL DEFAULT 'manual',
+    cron_slot TEXT NOT NULL DEFAULT '',
+    node_id TEXT NOT NULL DEFAULT '',
+    container_id TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'queued',
+    exit_code INTEGER,
+    output TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    finished_at TEXT,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_job_runs_recent ON job_runs(created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_runs_lookup ON job_runs(env, service, job_name, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_runs_cron_slot ON job_runs(cron_slot)`,
 ];
 
 const initializedDbs = new WeakSet<object>();
@@ -1228,4 +1252,254 @@ export async function updatePlacementRuntimePort(
       }
     } catch {}
   }
+}
+
+// ============================================================================
+// Declarative CronJobs & One-Off Container Job Runs
+// ============================================================================
+
+export type JobRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'timed_out';
+
+export interface JobRunRecord {
+  run_id: string;
+  env: string;
+  service: string;
+  job_name: string;
+  image: string;
+  command: string[];
+  trigger: 'cron' | 'manual' | 'api' | string;
+  cron_slot?: string;
+  node_id: string;
+  container_id?: string;
+  status: JobRunStatus;
+  exit_code?: number | null;
+  output?: string;
+  error?: string;
+  duration_ms?: number;
+  created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  updated_at: string;
+}
+
+interface RawJobRunRow {
+  run_id: string;
+  env: string;
+  service: string;
+  job_name: string;
+  image: string;
+  command_json: string;
+  trigger: string;
+  cron_slot: string;
+  node_id: string;
+  container_id: string;
+  status: string;
+  exit_code: number | null;
+  output: string;
+  error: string;
+  duration_ms: number;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  updated_at: string;
+}
+
+function hydrateJobRunRow(row: RawJobRunRow): JobRunRecord {
+  let command: string[] = [];
+  try {
+    const parsed = row.command_json ? JSON.parse(row.command_json) : [];
+    if (Array.isArray(parsed)) command = parsed.map(String);
+  } catch {}
+  return {
+    run_id: row.run_id,
+    env: row.env,
+    service: row.service,
+    job_name: row.job_name,
+    image: row.image || '',
+    command,
+    trigger: row.trigger || 'manual',
+    cron_slot: row.cron_slot || undefined,
+    node_id: row.node_id || '',
+    container_id: row.container_id || undefined,
+    status: (row.status as JobRunStatus) || 'queued',
+    exit_code: row.exit_code !== null && row.exit_code !== undefined ? Number(row.exit_code) : null,
+    output: row.output || '',
+    error: row.error || '',
+    duration_ms: Number(row.duration_ms || 0),
+    created_at: row.created_at,
+    started_at: row.started_at || null,
+    finished_at: row.finished_at || null,
+    updated_at: row.updated_at,
+  };
+}
+
+export async function upsertJobRunD1(env: Env, run: JobRunRecord): Promise<void> {
+  const nowIso = new Date().toISOString();
+  const cmdJson = JSON.stringify(Array.isArray(run.command) ? run.command : []);
+  const cappedOutput = String(run.output || '').slice(-32768);
+  const cappedError = String(run.error || '').slice(0, 4096);
+
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    await db
+      .prepare(
+        `INSERT INTO job_runs (
+          run_id, env, service, job_name, image, command_json, trigger, cron_slot,
+          node_id, container_id, status, exit_code, output, error, duration_ms,
+          created_at, started_at, finished_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(run_id) DO UPDATE SET
+          node_id = CASE WHEN excluded.node_id != '' THEN excluded.node_id ELSE job_runs.node_id END,
+          container_id = CASE WHEN excluded.container_id != '' THEN excluded.container_id ELSE job_runs.container_id END,
+          status = excluded.status,
+          exit_code = COALESCE(excluded.exit_code, job_runs.exit_code),
+          output = CASE WHEN excluded.output != '' THEN excluded.output ELSE job_runs.output END,
+          error = CASE WHEN excluded.error != '' THEN excluded.error ELSE job_runs.error END,
+          duration_ms = CASE WHEN excluded.duration_ms > 0 THEN excluded.duration_ms ELSE job_runs.duration_ms END,
+          started_at = COALESCE(excluded.started_at, job_runs.started_at),
+          finished_at = COALESCE(excluded.finished_at, job_runs.finished_at),
+          updated_at = excluded.updated_at`
+      )
+      .bind(
+        run.run_id,
+        run.env.toLowerCase(),
+        run.service.toLowerCase(),
+        run.job_name,
+        run.image || '',
+        cmdJson,
+        run.trigger || 'manual',
+        run.cron_slot || '',
+        run.node_id || '',
+        run.container_id || '',
+        run.status || 'queued',
+        run.exit_code !== undefined && run.exit_code !== null ? Number(run.exit_code) : null,
+        cappedOutput,
+        cappedError,
+        Number(run.duration_ms || 0),
+        run.created_at || nowIso,
+        run.started_at ?? null,
+        run.finished_at ?? null,
+        run.updated_at || nowIso
+      )
+      .run();
+    return;
+  }
+
+  if (env.FLEET_KV) {
+    try {
+      const raw = await env.FLEET_KV.get('fleet:job_runs:recent');
+      const list: JobRunRecord[] = raw ? JSON.parse(raw) : [];
+      const idx = list.findIndex((r) => r.run_id === run.run_id);
+      const merged: JobRunRecord =
+        idx >= 0
+          ? {
+              ...list[idx],
+              ...run,
+              output: cappedOutput || list[idx].output,
+              error: cappedError || list[idx].error,
+              updated_at: run.updated_at || nowIso,
+            }
+          : { ...run, output: cappedOutput, error: cappedError, updated_at: run.updated_at || nowIso };
+      if (idx >= 0) list[idx] = merged;
+      else list.unshift(merged);
+      if (list.length > 100) list.length = 100;
+      await env.FLEET_KV.put('fleet:job_runs:recent', JSON.stringify(list));
+    } catch {}
+  }
+}
+
+export async function getJobRunD1(env: Env, runId: string): Promise<JobRunRecord | null> {
+  if (!runId) return null;
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    const row = await db
+      .prepare(`SELECT * FROM job_runs WHERE run_id = ?`)
+      .bind(runId)
+      .first<RawJobRunRow>();
+    return row ? hydrateJobRunRow(row) : null;
+  }
+  if (env.FLEET_KV) {
+    try {
+      const raw = await env.FLEET_KV.get('fleet:job_runs:recent');
+      const list: JobRunRecord[] = raw ? JSON.parse(raw) : [];
+      return list.find((r) => r.run_id === runId) || null;
+    } catch {}
+  }
+  return null;
+}
+
+export async function listJobRunsD1(
+  env: Env,
+  opts?: { env?: string; service?: string; job_name?: string; limit?: number }
+): Promise<JobRunRecord[]> {
+  const limit = Math.max(1, Math.min(200, Number(opts?.limit || 50)));
+  const cleanEnv = opts?.env ? opts.env.trim().toLowerCase() : '';
+  const cleanSvc = opts?.service ? opts.service.trim().toLowerCase() : '';
+  const cleanJob = opts?.job_name ? opts.job_name.trim() : '';
+
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    const clauses: string[] = [];
+    const binds: any[] = [];
+    if (cleanEnv) {
+      clauses.push('LOWER(env) = ?');
+      binds.push(cleanEnv);
+    }
+    if (cleanSvc) {
+      clauses.push('LOWER(service) = ?');
+      binds.push(cleanSvc);
+    }
+    if (cleanJob) {
+      clauses.push('LOWER(job_name) = ?');
+      binds.push(cleanJob.toLowerCase());
+    }
+    const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    const res = await db
+      .prepare(`SELECT * FROM job_runs ${whereSql} ORDER BY created_at DESC LIMIT ?`)
+      .bind(...binds, limit)
+      .all<RawJobRunRow>();
+    return (res.results || []).map(hydrateJobRunRow);
+  }
+
+  if (env.FLEET_KV) {
+    try {
+      const raw = await env.FLEET_KV.get('fleet:job_runs:recent');
+      let list: JobRunRecord[] = raw ? JSON.parse(raw) : [];
+      if (cleanEnv) list = list.filter((r) => r.env.toLowerCase() === cleanEnv);
+      if (cleanSvc) list = list.filter((r) => r.service.toLowerCase() === cleanSvc);
+      if (cleanJob) list = list.filter((r) => r.job_name.toLowerCase() === cleanJob.toLowerCase());
+      return list.slice(0, limit);
+    } catch {}
+  }
+  return [];
+}
+
+export async function hasCronSlotFiredD1(env: Env, cronSlot: string): Promise<boolean> {
+  if (!cronSlot) return false;
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    const row = await db
+      .prepare(`SELECT run_id FROM job_runs WHERE cron_slot = ? LIMIT 1`)
+      .bind(cronSlot)
+      .first<{ run_id: string }>();
+    return Boolean(row?.run_id);
+  }
+  if (env.FLEET_KV) {
+    try {
+      const raw = await env.FLEET_KV.get('fleet:job_runs:recent');
+      const list: JobRunRecord[] = raw ? JSON.parse(raw) : [];
+      return list.some((r) => r.cron_slot === cronSlot);
+    } catch {}
+  }
+  return false;
+}
+
+export async function listActiveJobRunsForSpecD1(
+  env: Env,
+  envName: string,
+  service: string,
+  jobName: string
+): Promise<JobRunRecord[]> {
+  const runs = await listJobRunsD1(env, { env: envName, service, job_name: jobName, limit: 10 });
+  return runs.filter((r) => r.status === 'queued' || r.status === 'running');
 }

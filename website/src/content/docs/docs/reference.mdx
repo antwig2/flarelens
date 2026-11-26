@@ -25,6 +25,7 @@ Add `# $schema: https://flarelens.dev/schemas/fleet.schema.json` at the top of Y
 | `placement` | `object` | `{ strategy: "spread" \| "binpack" \| "pinned", replicas: number, required_tags: string[], node_id?: string }`. |
 | `resources` | `object` | Hard Linux kernel cgroup caps: `{ memory_mb: integer, cpu_cores: number }`. |
 | `worker` | `object` | Optional companion worker container with dedicated `command[]` and `resources` override. |
+| `jobs` | `JobSpec[]` | Scheduled UTC `CronJob`s (`schedule: "0 2 * * *"`) and on-demand one-off container commands (`concurrency_policy`, `timeout_seconds`, `memory_mb`, `cpu_cores`). |
 | `pre_deploy_snapshot` | `boolean` | Stream a gzipped `pg_dump` snapshot to R2 prior to running schema migrations. |
 | `run_migrations` / `migration_command` | `boolean` / `string[]` | Execute a one-shot migration container before booting the candidate Blue/Green slot. |
 | `env_vars` | `Record<string, string>` | Non-secret runtime environment variables merged with encrypted Vault secrets. |
@@ -96,4 +97,7 @@ jobs:
 | `POST /api/v1/control/nodes/:id/leave` | Agent / Operator Token | Drain stateless replicas, fence stateful volumes, and unenroll node + mesh peer from D1. |
 | `POST /api/v1/control/mesh/leave` | Agent Token / Ed25519 Proof | Deregister a server or SSO workstation peer from the WireGuard mesh. |
 | `POST /api/v1/control/nodes/:id/prune-images` | Operator / API Token | Queue two-pass Docker image garbage collection (dangling `>24h`, unused `>72h`). |
+| `GET /api/v1/control/jobs` | Operator / API Token | List declared manifest jobs (with `next_run_at`) and recent D1 `job_runs` history. |
+| `POST /api/v1/control/jobs/run` | Operator / API Token | Queue a declared manifest job or ad-hoc ephemeral container command (`run_job`). |
+| `POST /api/v1/control/jobs/status` | Agent Token | Host daemon callback reporting job `running` / `succeeded` / `failed` / `timed_out`, `exit_code`, and output logs. |
 | `POST /api/v1/control/agent/releases` | Operator / API Token | Publish SHA-256 verified `flarelensd` binary release for zero-SSH OTA rollouts. |

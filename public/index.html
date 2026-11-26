@@ -1947,6 +1947,64 @@
           </div>
         </div>
 
+        <!-- Declarative Scheduled CronJobs & One-Off Container Jobs -->
+        <div class="card">
+          <div class="card-header" style="flex-wrap:wrap; gap:0.65rem;">
+            <div>
+              <div class="card-title">
+                <span>Scheduled CronJobs &amp; One-Off Container Jobs</span>
+              </div>
+              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
+                Evaluated every minute at the Cloudflare edge and executed in isolated ephemeral Docker containers (<code>--rm</code>) with Vault secrets &amp; WireGuard <code>*.mesh</code> DNS.
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+              <button type="button" class="btn btn-primary" id="btnOpenRunJobDialog">▶ Run One-Off Job</button>
+            </div>
+          </div>
+
+          <div id="definedJobsSection" hidden style="border-bottom:1px solid var(--border);">
+            <div tabindex="0" role="region" aria-labelledby="definedJobsTableCaption" class="fleet-gitops-table-wrap">
+              <table class="data-table">
+                <caption id="definedJobsTableCaption" class="sr-only">Declared Manifest CronJobs and One-Off Jobs</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Job</th>
+                    <th scope="col">Service / Env</th>
+                    <th scope="col">Schedule (UTC)</th>
+                    <th scope="col">Next Run</th>
+                    <th scope="col">Last Outcome</th>
+                    <th scope="col">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="definedJobsTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div tabindex="0" role="region" aria-labelledby="jobRunsTableCaption" class="fleet-gitops-table-wrap">
+            <table class="data-table">
+              <caption id="jobRunsTableCaption" class="sr-only">Recent Container Job Execution History</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Job / Run ID</th>
+                  <th scope="col">Service / Env</th>
+                  <th scope="col">Trigger</th>
+                  <th scope="col">Host Node</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Duration</th>
+                  <th scope="col">Output</th>
+                </tr>
+              </thead>
+              <tbody id="jobRunsTableBody">
+                <tr>
+                  <td colspan="7" style="text-align:center; color:var(--text-muted); padding:1.5rem;">No container job executions recorded yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <!-- Zero-SSH Host Agent OTA Rollouts -->
         <div class="card">
           <div class="card-header" style="flex-wrap:wrap; gap:0.65rem;">
@@ -2961,6 +3019,65 @@
       <button value="cancel" autofocus class="btn">Cancel</button>
       <button value="remove" class="btn" style="background:#be123c; color:#fff; border-color:#9f1239;">🗑 Remove Node</button>
     </form>
+  </dialog>
+
+  <!-- MODAL: RUN ONE-OFF CONTAINER JOB -->
+  <dialog id="runJobDialog" class="ota-dialog" aria-labelledby="runJobDialogTitle" closedby="closerequest">
+    <div>
+      <h1 id="runJobDialogTitle" style="font-size:1.05rem; font-weight:700; margin:0;">Run Ephemeral Container Job</h1>
+      <p style="font-size:0.78rem; color:var(--text-muted); margin-top:0.3rem; line-height:1.45;">
+        Runs an isolated <code>docker run --rm</code> container on your host node using the service's live image, Vault secrets, and private WireGuard <code>*.mesh</code> DNS.
+      </p>
+    </div>
+    <form id="runJobForm" style="display:flex; flex-direction:column; gap:0.75rem;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.65rem;">
+        <div>
+          <label for="runJobEnvSelect" style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:4px;">Environment</label>
+          <select id="runJobEnvSelect" class="form-input" style="width:100%;">
+            <option value="uat">uat</option>
+            <option value="prod">prod</option>
+            <option value="staging">staging</option>
+            <option value="infra">infra</option>
+          </select>
+        </div>
+        <div>
+          <label for="runJobServiceInput" style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:4px;">Service Name</label>
+          <input id="runJobServiceInput" type="text" required autofocus placeholder="e.g. checkout-api" class="form-input" style="width:100%;">
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.65rem;">
+        <div>
+          <label for="runJobNameInput" style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:4px;">Job Name</label>
+          <input id="runJobNameInput" type="text" placeholder="adhoc" class="form-input" style="width:100%;">
+        </div>
+        <div>
+          <label for="runJobTimeoutInput" style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:4px;">Timeout (seconds)</label>
+          <input id="runJobTimeoutInput" type="number" min="5" max="86400" value="600" class="form-input" style="width:100%;">
+        </div>
+      </div>
+      <div>
+        <label for="runJobCommandInput" style="display:block; font-size:0.74rem; color:var(--text-muted); margin-bottom:4px;">Command (required unless triggering a declared manifest job)</label>
+        <input id="runJobCommandInput" type="text" placeholder="/app/server jobs reconcile-invoices" class="form-input" style="width:100%; font-family:var(--font-mono);">
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.25rem;">
+        <button type="button" class="btn" id="btnCancelRunJob">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btnSubmitRunJob">▶ Queue Container Job</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- MODAL: JOB EXECUTION LOG OUTPUT -->
+  <dialog id="jobOutputDialog" class="ota-dialog fleet-wide-dialog" aria-labelledby="jobOutputDialogTitle" closedby="any">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.75rem;">
+      <div>
+        <h1 id="jobOutputDialogTitle" style="font-size:1.05rem; font-weight:700; margin:0;">Job Execution Output</h1>
+        <div id="jobOutputDialogMeta" style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono); margin-top:0.25rem;"></div>
+      </div>
+      <form method="dialog">
+        <button value="close" autofocus class="btn" style="padding:0.3rem 0.7rem;">Close</button>
+      </form>
+    </div>
+    <pre id="jobOutputDialogPre" style="margin:0; padding:0.85rem; border-radius:8px; background:#050811; border:1px solid var(--border); color:#e2e8f0; font-family:var(--font-mono); font-size:0.75rem; line-height:1.5; max-block-size:58vh; overflow:auto; white-space:pre-wrap; word-break:break-word;"></pre>
   </dialog>
 
   <!-- MODAL: CREATE / EDIT DECLARATIVE FLEET SERVICE (ZERO-GIT) -->
@@ -6290,6 +6407,7 @@
           }
           renderAgentOtaTable(otaData.nodes || [], latestAgentReleaseCache);
         }
+        await fetchFleetJobsAndRuns();
       } catch (err) {
         console.error('Failed to fetch Fleet GitOps & OTA status:', err);
       }
@@ -6482,6 +6600,213 @@
     attachDialogLightDismissFallback(fleetDeleteConfirmDialog);
     attachDialogLightDismissFallback(drainNodeConfirmDialog);
     attachDialogLightDismissFallback(removeNodeConfirmDialog);
+    const runJobDialog = document.getElementById('runJobDialog');
+    const runJobForm = document.getElementById('runJobForm');
+    const jobOutputDialog = document.getElementById('jobOutputDialog');
+    attachDialogLightDismissFallback(jobOutputDialog);
+
+    document.getElementById('btnOpenRunJobDialog')?.addEventListener('click', () => {
+      if (!runJobDialog || typeof runJobDialog.showModal !== 'function') return;
+      const envSel = document.getElementById('runJobEnvSelect');
+      if (envSel && activeGitopsEnvFilter) envSel.value = activeGitopsEnvFilter;
+      runJobDialog.showModal();
+    });
+
+    document.getElementById('btnCancelRunJob')?.addEventListener('click', () => {
+      runJobDialog?.close();
+    });
+
+    runJobForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const submitBtn = document.getElementById('btnSubmitRunJob');
+      if (submitBtn) submitBtn.disabled = true;
+      try {
+        const envVal = document.getElementById('runJobEnvSelect')?.value || 'uat';
+        const svcVal = document.getElementById('runJobServiceInput')?.value.trim() || '';
+        const jobVal = document.getElementById('runJobNameInput')?.value.trim() || 'adhoc';
+        const cmdVal = document.getElementById('runJobCommandInput')?.value.trim() || '';
+        const timeoutVal = Number(document.getElementById('runJobTimeoutInput')?.value || 600);
+
+        const payload = {
+          env: envVal,
+          service: svcVal,
+          job_name: jobVal,
+          timeout_seconds: timeoutVal,
+          ...(cmdVal ? { command: cmdVal } : {}),
+        };
+        const resp = await fetch('/api/v1/control/jobs/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          showToast(`Failed to queue job: ${data.error || resp.statusText}`, true);
+          return;
+        }
+        runJobDialog?.close();
+        showToast(`Queued job ${envVal}/${svcVal}:${jobVal} on ${data.run?.node_id || 'host'} (${data.run?.run_id || ''}).`);
+        fetchFleetJobsAndRuns();
+      } catch (err) {
+        showToast(`Job queue error: ${err.message}`, true);
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    });
+
+    async function triggerDefinedManifestJob(envName, service, jobName, btnEl) {
+      if (btnEl) btnEl.disabled = true;
+      try {
+        const resp = await fetch('/api/v1/control/jobs/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ env: envName, service, job_name: jobName }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          showToast(`Run job failed: ${data.error || resp.statusText}`, true);
+          return;
+        }
+        showToast(`Queued ${envName}/${service}:${jobName} on ${data.run?.node_id || 'host'}!`);
+        fetchFleetJobsAndRuns();
+      } catch (err) {
+        showToast(`Run job network error: ${err.message}`, true);
+      } finally {
+        if (btnEl) btnEl.disabled = false;
+      }
+    }
+
+    async function openJobOutputDialog(runId) {
+      if (!jobOutputDialog || typeof jobOutputDialog.showModal !== 'function') return;
+      const titleEl = document.getElementById('jobOutputDialogTitle');
+      const metaEl = document.getElementById('jobOutputDialogMeta');
+      const preEl = document.getElementById('jobOutputDialogPre');
+      if (preEl) preEl.textContent = 'Loading container job output...';
+      jobOutputDialog.showModal();
+      try {
+        const resp = await fetch(`/api/v1/control/jobs/runs/${encodeURIComponent(runId)}`);
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.run) {
+          if (preEl) preEl.textContent = data.error || 'Unable to load job run output.';
+          return;
+        }
+        const r = data.run;
+        if (titleEl) titleEl.textContent = `${r.env}/${r.service} · ${r.job_name}`;
+        if (metaEl) {
+          metaEl.textContent = `${r.run_id} · node=${r.node_id || '—'} · status=${r.status} · exit=${r.exit_code ?? '—'} · ${r.duration_ms || 0}ms`;
+        }
+        const lines = [];
+        if (r.error) lines.push(`[ERROR] ${r.error}`);
+        if (r.output) lines.push(r.output);
+        if (lines.length === 0) {
+          lines.push(r.status === 'queued' || r.status === 'running' ? 'Job is currently queued/running...' : '(No stdout/stderr output produced)');
+        }
+        if (preEl) preEl.textContent = lines.join('\n\n');
+      } catch (err) {
+        if (preEl) preEl.textContent = `Network error loading output: ${err.message}`;
+      }
+    }
+
+    async function fetchFleetJobsAndRuns() {
+      const definedSection = document.getElementById('definedJobsSection');
+      const definedBody = document.getElementById('definedJobsTableBody');
+      const runsBody = document.getElementById('jobRunsTableBody');
+      if (!runsBody) return;
+      try {
+        const q = activeGitopsEnvFilter ? `?env=${encodeURIComponent(activeGitopsEnvFilter)}&limit=25` : '?limit=25';
+        const resp = await fetch(`/api/v1/control/jobs${q}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const defined = Array.isArray(data.defined_jobs) ? data.defined_jobs : [];
+        const runs = Array.isArray(data.runs) ? data.runs : [];
+
+        if (definedSection && definedBody) {
+          if (defined.length === 0) {
+            definedSection.hidden = true;
+            definedBody.replaceChildren();
+          } else {
+            definedSection.hidden = false;
+            const frag = document.createDocumentFragment();
+            for (const j of defined) {
+              const tr = document.createElement('tr');
+              const tdName = document.createElement('td');
+              tdName.innerHTML = `<strong style="font-size:0.82rem;">${escapeHtml(j.name)}</strong><div style="font-size:0.68rem; color:var(--text-dim); font-family:var(--font-mono);">${escapeHtml((j.command || []).join(' '))}</div>`;
+              const tdSvc = document.createElement('td');
+              tdSvc.innerHTML = `<span style="font-family:var(--font-mono); font-size:0.75rem;">${escapeHtml(j.service)}</span> <span class="badge" style="font-size:0.65rem;">${escapeHtml(j.env)}</span>`;
+              const tdSched = document.createElement('td');
+              tdSched.style.fontFamily = 'var(--font-mono)';
+              tdSched.style.fontSize = '0.74rem';
+              tdSched.textContent = j.schedule || 'manual only';
+              const tdNext = document.createElement('td');
+              tdNext.style.fontSize = '0.73rem';
+              tdNext.style.color = 'var(--text-muted)';
+              tdNext.textContent = j.next_run_at ? new Date(j.next_run_at).toLocaleString() : (j.enabled ? 'On demand' : 'Suspended');
+              const tdLast = document.createElement('td');
+              if (j.last_run) {
+                const stColor = j.last_run.status === 'succeeded' ? '#34d399' : (j.last_run.status === 'running' || j.last_run.status === 'queued' ? '#38bdf8' : '#fb7185');
+                tdLast.innerHTML = `<span style="color:${stColor}; font-weight:600; font-size:0.74rem;">${escapeHtml(j.last_run.status)}</span> <span style="font-size:0.68rem; color:var(--text-dim);">(${j.last_run.duration_ms || 0}ms)</span>`;
+              } else {
+                tdLast.textContent = 'Never run';
+                tdLast.style.color = 'var(--text-dim)';
+                tdLast.style.fontSize = '0.73rem';
+              }
+              const tdAct = document.createElement('td');
+              const runBtn = document.createElement('button');
+              runBtn.type = 'button';
+              runBtn.className = 'btn btn-sm';
+              runBtn.style.padding = '2px 8px';
+              runBtn.style.fontSize = '0.7rem';
+              runBtn.textContent = '▶ Run Now';
+              runBtn.addEventListener('click', () => triggerDefinedManifestJob(j.env, j.service, j.name, runBtn));
+              tdAct.appendChild(runBtn);
+              tr.append(tdName, tdSvc, tdSched, tdNext, tdLast, tdAct);
+              frag.appendChild(tr);
+            }
+            definedBody.replaceChildren(frag);
+          }
+        }
+
+        if (runs.length === 0) {
+          renderEmptyRow(runsBody, 7, 'No container job executions recorded yet.');
+          return;
+        }
+        const runFrag = document.createDocumentFragment();
+        for (const r of runs) {
+          const tr = document.createElement('tr');
+          const tdJob = document.createElement('td');
+          tdJob.innerHTML = `<strong style="font-size:0.8rem;">${escapeHtml(r.job_name)}</strong><div style="font-size:0.68rem; color:var(--text-dim); font-family:var(--font-mono);">${escapeHtml(r.run_id)}</div>`;
+          const tdSvc = document.createElement('td');
+          tdSvc.innerHTML = `<span style="font-family:var(--font-mono); font-size:0.75rem;">${escapeHtml(r.service)}</span> <span class="badge" style="font-size:0.65rem;">${escapeHtml(r.env)}</span>`;
+          const tdTrig = document.createElement('td');
+          tdTrig.style.fontSize = '0.73rem';
+          tdTrig.textContent = r.trigger || 'manual';
+          const tdNode = document.createElement('td');
+          tdNode.style.fontFamily = 'var(--font-mono)';
+          tdNode.style.fontSize = '0.73rem';
+          tdNode.textContent = r.node_id || '—';
+          const tdStatus = document.createElement('td');
+          const color = r.status === 'succeeded' ? '#34d399' : (r.status === 'running' || r.status === 'queued' ? '#38bdf8' : '#fb7185');
+          const exitSuffix = r.exit_code !== null && r.exit_code !== undefined ? ` (exit ${r.exit_code})` : '';
+          tdStatus.innerHTML = `<span style="color:${color}; font-weight:700; font-size:0.75rem;">${escapeHtml(r.status)}${escapeHtml(exitSuffix)}</span>`;
+          const tdDur = document.createElement('td');
+          tdDur.style.fontFamily = 'var(--font-mono)';
+          tdDur.style.fontSize = '0.73rem';
+          tdDur.textContent = r.duration_ms ? `${r.duration_ms} ms` : (r.created_at ? new Date(r.created_at).toLocaleTimeString() : '—');
+          const tdOut = document.createElement('td');
+          const outBtn = document.createElement('button');
+          outBtn.type = 'button';
+          outBtn.className = 'btn btn-sm';
+          outBtn.style.padding = '2px 8px';
+          outBtn.style.fontSize = '0.7rem';
+          outBtn.textContent = '📄 Output';
+          outBtn.addEventListener('click', () => openJobOutputDialog(r.run_id));
+          tdOut.appendChild(outBtn);
+          tr.append(tdJob, tdSvc, tdTrig, tdNode, tdStatus, tdDur, tdOut);
+          runFrag.appendChild(tr);
+        }
+        runsBody.replaceChildren(runFrag);
+      } catch {}
+    }
 
     function openRemoveNodeDialog(nodeId) {
       if (!removeNodeConfirmDialog || typeof removeNodeConfirmDialog.showModal !== 'function') return;
