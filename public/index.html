@@ -2082,6 +2082,34 @@
           </div>
         </div>
 
+        <div class="card" id="definedBackupPoliciesCard" hidden style="margin-bottom:1.25rem;">
+          <div class="card-header"
+            style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+            <div>
+              <div class="card-title" id="definedBackupPoliciesCaption">Declarative Scheduled Backup Policies (<code>fleet.schema.json</code>)</div>
+              <div style="font-size:0.74rem; color:var(--text-muted); margin-top:2px;">
+                Evaluated every minute at the Cloudflare edge with automatic R2 snapshot retention pruning.
+              </div>
+            </div>
+          </div>
+          <div tabindex="0" role="region" aria-labelledby="definedBackupPoliciesCaption"
+            style="overflow:auto; max-inline-size:100%; container-type:inline-size;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Service / Env</th>
+                  <th>Schedule (UTC)</th>
+                  <th>Next Run</th>
+                  <th>Databases</th>
+                  <th>Retention</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="definedBackupPoliciesBody"></tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="card">
           <div class="card-header">
             <div class="card-title">Stored Database Snapshots</div>
@@ -3115,6 +3143,25 @@
       </form>
     </div>
     <pre id="jobOutputDialogPre" style="margin:0; padding:0.85rem; border-radius:8px; background:#050811; border:1px solid var(--border); color:#e2e8f0; font-family:var(--font-mono); font-size:0.75rem; line-height:1.5; max-block-size:58vh; overflow:auto; white-space:pre-wrap; word-break:break-word;"></pre>
+  </dialog>
+
+  <!-- MODAL: ZERO-SSH LIVE CONTAINER LOGS STREAM (`docker logs -f`) -->
+  <dialog id="containerLogsDialog" class="ota-dialog fleet-wide-dialog" aria-labelledby="containerLogsDialogTitle" closedby="any">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.75rem; flex-wrap:wrap; margin-bottom:0.65rem;">
+      <div>
+        <h1 id="containerLogsDialogTitle" style="font-size:1.05rem; font-weight:700; margin:0;">Live Container Logs</h1>
+        <div id="containerLogsDialogMeta" style="font-size:0.74rem; color:var(--text-muted); font-family:var(--font-mono); margin-top:0.22rem;">Connecting to host Docker Engine…</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:0.45rem; flex-wrap:wrap;">
+        <span class="status-badge healthy" id="containerLogsStatusBadge" style="font-size:0.68rem;">⏳ Connecting</span>
+        <button type="button" class="btn btn-sm" id="btnPauseContainerLogs" style="font-size:0.72rem; padding:0.25rem 0.55rem;">⏸ Pause</button>
+        <button type="button" class="btn btn-sm" id="btnCopyContainerLogs" style="font-size:0.72rem; padding:0.25rem 0.55rem;">📋 Copy</button>
+        <form method="dialog" style="margin:0;">
+          <button value="close" autofocus class="btn" style="padding:0.28rem 0.7rem;">Close</button>
+        </form>
+      </div>
+    </div>
+    <pre id="containerLogsDialogPre" style="margin:0; padding:0.85rem; border-radius:8px; background:#050811; border:1px solid var(--border); color:#e2e8f0; font-family:var(--font-mono); font-size:0.74rem; line-height:1.5; min-block-size:280px; max-block-size:62vh; overflow:auto; white-space:pre-wrap; word-break:break-word;"></pre>
   </dialog>
 
   <!-- MODAL: CREATE / EDIT DECLARATIVE FLEET SERVICE (ZERO-GIT) -->
@@ -4328,6 +4375,63 @@
         const data = await resp.json();
         const r2Backups = data.backups || [];
         const kvBackups = data.recorded_backups || [];
+        const definedPolicies = data.defined_policies || [];
+
+        const policiesCard = document.getElementById('definedBackupPoliciesCard');
+        const policiesBody = document.getElementById('definedBackupPoliciesBody');
+        if (policiesCard && policiesBody) {
+          if (definedPolicies.length > 0) {
+            policiesCard.hidden = false;
+            policiesBody.innerHTML = definedPolicies.map(p => {
+              const dbsLabel = (p.databases && p.databases.length > 0) ? p.databases.map(escapeHtml).join(', ') : 'default';
+              const nextStr = p.enabled && p.next_run_at ? new Date(p.next_run_at).toLocaleString() : 'Suspended (enabled: false)';
+              return `
+                <tr>
+                  <th scope="row" style="text-align:left; font-weight:600;">
+                    <span style="color:#fff;">${escapeHtml(p.service)}</span>
+                    <span class="badge" style="margin-left:6px; font-size:0.68rem; text-transform:uppercase;">${escapeHtml(p.env)}</span>
+                  </th>
+                  <td style="font-family:var(--font-mono); font-size:0.74rem; color:#38bdf8;">${escapeHtml(p.schedule)}</td>
+                  <td style="font-size:0.74rem; color:var(--text-muted);">${escapeHtml(nextStr)}</td>
+                  <td style="font-family:var(--font-mono); font-size:0.73rem; color:#cbd5e1;">${dbsLabel}</td>
+                  <td style="font-size:0.74rem; color:#10b981;">${Number(p.retain_days || 30)} days</td>
+                  <td>
+                    <button type="button" class="btn btn-sm btn-run-backup-policy" data-env="${escapeHtml(p.env)}" data-service="${escapeHtml(p.service)}" data-prefix="${escapeHtml(p.prefix)}" data-retain="${Number(p.retain_days || 30)}" data-db="${escapeHtml((p.databases && p.databases[0]) || '')}" data-container="${escapeHtml(p.container_name || '')}" style="font-size:0.7rem; padding:3px 9px;">📸 Snapshot Now</button>
+                  </td>
+                </tr>
+              `;
+            }).join('');
+
+            policiesBody.querySelectorAll('.btn-run-backup-policy').forEach(btn => {
+              btn.addEventListener('click', async () => {
+                btn.disabled = true;
+                try {
+                  const res = await fetch('/api/v1/control/backup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      env: btn.getAttribute('data-env') || undefined,
+                      service: btn.getAttribute('data-service') || 'postgres',
+                      prefix: btn.getAttribute('data-prefix') || undefined,
+                      retain_days: Number(btn.getAttribute('data-retain') || 30),
+                      target_db: btn.getAttribute('data-db') || undefined,
+                      container_name: btn.getAttribute('data-container') || undefined,
+                      tag: 'policy_manual',
+                    }),
+                  });
+                  if (res.ok) {
+                    showToast('📸 Queued R2 database snapshot policy run!');
+                    fetchBackups();
+                  }
+                } finally {
+                  btn.disabled = false;
+                }
+              });
+            });
+          } else {
+            policiesCard.hidden = true;
+          }
+        }
 
         // Build combined map of backups so initiated/streaming snapshots also show immediately
         const backupMap = new Map();
@@ -6270,6 +6374,22 @@
         }
         actRow.appendChild(recBtn);
 
+        if (s.enabled !== false) {
+          const logsBtn = document.createElement('button');
+          logsBtn.type = 'button';
+          logsBtn.className = 'btn';
+          logsBtn.style.fontSize = '0.71rem';
+          logsBtn.style.padding = '0.24rem 0.48rem';
+          logsBtn.style.color = '#38bdf8';
+          logsBtn.style.borderColor = 'rgba(56, 189, 248, 0.35)';
+          logsBtn.textContent = '📜 Logs';
+          logsBtn.title = `Stream live stdout/stderr logs for ${s.env}/${s.service} (zero SSH)`;
+          logsBtn.addEventListener('click', () =>
+            openContainerLogsDialog(s.env, s.service, (s.active_containers && s.active_containers[0]) || '', s.target_node || '')
+          );
+          actRow.appendChild(logsBtn);
+        }
+
         const editBtn = document.createElement('button');
         editBtn.type = 'button';
         editBtn.className = 'btn';
@@ -6701,6 +6821,152 @@
     const runJobForm = document.getElementById('runJobForm');
     const jobOutputDialog = document.getElementById('jobOutputDialog');
     attachDialogLightDismissFallback(jobOutputDialog);
+
+    const containerLogsDialog = document.getElementById('containerLogsDialog');
+    attachDialogLightDismissFallback(containerLogsDialog);
+    let activeLogSessionId = null;
+    let activeLogPollTimer = null;
+    let activeLogAfterSeq = 0;
+    let containerLogsPaused = false;
+
+    async function closeActiveContainerLogsSession() {
+      if (activeLogPollTimer) {
+        clearInterval(activeLogPollTimer);
+        activeLogPollTimer = null;
+      }
+      const sid = activeLogSessionId;
+      activeLogSessionId = null;
+      if (sid) {
+        try {
+          await fetch(`/api/v1/control/containers/logs/sessions/${encodeURIComponent(sid)}`, { method: 'DELETE' });
+        } catch {}
+      }
+    }
+
+    containerLogsDialog?.addEventListener('close', () => {
+      containerLogsDialog.returnValue = '';
+      closeActiveContainerLogsSession();
+    });
+
+    document.getElementById('btnPauseContainerLogs')?.addEventListener('click', (e) => {
+      containerLogsPaused = !containerLogsPaused;
+      e.currentTarget.textContent = containerLogsPaused ? '▶ Resume' : '⏸ Pause';
+      const badge = document.getElementById('containerLogsStatusBadge');
+      if (badge) {
+        badge.textContent = containerLogsPaused ? '⏸ Paused' : '🟢 Live Follow';
+        badge.className = containerLogsPaused ? 'status-badge warning' : 'status-badge healthy';
+      }
+    });
+
+    document.getElementById('btnCopyContainerLogs')?.addEventListener('click', async (e) => {
+      const pre = document.getElementById('containerLogsDialogPre');
+      if (pre?.textContent) {
+        await navigator.clipboard?.writeText(pre.textContent);
+        const btn = e.currentTarget;
+        const orig = btn.textContent;
+        btn.textContent = '✓ Copied';
+        setTimeout(() => { btn.textContent = orig; }, 1400);
+      }
+    });
+
+    async function openContainerLogsDialog(envName, serviceName, containerHint, nodeHint) {
+      if (!containerLogsDialog || typeof containerLogsDialog.showModal !== 'function') return;
+      await closeActiveContainerLogsSession();
+
+      containerLogsPaused = false;
+      activeLogAfterSeq = 0;
+      const pauseBtn = document.getElementById('btnPauseContainerLogs');
+      if (pauseBtn) pauseBtn.textContent = '⏸ Pause';
+      const titleEl = document.getElementById('containerLogsDialogTitle');
+      const metaEl = document.getElementById('containerLogsDialogMeta');
+      const preEl = document.getElementById('containerLogsDialogPre');
+      const badgeEl = document.getElementById('containerLogsStatusBadge');
+
+      if (titleEl) titleEl.textContent = `Live Logs — ${envName}/${serviceName}`;
+      if (metaEl) metaEl.textContent = `CLI: flarelensd logs ${serviceName} --env ${envName} -f`;
+      if (preEl) preEl.textContent = 'Waiting for host agent to attach Docker log stream…\n';
+      if (badgeEl) {
+        badgeEl.textContent = '⏳ Attaching';
+        badgeEl.className = 'status-badge warning';
+      }
+      containerLogsDialog.showModal();
+
+      try {
+        const resp = await fetch('/api/v1/control/containers/logs/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            env: envName,
+            service: serviceName,
+            container_name: containerHint || undefined,
+            node_id: nodeHint || undefined,
+            tail_lines: 250,
+            follow: true,
+          }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.session?.session_id) {
+          if (preEl) preEl.textContent = `Failed to open container log stream: ${data.error || resp.statusText}`;
+          if (badgeEl) {
+            badgeEl.textContent = '❌ Error';
+            badgeEl.className = 'status-badge danger';
+          }
+          return;
+        }
+
+        const sid = data.session.session_id;
+        activeLogSessionId = sid;
+        let receivedAny = false;
+
+        const pollFn = async () => {
+          if (!activeLogSessionId || activeLogSessionId !== sid || containerLogsPaused) return;
+          try {
+            const pResp = await fetch(`/api/v1/control/containers/logs/sessions/${encodeURIComponent(sid)}?after=${activeLogAfterSeq}`);
+            if (!pResp.ok) return;
+            const pData = await pResp.json();
+            const chunks = pData.chunks || [];
+            if (pData.session?.container_name && metaEl) {
+              metaEl.textContent = `Container: ${pData.session.container_name} (${pData.session.node_id}) · CLI: flarelensd logs ${serviceName} --env ${envName} -f`;
+            }
+            if (chunks.length > 0 && preEl) {
+              if (!receivedAny) {
+                preEl.textContent = '';
+                receivedAny = true;
+              }
+              const atBottom = preEl.scrollHeight - preEl.scrollTop - preEl.clientHeight < 60;
+              for (const ch of chunks) {
+                if (ch.seq > activeLogAfterSeq) {
+                  activeLogAfterSeq = ch.seq;
+                  preEl.textContent += ch.text || '';
+                }
+              }
+              if (preEl.textContent.length > 180000) {
+                preEl.textContent = preEl.textContent.slice(-140000);
+              }
+              if (atBottom) preEl.scrollTop = preEl.scrollHeight;
+            }
+            if (badgeEl) {
+              if (pData.session?.status === 'error') {
+                badgeEl.textContent = '⚠️ Error';
+                badgeEl.className = 'status-badge danger';
+                if (preEl && pData.session.error) preEl.textContent += `\n[Error] ${pData.session.error}\n`;
+              } else if (pData.session?.status === 'eof') {
+                badgeEl.textContent = '⏹ Stream Ended';
+                badgeEl.className = 'status-badge';
+              } else if (receivedAny || pData.session?.status === 'streaming') {
+                badgeEl.textContent = '🟢 Live Follow';
+                badgeEl.className = 'status-badge healthy';
+              }
+            }
+          } catch {}
+        };
+
+        await pollFn();
+        activeLogPollTimer = setInterval(pollFn, 650);
+      } catch (err) {
+        if (preEl) preEl.textContent = `Network error opening log session: ${err.message}`;
+      }
+    }
 
     document.getElementById('btnOpenRunJobDialog')?.addEventListener('click', () => {
       if (!runJobDialog || typeof runJobDialog.showModal !== 'function') return;

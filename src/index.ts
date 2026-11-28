@@ -29,6 +29,7 @@ import {
 import {
   FLEET_JSON_SCHEMA,
   type FleetJobSpec,
+  type FleetBackupSpec,
   stripManifestInternalMeta,
   computeManifestSha256,
   computeManifestDiffSummary,
@@ -84,6 +85,12 @@ import {
   listMeshTunnelsD1,
   listExpiredMeshTunnelsD1,
   deleteMeshTunnelD1,
+  type ContainerLogSessionRecord,
+  upsertContainerLogSessionD1,
+  getContainerLogSessionD1,
+  reapExpiredContainerLogSessionsD1,
+  hasBackupCronSlotFiredD1,
+  recordBackupCronSlotD1,
 } from './control/db';
 import {
   type ClusterEndpoint,
@@ -99,7 +106,7 @@ import {
 import { encryptSecrets, decryptSecrets, parseEnvContent, getVaultLookupKeys, resolveVaultSecrets } from './control/vault';
 import { verifyGitHubSignature, parseDeployWebhook, reportGitHubStatus, resolveWebhookDeployPayload, getServiceDeclarativeDefaults } from './control/webhook';
 import { isGitHubOidcToken, verifyGitHubOidcToken } from './control/github_oidc';
-import { verifyMeshLeaveSignature, verifyMeshTunnelSignature } from './control/leave';
+import { verifyMeshLeaveSignature, verifyMeshTunnelSignature, verifyContainerLogsSignature } from './control/leave';
 import {
   MESH_SUBNET,
   COORDINATOR_URL,
@@ -290,6 +297,21 @@ export default {
       );
       if (tunnelId) return handleCloseMeshTunnel(tunnelId, request, env, ctx, url);
     }
+    if (url.pathname === '/api/v1/control/containers/logs/sessions' && request.method === 'POST') {
+      return handleOpenContainerLogSession(request, env, ctx, url);
+    }
+    if (url.pathname.startsWith('/api/v1/control/containers/logs/sessions/') && request.method === 'GET') {
+      const sessionId = decodeURIComponent(
+        url.pathname.replace('/api/v1/control/containers/logs/sessions/', '').replace(/\/+$/, '').trim()
+      );
+      if (sessionId) return handleGetContainerLogSession(sessionId, request, env, url);
+    }
+    if (url.pathname.startsWith('/api/v1/control/containers/logs/sessions/') && request.method === 'DELETE') {
+      const sessionId = decodeURIComponent(
+        url.pathname.replace('/api/v1/control/containers/logs/sessions/', '').replace(/\/+$/, '').trim()
+      );
+      if (sessionId) return handleCloseContainerLogSession(sessionId, request, env, ctx, url);
+    }
 
     // 3d. Agent-authenticated Control Callbacks (accept ENROLL_TOKEN, INGEST_SECRET, or Dashboard Auth)
     if (
@@ -299,6 +321,7 @@ export default {
       (url.pathname === '/api/v1/control/backup/status' && request.method === 'POST') ||
       (url.pathname === '/api/v1/control/agent/update/status' && request.method === 'POST') ||
       (url.pathname === '/api/v1/control/jobs/status' && request.method === 'POST') ||
+      (url.pathname === '/api/v1/control/containers/logs/push' && request.method === 'POST') ||
       (url.pathname === '/api/v1/control/mesh/register' && request.method === 'POST') ||
       (url.pathname.startsWith('/api/v1/control/nodes/') && url.pathname.endsWith('/leave') && request.method === 'POST') ||
       (url.pathname === '/api/v1/control/flags' && request.method === 'GET')
@@ -311,6 +334,7 @@ export default {
       if (url.pathname === '/api/v1/control/backup/status') return handleUpdateBackupStatus(request, env, ctx);
       if (url.pathname === '/api/v1/control/agent/update/status') return handleAgentUpdateStatus(request, env);
       if (url.pathname === '/api/v1/control/jobs/status') return handleUpdateJobStatus(request, env);
+      if (url.pathname === '/api/v1/control/containers/logs/push') return handlePushContainerLogs(request, env);
       if (url.pathname === '/api/v1/control/mesh/register') return handleMeshRegister(request, env, ctx);
       if (url.pathname.startsWith('/api/v1/control/nodes/') && url.pathname.endsWith('/leave')) {
         const nodeId = url.pathname.replace('/api/v1/control/nodes/', '').replace('/leave', '').replace(/\/+$/, '').trim();
@@ -492,6 +516,9 @@ export default {
     // 10. Database Backups: Trigger on-demand backup (POST /api/v1/control/backup)
     if (url.pathname === '/api/v1/control/backup' && request.method === 'POST') {
       return handleTriggerBackup(request, env, ctx);
+    }
+    if (url.pathname === '/api/v1/control/backups/cron-tick' && request.method === 'POST') {
+      return handleManualBackupCronTick(request, env, ctx);
     }
 
     // 11. Database Backups: Trigger restore (POST /api/v1/control/backup/restore)
@@ -691,6 +718,10 @@ export default {
 
     // 5. Ephemeral Mesh + Traefik Funnel Lease Expiry Reaper
     ctx.waitUntil(reapExpiredMeshTunnels(env, ctx).then(() => {}));
+
+    // 6. Declarative Scheduled R2 Database Backups + Retention Pruner & Log Session Reaper
+    ctx.waitUntil(evaluateScheduledBackups(env, ctx, cronDate).then(() => {}));
+    ctx.waitUntil(reapExpiredContainerLogSessionsD1(env).then(() => {}));
   },
 
   /**
@@ -2782,6 +2813,7 @@ async function handleListBackups(request: Request, env: Env): Promise<Response> 
       JSON.stringify({
         backups,
         recorded_backups: kvBackups,
+        defined_policies: await listDefinedBackupPolicies(env),
         count: backups.length,
       }),
       {
@@ -2802,8 +2834,27 @@ async function handleListBackups(request: Request, env: Env): Promise<Response> 
  */
 async function handleTriggerBackup(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   try {
-    const payload = (await request.json()) as BackupRequestPayload;
-    if (!payload.node_id) {
+    const payload = (await request.json().catch(() => ({}))) as BackupRequestPayload;
+    const normEnv = payload.env ? normalizeFleetEnv(payload.env) : '';
+    const service = String(payload.service || 'postgres').trim().toLowerCase();
+    let targetNode = String(payload.node_id || '').trim();
+
+    if (!targetNode || targetNode === 'auto' || targetNode === 'smart') {
+      const placements = await listFleetPlacements(env);
+      const placed = placements.find(
+        (p) =>
+          p.service.toLowerCase() === service &&
+          (!normEnv || p.env.toLowerCase() === normEnv) &&
+          p.status === 'placed'
+      );
+      if (placed?.node_id) {
+        targetNode = placed.node_id;
+      } else {
+        targetNode = await selectBestNodeForService(service, env, 128);
+      }
+    }
+
+    if (!targetNode) {
       return new Response(JSON.stringify({ error: 'Missing required field: node_id' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -2812,32 +2863,44 @@ async function handleTriggerBackup(request: Request, env: Env, ctx: ExecutionCon
 
     const tag = payload.tag || 'manual';
     const nowIso = new Date().toISOString();
-    const backupKey = `postgres/prod/${new Date().toISOString().replace(/[:.]/g, '-')}_${tag}.sql.gz`;
+    const cleanPrefix = String(payload.prefix || `${service}/${normEnv || 'prod'}`).replace(/^\/+|\/+$/g, '');
+    const dbPart = payload.target_db ? `${payload.target_db}_` : '';
+    const backupKey = `${cleanPrefix}/${nowIso.replace(/[:.]/g, '-')}_${dbPart}${tag}.sql.gz`;
 
     const record: BackupRecord = {
       key: backupKey,
       bucket: 'flarelens-backups',
       timestamp: nowIso,
       tag,
-      node_id: payload.node_id,
+      node_id: targetNode,
+      service,
+      ...(normEnv ? { env: normEnv } : {}),
+      ...(payload.target_db ? { database: payload.target_db } : {}),
+      ...(payload.retain_days ? { retain_days: payload.retain_days } : {}),
       status: 'initiated',
     };
 
     fleetBackups.set(backupKey, record);
 
-    // 1. Enqueue in-memory command queue
     const cmd = {
       id: `cmd_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       type: 'backup',
-      node_id: payload.node_id,
+      node_id: targetNode,
+      service,
+      ...(normEnv ? { env: normEnv } : {}),
+      ...(payload.container_name ? { container_name: payload.container_name } : {}),
+      ...(payload.target_db ? { target_db: payload.target_db } : {}),
+      prefix: cleanPrefix,
+      ...(payload.retain_days ? { retain_days: Number(payload.retain_days) } : {}),
       tag,
       key: backupKey,
       timestamp: nowIso,
     };
-    const nodeCmds = inMemoryCommands.get(payload.node_id) || [];
-    nodeCmds.push(cmd);
-    inMemoryCommands.set(payload.node_id, nodeCmds);
-    await enqueueCommandD1(env, payload.node_id, cmd);
+    await enqueueFleetCommand(targetNode, cmd, env);
+
+    if (payload.retain_days && Number(payload.retain_days) > 0) {
+      ctx.waitUntil(pruneExpiredR2Snapshots(env, cleanPrefix, Number(payload.retain_days)).then(() => {}));
+    }
 
     if (env.FLEET_KV) {
       ctx.waitUntil(safeKvPut(env.FLEET_KV, `backup:${backupKey}`, JSON.stringify(record)));
@@ -2865,9 +2928,9 @@ async function handleTriggerBackup(request: Request, env: Env, ctx: ExecutionCon
       level: 'info',
       service: 'flarelens-backup',
       environment: 'production',
-      message: `Database backup initiated on node ${payload.node_id} (tag: ${tag})`,
+      message: `Database backup initiated on node ${targetNode} (tag: ${tag})`,
       attributes: {
-        node_id: payload.node_id,
+        node_id: targetNode,
         tag,
         key: backupKey,
       },
@@ -7072,6 +7135,574 @@ async function handleCloseMeshTunnel(
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     }
   );
+}
+
+// ============================================================================
+// Declarative Scheduled R2 Backups (`backup:` in `fleet.schema.json`) & Retention
+// ============================================================================
+
+async function listDefinedBackupPolicies(env: Env): Promise<Array<Record<string, any>>> {
+  if (!env.FLEET_KV) return [];
+  const manifests = await listFleetManifests(env.FLEET_KV);
+  const now = new Date();
+  const policies: Array<Record<string, any>> = [];
+
+  for (const m of manifests) {
+    if (!m.backup?.schedule) continue;
+    const normEnv = normalizeFleetEnv(m.env);
+    const dbs = m.backup.databases?.length
+      ? m.backup.databases
+      : m.backup.database
+      ? [m.backup.database]
+      : [];
+    policies.push({
+      env: normEnv,
+      service: m.service,
+      enabled: m.enabled !== false,
+      container_name: m.container_name || null,
+      node_id: m.node_id || null,
+      schedule: m.backup.schedule,
+      next_run_at: m.enabled !== false ? computeNextCronRunUtc(m.backup.schedule, now) : null,
+      retain_days: Number(m.backup.retain_days || 30),
+      databases: dbs,
+      prefix: (m.backup.prefix || `${m.service}/${normEnv}`).replace(/^\/+|\/+$/g, ''),
+      tag: m.backup.tag || 'scheduled',
+    });
+  }
+  return policies;
+}
+
+async function pruneExpiredR2Snapshots(
+  env: Env,
+  prefix: string,
+  retainDays: number,
+  nowMs = Date.now()
+): Promise<string[]> {
+  if (!retainDays || retainDays <= 0) return [];
+  const targetBucket = env.BACKUP_BUCKET || env.LOGS_BUCKET;
+  if (!targetBucket) return [];
+
+  const cleanPrefix = String(prefix || 'postgres').replace(/^\/+|\/+$/g, '');
+  const searchPrefix = cleanPrefix ? `${cleanPrefix}/` : '';
+  const listed = await targetBucket.list({ prefix: searchPrefix, limit: 500 });
+  const cutoffMs = nowMs - retainDays * 86_400_000;
+  const prunedKeys: string[] = [];
+
+  for (const obj of listed.objects || []) {
+    const uploadedMs =
+      obj.uploaded instanceof Date
+        ? obj.uploaded.getTime()
+        : typeof obj.uploaded === 'string'
+        ? Date.parse(obj.uploaded)
+        : NaN;
+    if (Number.isFinite(uploadedMs) && uploadedMs < cutoffMs) {
+      await targetBucket.delete(obj.key);
+      prunedKeys.push(obj.key);
+      fleetBackups.delete(obj.key);
+      if (env.FLEET_KV) {
+        try {
+          await env.FLEET_KV.delete(`backup:${obj.key}`);
+        } catch {}
+      }
+    }
+  }
+  return prunedKeys;
+}
+
+async function evaluateScheduledBackups(
+  env: Env,
+  ctx: ExecutionContext,
+  nowDate: Date = new Date()
+): Promise<{
+  evaluated_at: string;
+  triggered: BackupRecord[];
+  pruned_keys: string[];
+  skipped: Array<{ env: string; service: string; reason: string }>;
+}> {
+  const triggered: BackupRecord[] = [];
+  const prunedKeys: string[] = [];
+  const skipped: Array<{ env: string; service: string; reason: string }> = [];
+  if (!env.FLEET_KV) {
+    return { evaluated_at: nowDate.toISOString(), triggered, pruned_keys: prunedKeys, skipped };
+  }
+
+  const [manifests, placements] = await Promise.all([
+    listFleetManifests(env.FLEET_KV),
+    listFleetPlacements(env),
+  ]);
+
+  for (const m of manifests) {
+    if (!m.backup?.schedule) continue;
+    const normEnv = normalizeFleetEnv(m.env);
+    if (m.enabled === false) {
+      skipped.push({ env: normEnv, service: m.service, reason: 'disabled' });
+      continue;
+    }
+    if (!matchesCronExpression(m.backup.schedule, nowDate)) continue;
+
+    const slotKey = formatCronSlotKey(normEnv, m.service, 'backup', nowDate);
+    if (await hasBackupCronSlotFiredD1(env, slotKey)) {
+      skipped.push({ env: normEnv, service: m.service, reason: 'slot_already_fired' });
+      continue;
+    }
+
+    const placed = placements.find(
+      (p) => p.env.toLowerCase() === normEnv && p.service.toLowerCase() === m.service.toLowerCase() && p.status === 'placed'
+    );
+    const targetNode = placed?.node_id || m.node_id || (await selectBestNodeForService(m.service, env, 128));
+    const dbs = m.backup.databases?.length ? m.backup.databases : [m.backup.database || ''];
+    const cleanPrefix = (m.backup.prefix || `${m.service}/${normEnv}`).replace(/^\/+|\/+$/g, '');
+    const retainDays = Number(m.backup.retain_days || 30);
+    const tag = m.backup.tag || 'scheduled';
+    const tsCompact = nowDate.toISOString().replace(/[:.]/g, '-');
+
+    const keysForSlot: string[] = [];
+    for (const dbName of dbs) {
+      const dbPart = dbName ? `${dbName}_` : '';
+      const backupKey = `${cleanPrefix}/${tsCompact}_${dbPart}${tag}.sql.gz`;
+      keysForSlot.push(backupKey);
+
+      const rec: BackupRecord = {
+        key: backupKey,
+        bucket: 'flarelens-backups',
+        timestamp: nowDate.toISOString(),
+        tag,
+        node_id: targetNode,
+        service: m.service,
+        env: normEnv,
+        ...(dbName ? { database: dbName } : {}),
+        retain_days: retainDays,
+        status: 'initiated',
+      };
+      fleetBackups.set(backupKey, rec);
+      triggered.push(rec);
+
+      await enqueueFleetCommand(
+        targetNode,
+        {
+          id: `bk_cron_${nowDate.getTime()}_${m.service}_${dbName || 'default'}`,
+          type: 'backup',
+          node_id: targetNode,
+          service: m.service,
+          env: normEnv,
+          ...(m.container_name ? { container_name: m.container_name } : {}),
+          ...(dbName ? { target_db: dbName } : {}),
+          prefix: cleanPrefix,
+          retain_days: retainDays,
+          tag,
+          key: backupKey,
+          timestamp: nowDate.toISOString(),
+        },
+        env
+      );
+
+      if (env.FLEET_KV) {
+        ctx.waitUntil(safeKvPut(env.FLEET_KV, `backup:${backupKey}`, JSON.stringify(rec)));
+      }
+    }
+
+    await recordBackupCronSlotD1(env, slotKey, normEnv, m.service, keysForSlot.join(','));
+    const newlyPruned = await pruneExpiredR2Snapshots(env, cleanPrefix, retainDays, nowDate.getTime());
+    prunedKeys.push(...newlyPruned);
+  }
+
+  return {
+    evaluated_at: nowDate.toISOString(),
+    triggered,
+    pruned_keys: prunedKeys,
+    skipped,
+  };
+}
+
+async function handleManualBackupCronTick(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as { timestamp?: string };
+  const targetDate = body.timestamp ? new Date(body.timestamp) : new Date();
+  if (Number.isNaN(targetDate.getTime())) {
+    return new Response(JSON.stringify({ error: 'Invalid ISO timestamp' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+  const result = await evaluateScheduledBackups(env, ctx, targetDate);
+  return new Response(JSON.stringify(result), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  });
+}
+
+// ============================================================================
+// Zero-SSH Live Container Logs Streaming (`flarelensd logs` & Dashboard UI)
+// ============================================================================
+
+const LOG_SESSION_TTL_MS = 180_000;
+
+async function authorizeContainerLogsRequest(
+  request: Request,
+  env: Env,
+  url: URL,
+  action: 'open' | 'read' | 'close',
+  sigParams: { peer_id?: string; public_key?: string; timestamp?: string; ssh_signature?: string }
+): Promise<boolean> {
+  if (!validateDashboardAuth(request, env) && (!env.DASHBOARD_PASSWORD || request.headers.has('Authorization') || request.headers.has('Cookie'))) {
+    if (env.DASHBOARD_PASSWORD) return true;
+  }
+  if (hasExplicitMeshLeaveAuth(request, env, url)) {
+    return true;
+  }
+  const pubKey = String(sigParams.public_key || '').trim();
+  const peerId = String(sigParams.peer_id || '').trim();
+  const ts = String(sigParams.timestamp || '').trim();
+  const sig = String(sigParams.ssh_signature || '').trim();
+  if (!pubKey || !ts || !sig) return false;
+
+  const peers = await loadAllMeshPeers(env);
+  const matched = peers.filter((p) => p.public_key === pubKey || (peerId && p.id === peerId));
+  for (const p of matched) {
+    if (await verifyContainerLogsSignature(p, action, pubKey, ts, sig)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function resolveTargetNodeForLogs(
+  env: Env,
+  envName: string,
+  serviceOrContainer: string,
+  requestedNodeId?: string
+): Promise<{ nodeId: string; containerName: string }> {
+  const explicit = String(requestedNodeId || '').trim();
+  const normEnv = envName ? normalizeFleetEnv(envName) : '';
+  const cleanTarget = String(serviceOrContainer || '').trim();
+  const lowerTarget = cleanTarget.toLowerCase();
+
+  const [placements, manifests, nodes] = await Promise.all([
+    listFleetPlacements(env),
+    env.FLEET_KV ? listFleetManifests(env.FLEET_KV) : Promise.resolve([]),
+    loadAllNodesMerged(env),
+  ]);
+
+  const matchedManifest = manifests.find(
+    (m) => m.service.toLowerCase() === lowerTarget && (!normEnv || normalizeFleetEnv(m.env) === normEnv)
+  );
+  const containerHint = matchedManifest?.container_name || '';
+
+  if (explicit && explicit !== 'auto' && explicit !== 'smart') {
+    return { nodeId: explicit, containerName: containerHint };
+  }
+
+  const placed = placements.find(
+    (p) =>
+      p.service.toLowerCase() === lowerTarget &&
+      (!normEnv || p.env.toLowerCase() === normEnv) &&
+      p.status === 'placed'
+  );
+  if (placed?.node_id) {
+    return { nodeId: placed.node_id, containerName: containerHint };
+  }
+  if (matchedManifest?.node_id) {
+    return { nodeId: matchedManifest.node_id, containerName: containerHint };
+  }
+
+  for (const n of nodes) {
+    if (n.status === 'dead') continue;
+    for (const c of n.latest_telemetry?.containers || []) {
+      const names = (c.names || []).map((nm: string) => String(nm).replace(/^\//, ''));
+      for (const nm of names) {
+        const lowerNm = nm.toLowerCase();
+        if (
+          lowerNm === lowerTarget ||
+          lowerNm === `${lowerTarget}-blue` ||
+          lowerNm === `${lowerTarget}-green` ||
+          (normEnv && (lowerNm.endsWith(`-${normEnv}-${lowerTarget}`) || lowerNm === `${lowerTarget}-${normEnv}`))
+        ) {
+          return { nodeId: n.node_id, containerName: nm };
+        }
+      }
+    }
+  }
+
+  const fallback = await selectBestNodeForService(cleanTarget || 'logs', env, 64);
+  return { nodeId: fallback, containerName: containerHint };
+}
+
+async function handleOpenContainerLogSession(
+  request: Request,
+  env: Env,
+  _ctx: ExecutionContext,
+  url: URL
+): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as {
+    service?: string;
+    container_name?: string;
+    env?: string;
+    node_id?: string;
+    tail_lines?: number;
+    follow?: boolean;
+    timestamps?: boolean;
+    duration_seconds?: number;
+    peer_id?: string;
+    public_key?: string;
+    timestamp?: string;
+    ssh_signature?: string;
+  };
+
+  const authorized = await authorizeContainerLogsRequest(request, env, url, 'open', body);
+  if (!authorized) {
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized: valid session, API token, or Ed25519 workstation signature required' }),
+      { status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+    );
+  }
+
+  const target = String(body.container_name || body.service || '').trim();
+  if (!target) {
+    return new Response(JSON.stringify({ error: 'service or container_name is required' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  await reapExpiredContainerLogSessionsD1(env);
+
+  const normEnv = body.env ? normalizeFleetEnv(body.env) : '';
+  const { nodeId, containerName } = await resolveTargetNodeForLogs(env, normEnv, target, body.node_id);
+  const tailLines = Math.max(1, Math.min(2000, Math.trunc(Number(body.tail_lines || 200))));
+  const follow = body.follow !== false;
+  const durationSec = Math.max(10, Math.min(300, Math.trunc(Number(body.duration_seconds || 120))));
+
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  const sessionId = `lsess_${now.toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+
+  const session: ContainerLogSessionRecord = {
+    session_id: sessionId,
+    node_id: nodeId,
+    env: normEnv,
+    service: String(body.service || target).trim(),
+    container_name: String(body.container_name || containerName || '').trim(),
+    follow,
+    tail_lines: tailLines,
+    status: 'queued',
+    next_seq: 1,
+    chunks: [],
+    error: '',
+    created_at: nowIso,
+    expires_at: new Date(now + LOG_SESSION_TTL_MS).toISOString(),
+    updated_at: nowIso,
+  };
+
+  await upsertContainerLogSessionD1(env, session);
+
+  await enqueueFleetCommand(
+    nodeId,
+    {
+      id: `logs_open_${now}_${sessionId}`,
+      type: 'stream_container_logs',
+      session_id: sessionId,
+      node_id: nodeId,
+      env: normEnv,
+      service: session.service,
+      ...(session.container_name ? { container_name: session.container_name } : {}),
+      tail_lines: tailLines,
+      follow,
+      timestamps: Boolean(body.timestamps),
+      timeout_seconds: durationSec,
+    },
+    env
+  );
+
+  return new Response(JSON.stringify({ status: 'queued', session }), {
+    status: 201,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  });
+}
+
+async function handleGetContainerLogSession(
+  sessionId: string,
+  request: Request,
+  env: Env,
+  url: URL
+): Promise<Response> {
+  const authorized = await authorizeContainerLogsRequest(request, env, url, 'read', {
+    peer_id: url.searchParams.get('peer_id') || undefined,
+    public_key: url.searchParams.get('public_key') || undefined,
+    timestamp: url.searchParams.get('timestamp') || undefined,
+    ssh_signature: url.searchParams.get('ssh_signature') || undefined,
+  });
+  if (!authorized) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const session = await getContainerLogSessionD1(env, sessionId);
+  if (!session) {
+    return new Response(JSON.stringify({ error: `Log session '${sessionId}' not found or expired` }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const afterSeq = Math.max(0, Math.trunc(Number(url.searchParams.get('after') || 0)));
+  const newChunks = (session.chunks || []).filter((c) => c.seq > afterSeq);
+
+  if (session.status === 'queued' || session.status === 'streaming') {
+    session.expires_at = new Date(Date.now() + LOG_SESSION_TTL_MS).toISOString();
+    session.updated_at = new Date().toISOString();
+    await upsertContainerLogSessionD1(env, session);
+  }
+
+  return new Response(
+    JSON.stringify({
+      session: {
+        session_id: session.session_id,
+        node_id: session.node_id,
+        env: session.env,
+        service: session.service,
+        container_name: session.container_name,
+        follow: session.follow,
+        status: session.status,
+        error: session.error,
+        next_seq: session.next_seq,
+        updated_at: session.updated_at,
+      },
+      chunks: newChunks,
+    }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+async function handleCloseContainerLogSession(
+  sessionId: string,
+  request: Request,
+  env: Env,
+  _ctx: ExecutionContext,
+  url: URL
+): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as {
+    peer_id?: string;
+    public_key?: string;
+    timestamp?: string;
+    ssh_signature?: string;
+  };
+  const authorized = await authorizeContainerLogsRequest(request, env, url, 'close', body);
+  if (!authorized) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const session = await getContainerLogSessionD1(env, sessionId);
+  if (!session) {
+    return new Response(JSON.stringify({ status: 'closed', session_id: sessionId }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const wasActive = session.status === 'queued' || session.status === 'streaming';
+  session.status = 'closed';
+  session.updated_at = new Date().toISOString();
+  await upsertContainerLogSessionD1(env, session);
+
+  if (wasActive && session.node_id) {
+    await enqueueFleetCommand(
+      session.node_id,
+      {
+        id: `logs_stop_${Date.now()}_${sessionId}`,
+        type: 'stop_container_logs',
+        session_id: sessionId,
+        node_id: session.node_id,
+      },
+      env
+    );
+  }
+
+  return new Response(JSON.stringify({ status: 'closed', session_id: sessionId }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  });
+}
+
+async function handlePushContainerLogs(request: Request, env: Env): Promise<Response> {
+  const payload = (await request.json().catch(() => ({}))) as {
+    session_id?: string;
+    node_id?: string;
+    container_name?: string;
+    seq?: number;
+    chunk?: string;
+    eof?: boolean;
+    error?: string;
+  };
+
+  const sessionId = String(payload.session_id || '').trim();
+  if (!sessionId) {
+    return new Response(JSON.stringify({ error: 'session_id required' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const session = await getContainerLogSessionD1(env, sessionId);
+  if (!session) {
+    return new Response(JSON.stringify({ ok: true, stop: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  if (session.status === 'closed') {
+    return new Response(JSON.stringify({ ok: true, stop: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const nowIso = new Date().toISOString();
+  if (payload.container_name) {
+    session.container_name = String(payload.container_name);
+  }
+  if (payload.chunk) {
+    const seqNum = session.next_seq;
+    session.next_seq = seqNum + 1;
+    session.chunks.push({
+      seq: seqNum,
+      ts: nowIso,
+      text: String(payload.chunk),
+    });
+  }
+  if (payload.error) {
+    session.error = String(payload.error);
+    session.status = 'error';
+  } else if (payload.eof) {
+    session.status = 'eof';
+  } else {
+    session.status = 'streaming';
+  }
+  session.updated_at = nowIso;
+
+  await upsertContainerLogSessionD1(env, session);
+
+  broadcastTelemetry({
+    type: 'container_logs_chunk',
+    session_id: sessionId,
+    container_name: session.container_name,
+    status: session.status,
+    chunk: payload.chunk || '',
+    eof: Boolean(payload.eof),
+    error: session.error || undefined,
+  });
+
+  return new Response(JSON.stringify({ ok: true, stop: false }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  });
 }
 
 

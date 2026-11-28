@@ -166,14 +166,23 @@ export interface BackupRecord {
   tag: string;
   node_id: string;
   service?: string;
+  env?: string;
+  database?: string;
+  retain_days?: number;
   size?: number;
   status: 'initiated' | 'completed' | 'failed';
   error?: string;
 }
 
 export interface BackupRequestPayload {
-  node_id: string;
+  node_id?: string;
   tag?: string;
+  service?: string;
+  env?: string;
+  container_name?: string;
+  target_db?: string;
+  prefix?: string;
+  retain_days?: number;
 }
 
 export interface RestoreRequestPayload {

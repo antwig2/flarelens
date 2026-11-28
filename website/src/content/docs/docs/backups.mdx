@@ -34,6 +34,25 @@ migration_command: ["goose", "-dir", "/app/migrations", "up"]
   If `migration_command` exits non-zero or the candidate slot fails HTTP readiness probes after altering schemas, FlareLens aborts the cutover, keeps the live slot serving traffic, and can stream-restore the pre-deploy R2 snapshot automatically.
 </Aside>
 
-## Scheduled Cron Policies & On-Demand Restore
+## Declarative Scheduled Cron Policies & R2 Retention (`backup:`)
 
-Configure recurring cron schedules (hourly, daily, weekly) per database from the **Backups** console view, trigger manual snapshots ahead of maintenance windows, or stream-restore any historical R2 archive into a staging or production PostgreSQL container with real-time progress reporting.
+Declare automated UTC backup schedules and R2 retention windows directly inside stateful manifests alongside `jobs:`:
+
+```yaml title="fleet/prod/postgres.yml"
+service: postgres
+env: prod
+mode: singleton
+image: postgres:18
+container_name: app-prod-postgres
+
+backup:
+  schedule: "0 2 * * *"       # Daily at 02:00 UTC
+  retain_days: 30             # Automatically prune R2 snapshots older than 30 days
+  prefix: postgres/prod
+  databases:
+    - core_prod
+    - workflow_prod
+```
+
+- **1-Minute Edge Cron Evaluation**: The Control Plane evaluates `backup.schedule` every minute in UTC with D1 slot deduplication (`backup_cron_slots`), queueing zero-disk streaming `pg_dump` runs for every configured database.
+- **Automatic Retention Pruning**: Snapshots under `backup.prefix` older than `retain_days` are pruned automatically from Cloudflare R2 after scheduled runs, while manual snapshots and point-in-time restores remain available one click away in the **Backups** console view.

@@ -75,7 +75,7 @@ function createMockR2() {
     },
     async put(key, body, opts = {}) {
       const buf = body instanceof ArrayBuffer ? Buffer.from(body) : Buffer.from(String(body));
-      objects.set(key, { buf, opts });
+      objects.set(key, { buf, opts, uploaded: opts.uploaded ? new Date(opts.uploaded) : new Date() });
     },
     async get(key) {
       const item = objects.get(key);
@@ -95,8 +95,8 @@ function createMockR2() {
     async list({ prefix = '' } = {}) {
       listCalls++;
       const res = [];
-      for (const [k] of objects.entries()) {
-        if (k.startsWith(prefix)) res.push({ key: k });
+      for (const [k, v] of objects.entries()) {
+        if (k.startsWith(prefix)) res.push({ key: k, size: v.buf.byteLength, uploaded: v.uploaded });
       }
       return { objects: res };
     },
@@ -1423,6 +1423,172 @@ async function runTests() {
   const listAfterExpBody = await listAfterExpRes.json();
   assert.strictEqual(listAfterExpBody.tunnels.length, 0, 'Expired mesh tunnel must be automatically reaped');
   console.log('   ✅ Passed: Keyless Ed25519 funnel open/renew/close, IP spoof block, domain guard & TTL expiry verified!\n');
+
+  // =========================================================================
+  // 10. ZERO-SSH LIVE CONTAINER LOGS & DECLARATIVE R2 SCHEDULED BACKUPS
+  // =========================================================================
+  console.log('🔟  Testing Zero-SSH Live Container Logs & Declarative Scheduled R2 Backups + Retention Pruning...');
+
+  const signLogsProof = async (action, wgPub, ts) => {
+    const msg = new TextEncoder().encode(`flarelens-container-logs:${action}:${wgPub}:${ts}`);
+    const sigBuf = await crypto.subtle.sign({ name: 'Ed25519' }, edKeyPair.privateKey, msg);
+    return Buffer.from(sigBuf).toString('base64');
+  };
+
+  const unauthLogRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/containers/logs/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ service: 'orders-api', env: 'uat' }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(unauthLogRes.status, 401, 'Unsigned container logs open must return 401');
+
+  const logTs = String(Math.floor(Date.now() / 1000));
+  const openLogRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/containers/logs/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        service: 'orders-api',
+        env: 'uat',
+        tail_lines: 100,
+        follow: true,
+        peer_id: laptopPeer.id,
+        public_key: 'wgFunnelLaptopPubKey123=',
+        timestamp: logTs,
+        ssh_signature: await signLogsProof('open', 'wgFunnelLaptopPubKey123=', logTs),
+      }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(openLogRes.status, 201, 'Signed workstation log session open must return 201');
+  const logSession = (await openLogRes.json()).session;
+
+  const pushRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/containers/logs/push', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-enroll-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        session_id: logSession.session_id,
+        node_id: logSession.node_id,
+        container_name: 'orders-api-green',
+        chunk: '2026-11-28T06:30:00Z INFO HTTP server listening on :8080\n',
+        eof: false,
+      }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(pushRes.status, 200);
+  assert.strictEqual((await pushRes.json()).stop, false);
+
+  const readQuery = new URLSearchParams({
+    after: '0',
+    peer_id: laptopPeer.id,
+    public_key: 'wgFunnelLaptopPubKey123=',
+    timestamp: logTs,
+    ssh_signature: await signLogsProof('read', 'wgFunnelLaptopPubKey123=', logTs),
+  });
+  const pollLogRes = await worker.fetch(
+    new Request(`https://control.flarelens.dev/api/v1/control/containers/logs/sessions/${logSession.session_id}?${readQuery}`),
+    env,
+    ctx
+  );
+  assert.strictEqual(pollLogRes.status, 200);
+  const pollLogBody = await pollLogRes.json();
+  assert.strictEqual(pollLogBody.session.container_name, 'orders-api-green');
+  assert.strictEqual(pollLogBody.chunks.length, 1);
+  assert.ok(pollLogBody.chunks[0].text.includes('listening on :8080'));
+
+  const closeLogRes = await worker.fetch(
+    new Request(`https://control.flarelens.dev/api/v1/control/containers/logs/sessions/${logSession.session_id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        peer_id: laptopPeer.id,
+        public_key: 'wgFunnelLaptopPubKey123=',
+        timestamp: logTs,
+        ssh_signature: await signLogsProof('close', 'wgFunnelLaptopPubKey123=', logTs),
+      }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(closeLogRes.status, 200);
+
+  // Declarative `backup:` schedule + R2 retention pruning
+  await backupBucket.put('postgres/uat/2020-01-01_orders_uat_scheduled.sql.gz', 'expired-sql', {
+    uploaded: '2020-01-01T03:00:00.000Z',
+  });
+  await backupBucket.put('postgres/uat/2026-11-27_orders_uat_scheduled.sql.gz', 'recent-sql', {
+    uploaded: '2026-11-27T03:00:00.000Z',
+  });
+
+  const saveBkManifestRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/fleet/manifests', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        manifest: {
+          service: 'postgres',
+          env: 'uat',
+          mode: 'singleton',
+          adopt_only: true,
+          image: 'postgres:18',
+          container_name: 'postgres-uat',
+          node_id: 'pool-eu-1',
+          backup: {
+            schedule: '15 3 * * *',
+            retain_days: 14,
+            prefix: 'postgres/uat',
+            databases: ['orders_uat', 'ledger_uat'],
+          },
+        },
+        reconcile: false,
+      }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(saveBkManifestRes.status, 200, 'Manifest with declarative backup: spec must save');
+
+  const bkTickRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/backups/cron-tick', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ timestamp: '2026-11-28T03:15:00Z' }),
+    }),
+    env,
+    ctx
+  );
+  const bkTickBody = await bkTickRes.json();
+  assert.strictEqual(bkTickBody.triggered.length, 2, 'Must trigger scheduled backup for both databases');
+  assert.deepStrictEqual(bkTickBody.pruned_keys, ['postgres/uat/2020-01-01_orders_uat_scheduled.sql.gz']);
+
+  const bkListRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/backups?prefix=postgres/uat', {
+      headers: { Authorization: 'Bearer test-admin-password' },
+    }),
+    env,
+    ctx
+  );
+  const bkListBody = await bkListRes.json();
+  assert.strictEqual(bkListBody.count, 1, 'Only non-expired R2 snapshot must remain');
+  assert.strictEqual(bkListBody.defined_policies.length, 1);
+  console.log('   ✅ Passed: Zero-SSH live container logs & declarative scheduled R2 backups + retention pruning verified!\n');
 
   console.log('🎉 ALL FLARELENS OPEN-SOURCE D1 CONTROL PLANE TESTS PASSED!');
 }

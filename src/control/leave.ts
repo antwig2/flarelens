@@ -117,3 +117,45 @@ export async function verifyMeshTunnelSignature(
     return false;
   }
 }
+
+/**
+ * Verifies a keyless workstation container log stream proof signed with the peer's registered Ed25519 SSH key:
+ * message = `flarelens-container-logs:<action>:<public_key>:<timestamp>`
+ */
+export async function verifyContainerLogsSignature(
+  peer: MeshPeerRecord,
+  action: 'open' | 'read' | 'close',
+  publicKey: string,
+  timestamp: string,
+  signatureBase64: string,
+  nowSec = Math.floor(Date.now() / 1000)
+): Promise<boolean> {
+  if (!peer.ssh_public_key || !action || !publicKey || !timestamp || !signatureBase64) {
+    return false;
+  }
+  if (peer.public_key && peer.public_key !== publicKey) {
+    return false;
+  }
+  const tsNum = Number(timestamp);
+  if (!Number.isFinite(tsNum) || Math.abs(nowSec - tsNum) > 300) {
+    return false;
+  }
+  const rawPub = parseOpenSSHEd25519PublicKey(peer.ssh_public_key);
+  if (!rawPub) return false;
+
+  try {
+    const sigBytes = decodeBase64(signatureBase64);
+    if (sigBytes.byteLength !== 64) return false;
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      rawPub,
+      { name: 'Ed25519' },
+      false,
+      ['verify']
+    );
+    const msgBytes = new TextEncoder().encode(`flarelens-container-logs:${action}:${publicKey}:${timestamp}`);
+    return await crypto.subtle.verify({ name: 'Ed25519' }, cryptoKey, sigBytes, msgBytes);
+  } catch {
+    return false;
+  }
+}

@@ -132,6 +132,15 @@ export interface FleetJobSpec {
   cpu_cores?: number;
 }
 
+export interface FleetBackupSpec {
+  schedule: string;
+  retain_days?: number;
+  database?: string;
+  databases?: string[];
+  prefix?: string;
+  tag?: string;
+}
+
 export interface FleetHealthcheckSpec {
   test: string[] | string;
   interval?: string;
@@ -179,6 +188,7 @@ export interface FleetServiceManifest {
   healthcheck?: FleetHealthcheckSpec;
   workers?: FleetWorkerSpec[];
   jobs?: FleetJobSpec[];
+  backup?: FleetBackupSpec;
   env_vars?: Record<string, string>;
   secrets?: Record<string, string>;
 }
@@ -295,6 +305,19 @@ export const FLEET_JSON_SCHEMA = {
           cpu_cores: { type: 'number', minimum: 0.05, maximum: 256 },
         },
       },
+    },
+    backup: {
+      type: 'object',
+      required: ['schedule'],
+      properties: {
+        schedule: { type: 'string' },
+        retain_days: { type: 'integer', minimum: 1, maximum: 3650, default: 30 },
+        database: { type: 'string' },
+        databases: { type: 'array', items: { type: 'string' } },
+        prefix: { type: 'string' },
+        tag: { type: 'string' },
+      },
+      additionalProperties: false,
     },
     env_vars: { type: 'object', additionalProperties: { type: 'string' } },
     secrets: { type: 'object', additionalProperties: { type: 'string' } },
@@ -422,6 +445,7 @@ export function buildPromotedManifest(
       entrypoint: src.entrypoint ?? tgt.entrypoint,
       workers: tgt.workers ?? src.workers,
       jobs: tgt.jobs ?? src.jobs,
+      backup: tgt.backup ?? src.backup,
       replicas: tgt.replicas ?? src.replicas,
       memory_mb: tgt.memory_mb ?? src.memory_mb,
       cpu_cores: tgt.cpu_cores ?? src.cpu_cores,
@@ -466,6 +490,36 @@ export function buildPromotedManifest(
           ...(j.volumes ? { volumes: j.volumes.map(swapEnvToken) } : {}),
         })),
       }
+      : {}),
+    ...(src.backup
+      ? {
+          backup: {
+            ...src.backup,
+            ...(src.backup.database
+              ? {
+                  database: swapEnvToken(src.backup.database).replace(
+                    new RegExp(`_${fromEnv}\\b`, 'g'),
+                    `_${toEnv}`
+                  ),
+                }
+              : {}),
+            ...(src.backup.databases
+              ? {
+                  databases: src.backup.databases.map((db) =>
+                    swapEnvToken(db).replace(new RegExp(`_${fromEnv}\\b`, 'g'), `_${toEnv}`)
+                  ),
+                }
+              : {}),
+            ...(src.backup.prefix
+              ? {
+                  prefix: swapEnvToken(src.backup.prefix).replace(
+                    new RegExp(`/${fromEnv}$`, ''),
+                    `/${toEnv}`
+                  ),
+                }
+              : {}),
+          },
+        }
       : {}),
   };
 }
@@ -590,6 +644,31 @@ export function validateFleetManifest(m: any): { valid: boolean; errors: string[
           }
         }
       });
+    }
+  }
+  if (m.backup !== undefined) {
+    if (!m.backup || typeof m.backup !== 'object' || Array.isArray(m.backup)) {
+      errors.push(`Invalid 'backup': must be a BackupSpec object`);
+    } else {
+      if (!m.backup.schedule || typeof m.backup.schedule !== 'string') {
+        errors.push(`Invalid backup.schedule: required cron string`);
+      } else {
+        const cronCheck = validateCronExpression(m.backup.schedule);
+        if (!cronCheck.valid) {
+          errors.push(`Invalid backup.schedule ('${m.backup.schedule}'): ${cronCheck.error}`);
+        }
+      }
+      if (m.backup.retain_days !== undefined) {
+        const rd = Number(m.backup.retain_days);
+        if (!Number.isInteger(rd) || rd < 1 || rd > 3650) {
+          errors.push(`Invalid backup.retain_days (${String(m.backup.retain_days)}): must be integer 1..3650`);
+        }
+      }
+      if (m.backup.databases !== undefined) {
+        if (!Array.isArray(m.backup.databases) || m.backup.databases.some((d: any) => typeof d !== 'string' || !d.trim())) {
+          errors.push(`Invalid backup.databases: must be an array of non-empty database names`);
+        }
+      }
     }
   }
   return { valid: errors.length === 0, errors };

@@ -21,6 +21,21 @@ Instead of paying `$0.50–$2.50+/GB` to third-party log SaaS vendors, FlareLens
 1. **Real-Time SSE Tailing**: Stream stdout and stderr from any container or logical service across your fleet live in the console with sub-5ms edge fan-out.
 2. **Columnar R2 Log Lakehouse**: Logs are micro-batched, Snappy-compressed into Hive-partitioned **Apache Parquet** objects (`logs/env=prod/dt=YYYY-MM-DD/*.parquet`), and stored in your Cloudflare R2 bucket with **$0 egress fees**.
 
+## Zero-SSH Live Container Logs (`flarelensd logs`)
+
+Inspect real-time stdout/stderr from any running Blue/Green slot or singleton container (`postgres`, `benthos-cdc`, `radius`, `checkout-api`) directly from the **Fleet → 📜 Logs** modal or from your laptop CLI—zero SSH keys or bastion hosts required:
+
+```bash title="Stream live container logs locally or over the Control Plane"
+# Follow live logs from your SSO-authenticated workstation (uses ~/.flarelens/id_ed25519 automatically)
+flarelensd logs checkout-api --env prod -f
+
+# Tail the last 500 lines with Docker RFC3339 timestamps from a stateful singleton
+flarelensd logs postgres --env uat --tail 500 --timestamps
+```
+
+- **Active Slot Resolution**: When targeting a `blue_green` service, `flarelensd` automatically attaches to the currently promoted live slot (`-blue` or `-green`).
+- **Immediate Stream Cancellation**: Closing the Dashboard modal (`Esc` or backdrop click) or pressing `Ctrl+C` in the terminal immediately cancels the host Docker Engine `follow` stream.
+
 ## In-Browser DuckDB-WASM SQL Analytics
 
 Opening **Observability → Log Explorer** boots **DuckDB-WASM** locally inside your browser tab and executes analytical SQL queries directly over R2 Parquet partitions via HTTP range requests—scanning millions of structured log rows in milliseconds with zero dedicated ClickHouse or Elasticsearch servers to maintain:

@@ -26,6 +26,7 @@ Add `# $schema: https://flarelens.dev/schemas/fleet.schema.json` at the top of Y
 | `resources` | `object` | Hard Linux kernel cgroup caps: `{ memory_mb: integer, cpu_cores: number }`. |
 | `worker` | `object` | Optional companion worker container with dedicated `command[]` and `resources` override. |
 | `jobs` | `JobSpec[]` | Scheduled UTC `CronJob`s (`schedule: "0 2 * * *"`) and on-demand one-off container commands (`concurrency_policy`, `timeout_seconds`, `memory_mb`, `cpu_cores`). |
+| `backup` | `BackupSpec` | Declarative UTC `pg_dump` schedule and R2 retention policy (`{ schedule: "0 3 * * *", retain_days: 30, databases?: string[], prefix?: string }`). |
 | `pre_deploy_snapshot` | `boolean` | Stream a gzipped `pg_dump` snapshot to R2 prior to running schema migrations. |
 | `run_migrations` / `migration_command` | `boolean` / `string[]` | Execute a one-shot migration container before booting the candidate Blue/Green slot. |
 | `env_vars` | `Record<string, string>` | Non-secret runtime environment variables merged with encrypted Vault secrets. |
@@ -47,6 +48,10 @@ sudo flarelensd logout
 # Expose localhost:<port> on a temporary public HTTPS URL over WireGuard + Gateway Traefik
 flarelensd http 3000 --subdomain my-preview
 flarelensd http 8080 --subdomain webhook-test --auth user:pass
+
+# Stream live container stdout/stderr without SSH (local Docker socket or remote Control Plane)
+flarelensd logs checkout-api --env prod -f
+flarelensd logs postgres --env uat --tail 250 --timestamps
 
 # Cleanly unenroll a server or completely uninstall flarelensd (running Docker apps stay untouched)
 sudo flarelensd leave --yes
@@ -107,4 +112,6 @@ jobs:
 | `GET /api/v1/control/tunnels` | Operator / API Token | List active public HTTPS localhost funnel tunnels (`flarelensd http`). |
 | `POST /api/v1/control/tunnels` | Token / Ed25519 Proof | Register an ephemeral `100.64.0.0/10` WireGuard funnel tunnel and queue `sync_tunnel` on the gateway node. |
 | `DELETE /api/v1/control/tunnels/:id` | Token / Ed25519 Proof | Revoke a funnel tunnel lease and queue `remove_tunnel` on the gateway node. |
+| `POST /api/v1/control/containers/logs/sessions` | Token / Ed25519 Proof | Open a zero-SSH live container stdout/stderr log session (`stream_container_logs`). |
+| `GET /api/v1/control/containers/logs/sessions/:id` | Token / Ed25519 Proof | Poll incremental demultiplexed container log chunks (`?after=<seq>`). |
 | `POST /api/v1/control/agent/releases` | Operator / API Token | Publish SHA-256 verified `flarelensd` binary release for zero-SSH OTA rollouts. |

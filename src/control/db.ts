@@ -118,6 +118,30 @@ const SCHEMA_STATEMENTS = [
     updated_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_mesh_tunnels_expires ON mesh_tunnels(expires_at ASC)`,
+  `CREATE TABLE IF NOT EXISTS container_log_sessions (
+    session_id TEXT PRIMARY KEY,
+    node_id TEXT NOT NULL,
+    env TEXT NOT NULL DEFAULT '',
+    service TEXT NOT NULL DEFAULT '',
+    container_name TEXT NOT NULL DEFAULT '',
+    follow INTEGER NOT NULL DEFAULT 1,
+    tail_lines INTEGER NOT NULL DEFAULT 200,
+    status TEXT NOT NULL DEFAULT 'queued',
+    next_seq INTEGER NOT NULL DEFAULT 1,
+    chunks_json TEXT NOT NULL DEFAULT '[]',
+    error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_container_log_sessions_expires ON container_log_sessions(expires_at ASC)`,
+  `CREATE TABLE IF NOT EXISTS backup_cron_slots (
+    slot_key TEXT PRIMARY KEY,
+    env TEXT NOT NULL,
+    service TEXT NOT NULL,
+    backup_key TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
 ];
 
 const initializedDbs = new WeakSet<object>();
@@ -1715,6 +1739,237 @@ export async function deleteMeshTunnelD1(env: Env, tunnelId: string): Promise<vo
       const list: MeshTunnelRecord[] = raw ? JSON.parse(raw) : [];
       const filtered = list.filter((t) => t.tunnel_id !== tunnelId);
       await env.FLEET_KV.put('mesh:tunnels:active', JSON.stringify(filtered));
+    } catch {}
+  }
+}
+
+// ============================================================================
+// Live Container Log Sessions & Scheduled Backup Cron Slot Deduplication
+// ============================================================================
+
+export interface ContainerLogChunk {
+  seq: number;
+  ts: string;
+  text: string;
+}
+
+export interface ContainerLogSessionRecord {
+  session_id: string;
+  node_id: string;
+  env: string;
+  service: string;
+  container_name: string;
+  follow: boolean;
+  tail_lines: number;
+  status: 'queued' | 'streaming' | 'eof' | 'closed' | 'error';
+  next_seq: number;
+  chunks: ContainerLogChunk[];
+  error: string;
+  created_at: string;
+  expires_at: string;
+  updated_at: string;
+}
+
+interface RawContainerLogSessionRow {
+  session_id: string;
+  node_id: string;
+  env: string;
+  service: string;
+  container_name: string;
+  follow: number;
+  tail_lines: number;
+  status: string;
+  next_seq: number;
+  chunks_json: string;
+  error: string;
+  created_at: string;
+  expires_at: string;
+  updated_at: string;
+}
+
+function hydrateLogSessionRow(row: RawContainerLogSessionRow): ContainerLogSessionRecord {
+  let chunks: ContainerLogChunk[] = [];
+  try {
+    const parsed = JSON.parse(row.chunks_json || '[]');
+    if (Array.isArray(parsed)) chunks = parsed;
+  } catch {}
+  return {
+    session_id: row.session_id,
+    node_id: row.node_id,
+    env: row.env || '',
+    service: row.service || '',
+    container_name: row.container_name || '',
+    follow: Boolean(row.follow),
+    tail_lines: Number(row.tail_lines || 200),
+    status: (row.status as ContainerLogSessionRecord['status']) || 'queued',
+    next_seq: Number(row.next_seq || 1),
+    chunks,
+    error: row.error || '',
+    created_at: row.created_at,
+    expires_at: row.expires_at,
+    updated_at: row.updated_at,
+  };
+}
+
+const memLogSessions = new Map<string, ContainerLogSessionRecord>();
+const memBackupSlots = new Set<string>();
+
+function trimLogChunks(chunks: ContainerLogChunk[]): ContainerLogChunk[] {
+  const maxChunks = 120;
+  const maxChars = 128 * 1024;
+  let list = chunks.length > maxChunks ? chunks.slice(chunks.length - maxChunks) : [...chunks];
+  let total = list.reduce((sum, c) => sum + (c.text?.length || 0), 0);
+  while (list.length > 1 && total > maxChars) {
+    const removed = list.shift();
+    total -= removed?.text?.length || 0;
+  }
+  return list;
+}
+
+export async function upsertContainerLogSessionD1(
+  env: Env,
+  session: ContainerLogSessionRecord
+): Promise<void> {
+  const nowIso = new Date().toISOString();
+  const capped = trimLogChunks(session.chunks || []);
+  const normalized: ContainerLogSessionRecord = {
+    ...session,
+    chunks: capped,
+    updated_at: session.updated_at || nowIso,
+  };
+  memLogSessions.set(session.session_id, normalized);
+
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    await db
+      .prepare(
+        `INSERT INTO container_log_sessions (
+           session_id, node_id, env, service, container_name, follow, tail_lines, status, next_seq, chunks_json, error, created_at, expires_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(session_id) DO UPDATE SET
+           node_id = excluded.node_id,
+           env = excluded.env,
+           service = excluded.service,
+           container_name = excluded.container_name,
+           follow = excluded.follow,
+           tail_lines = excluded.tail_lines,
+           status = excluded.status,
+           next_seq = excluded.next_seq,
+           chunks_json = excluded.chunks_json,
+           error = excluded.error,
+           expires_at = excluded.expires_at,
+           updated_at = excluded.updated_at`
+      )
+      .bind(
+        normalized.session_id,
+        normalized.node_id,
+        normalized.env || '',
+        normalized.service || '',
+        normalized.container_name || '',
+        normalized.follow ? 1 : 0,
+        Number(normalized.tail_lines || 200),
+        normalized.status,
+        Number(normalized.next_seq || 1),
+        JSON.stringify(capped),
+        normalized.error || '',
+        normalized.created_at || nowIso,
+        normalized.expires_at,
+        normalized.updated_at
+      )
+      .run();
+  }
+}
+
+export async function getContainerLogSessionD1(
+  env: Env,
+  sessionId: string
+): Promise<ContainerLogSessionRecord | null> {
+  if (!sessionId) return null;
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    const row = await db
+      .prepare(`SELECT * FROM container_log_sessions WHERE session_id = ?`)
+      .bind(sessionId)
+      .first<RawContainerLogSessionRow>();
+    if (row) return hydrateLogSessionRow(row);
+  }
+  return memLogSessions.get(sessionId) || null;
+}
+
+export async function reapExpiredContainerLogSessionsD1(
+  env: Env,
+  nowIso = new Date().toISOString()
+): Promise<ContainerLogSessionRecord[]> {
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    const res = await db
+      .prepare(`SELECT * FROM container_log_sessions WHERE expires_at <= ? LIMIT 100`)
+      .bind(nowIso)
+      .all<RawContainerLogSessionRow>();
+    const expired = (res.results || []).map(hydrateLogSessionRow);
+    if (expired.length > 0) {
+      await db.prepare(`DELETE FROM container_log_sessions WHERE expires_at <= ?`).bind(nowIso).run();
+      for (const s of expired) memLogSessions.delete(s.session_id);
+    }
+    return expired;
+  }
+  const expired: ContainerLogSessionRecord[] = [];
+  for (const [id, s] of memLogSessions.entries()) {
+    if (s.expires_at <= nowIso) {
+      expired.push(s);
+      memLogSessions.delete(id);
+    }
+  }
+  return expired;
+}
+
+export async function hasBackupCronSlotFiredD1(env: Env, slotKey: string): Promise<boolean> {
+  if (!slotKey) return false;
+  if (memBackupSlots.has(slotKey)) return true;
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    const row = await db
+      .prepare(`SELECT slot_key FROM backup_cron_slots WHERE slot_key = ? LIMIT 1`)
+      .bind(slotKey)
+      .first<{ slot_key: string }>();
+    if (row?.slot_key) {
+      memBackupSlots.add(slotKey);
+      return true;
+    }
+    return false;
+  }
+  if (env.FLEET_KV) {
+    const val = await env.FLEET_KV.get(`backup_slot:${slotKey}`);
+    return Boolean(val);
+  }
+  return false;
+}
+
+export async function recordBackupCronSlotD1(
+  env: Env,
+  slotKey: string,
+  envName: string,
+  service: string,
+  backupKey: string
+): Promise<void> {
+  if (!slotKey) return;
+  memBackupSlots.add(slotKey);
+  const nowIso = new Date().toISOString();
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    await db
+      .prepare(
+        `INSERT INTO backup_cron_slots (slot_key, env, service, backup_key, created_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(slot_key) DO NOTHING`
+      )
+      .bind(slotKey, envName, service, backupKey, nowIso)
+      .run();
+    return;
+  }
+  if (env.FLEET_KV) {
+    try {
+      await env.FLEET_KV.put(`backup_slot:${slotKey}`, backupKey, { expirationTtl: 86400 * 2 });
     } catch {}
   }
 }
