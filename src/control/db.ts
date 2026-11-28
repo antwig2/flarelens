@@ -103,6 +103,21 @@ const SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_job_runs_recent ON job_runs(created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_job_runs_lookup ON job_runs(env, service, job_name, created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_job_runs_cron_slot ON job_runs(cron_slot)`,
+  `CREATE TABLE IF NOT EXISTS mesh_tunnels (
+    tunnel_id TEXT PRIMARY KEY,
+    peer_id TEXT NOT NULL DEFAULT '',
+    public_key TEXT NOT NULL DEFAULT '',
+    domain TEXT NOT NULL UNIQUE,
+    node_id TEXT NOT NULL,
+    target_ip TEXT NOT NULL,
+    target_port INTEGER NOT NULL,
+    local_port INTEGER NOT NULL DEFAULT 0,
+    has_auth INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_mesh_tunnels_expires ON mesh_tunnels(expires_at ASC)`,
 ];
 
 const initializedDbs = new WeakSet<object>();
@@ -1502,4 +1517,204 @@ export async function listActiveJobRunsForSpecD1(
 ): Promise<JobRunRecord[]> {
   const runs = await listJobRunsD1(env, { env: envName, service, job_name: jobName, limit: 10 });
   return runs.filter((r) => r.status === 'queued' || r.status === 'running');
+}
+
+// ============================================================================
+// Ephemeral WireGuard + Traefik Public HTTPS Funnel Tunnels (`mesh_tunnels`)
+// ============================================================================
+
+export interface MeshTunnelRecord {
+  tunnel_id: string;
+  peer_id: string;
+  public_key: string;
+  domain: string;
+  node_id: string;
+  target_ip: string;
+  target_port: number;
+  local_port: number;
+  has_auth: boolean;
+  created_at: string;
+  expires_at: string;
+  updated_at: string;
+}
+
+interface RawMeshTunnelRow {
+  tunnel_id: string;
+  peer_id: string;
+  public_key: string;
+  domain: string;
+  node_id: string;
+  target_ip: string;
+  target_port: number;
+  local_port: number;
+  has_auth: number;
+  created_at: string;
+  expires_at: string;
+  updated_at: string;
+}
+
+function hydrateMeshTunnelRow(row: RawMeshTunnelRow): MeshTunnelRecord {
+  return {
+    tunnel_id: row.tunnel_id,
+    peer_id: row.peer_id || '',
+    public_key: row.public_key || '',
+    domain: row.domain,
+    node_id: row.node_id,
+    target_ip: row.target_ip,
+    target_port: Number(row.target_port || 0),
+    local_port: Number(row.local_port || 0),
+    has_auth: Boolean(row.has_auth),
+    created_at: row.created_at,
+    expires_at: row.expires_at,
+    updated_at: row.updated_at,
+  };
+}
+
+export async function upsertMeshTunnelD1(env: Env, tunnel: MeshTunnelRecord): Promise<void> {
+  const nowIso = new Date().toISOString();
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    await db
+      .prepare(
+        `INSERT INTO mesh_tunnels (
+           tunnel_id, peer_id, public_key, domain, node_id, target_ip, target_port, local_port, has_auth, created_at, expires_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(tunnel_id) DO UPDATE SET
+           peer_id = excluded.peer_id,
+           public_key = excluded.public_key,
+           domain = excluded.domain,
+           node_id = excluded.node_id,
+           target_ip = excluded.target_ip,
+           target_port = excluded.target_port,
+           local_port = excluded.local_port,
+           has_auth = excluded.has_auth,
+           expires_at = excluded.expires_at,
+           updated_at = excluded.updated_at`
+      )
+      .bind(
+        tunnel.tunnel_id,
+        tunnel.peer_id || '',
+        tunnel.public_key || '',
+        tunnel.domain.toLowerCase(),
+        tunnel.node_id,
+        tunnel.target_ip,
+        Number(tunnel.target_port),
+        Number(tunnel.local_port || 0),
+        tunnel.has_auth ? 1 : 0,
+        tunnel.created_at || nowIso,
+        tunnel.expires_at,
+        tunnel.updated_at || nowIso
+      )
+      .run();
+    return;
+  }
+
+  if (env.FLEET_KV) {
+    try {
+      const raw = await env.FLEET_KV.get('mesh:tunnels:active');
+      const list: MeshTunnelRecord[] = raw ? JSON.parse(raw) : [];
+      const filtered = list.filter(
+        (t) => t.tunnel_id !== tunnel.tunnel_id && t.domain.toLowerCase() !== tunnel.domain.toLowerCase()
+      );
+      filtered.unshift({ ...tunnel, domain: tunnel.domain.toLowerCase() });
+      await env.FLEET_KV.put('mesh:tunnels:active', JSON.stringify(filtered));
+    } catch {}
+  }
+}
+
+export async function getMeshTunnelD1(env: Env, tunnelId: string): Promise<MeshTunnelRecord | null> {
+  if (!tunnelId) return null;
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    const row = await db
+      .prepare(`SELECT * FROM mesh_tunnels WHERE tunnel_id = ?`)
+      .bind(tunnelId)
+      .first<RawMeshTunnelRow>();
+    return row ? hydrateMeshTunnelRow(row) : null;
+  }
+  if (env.FLEET_KV) {
+    try {
+      const raw = await env.FLEET_KV.get('mesh:tunnels:active');
+      const list: MeshTunnelRecord[] = raw ? JSON.parse(raw) : [];
+      return list.find((t) => t.tunnel_id === tunnelId) || null;
+    } catch {}
+  }
+  return null;
+}
+
+export async function getMeshTunnelByDomainD1(env: Env, domain: string): Promise<MeshTunnelRecord | null> {
+  const clean = String(domain || '').trim().toLowerCase();
+  if (!clean) return null;
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    const row = await db
+      .prepare(`SELECT * FROM mesh_tunnels WHERE LOWER(domain) = ? LIMIT 1`)
+      .bind(clean)
+      .first<RawMeshTunnelRow>();
+    return row ? hydrateMeshTunnelRow(row) : null;
+  }
+  if (env.FLEET_KV) {
+    try {
+      const raw = await env.FLEET_KV.get('mesh:tunnels:active');
+      const list: MeshTunnelRecord[] = raw ? JSON.parse(raw) : [];
+      return list.find((t) => t.domain.toLowerCase() === clean) || null;
+    } catch {}
+  }
+  return null;
+}
+
+export async function listMeshTunnelsD1(env: Env): Promise<MeshTunnelRecord[]> {
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    const res = await db
+      .prepare(`SELECT * FROM mesh_tunnels ORDER BY created_at DESC LIMIT 200`)
+      .all<RawMeshTunnelRow>();
+    return (res.results || []).map(hydrateMeshTunnelRow);
+  }
+  if (env.FLEET_KV) {
+    try {
+      const raw = await env.FLEET_KV.get('mesh:tunnels:active');
+      return raw ? (JSON.parse(raw) as MeshTunnelRecord[]) : [];
+    } catch {}
+  }
+  return [];
+}
+
+export async function listExpiredMeshTunnelsD1(
+  env: Env,
+  nowIso = new Date().toISOString()
+): Promise<MeshTunnelRecord[]> {
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    const res = await db
+      .prepare(`SELECT * FROM mesh_tunnels WHERE expires_at <= ? ORDER BY expires_at ASC LIMIT 200`)
+      .bind(nowIso)
+      .all<RawMeshTunnelRow>();
+    return (res.results || []).map(hydrateMeshTunnelRow);
+  }
+  if (env.FLEET_KV) {
+    try {
+      const raw = await env.FLEET_KV.get('mesh:tunnels:active');
+      const list: MeshTunnelRecord[] = raw ? JSON.parse(raw) : [];
+      return list.filter((t) => t.expires_at <= nowIso);
+    } catch {}
+  }
+  return [];
+}
+
+export async function deleteMeshTunnelD1(env: Env, tunnelId: string): Promise<void> {
+  if (!tunnelId) return;
+  const db = await ensureControlDbReady(env);
+  if (db) {
+    await db.prepare(`DELETE FROM mesh_tunnels WHERE tunnel_id = ?`).bind(tunnelId).run();
+    return;
+  }
+  if (env.FLEET_KV) {
+    try {
+      const raw = await env.FLEET_KV.get('mesh:tunnels:active');
+      const list: MeshTunnelRecord[] = raw ? JSON.parse(raw) : [];
+      const filtered = list.filter((t) => t.tunnel_id !== tunnelId);
+      await env.FLEET_KV.put('mesh:tunnels:active', JSON.stringify(filtered));
+    } catch {}
+  }
 }

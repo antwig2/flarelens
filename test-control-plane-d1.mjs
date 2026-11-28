@@ -1224,6 +1224,206 @@ async function runTests() {
   assert.strictEqual(completedCronRun.output, 'Synced 18 FX currency pairs');
   console.log('   ✅ Passed: Cron schedule matching, slot deduplication, concurrency forbid, agent callback & one-off job run verified!\n');
 
+  // =========================================================================
+  // 9. WIREGUARD + TRAEFIK PUBLIC HTTPS FUNNEL (`flarelensd http <port>`)
+  // =========================================================================
+  console.log('9️⃣  Testing Keyless Ed25519 Localhost Funnel Tunnels, Domain Guards & Lease Expiry...');
+
+  const signTunnelProof = async (action, wgPub, ts) => {
+    const msg = new TextEncoder().encode(`flarelens-mesh-tunnel:${action}:${wgPub}:${ts}`);
+    const sigBuf = await crypto.subtle.sign({ name: 'Ed25519' }, edKeyPair.privateKey, msg);
+    return Buffer.from(sigBuf).toString('base64');
+  };
+
+  const enrollLaptopRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/mesh/client', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'dev-funnel-laptop',
+        public_key: 'wgFunnelLaptopPubKey123=',
+        ssh_public_key: sshPubLine,
+        device_type: 'client',
+      }),
+    }),
+    env,
+    ctx
+  );
+  assert.ok([200, 201].includes(enrollLaptopRes.status));
+  const enrollLaptopBody = await enrollLaptopRes.json();
+  const laptopPeer = enrollLaptopBody.peer;
+  assert.ok(laptopPeer.overlay_ip.startsWith('100.64.'), 'Workstation must receive 100.64.0.0/10 overlay IP');
+
+  // 9a. Unsigned tunnel request must be rejected with 401
+  const unauthTunRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/tunnels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        peer_id: laptopPeer.id,
+        public_key: 'wgFunnelLaptopPubKey123=',
+        target_ip: laptopPeer.overlay_ip,
+        target_port: 41234,
+        local_port: 3000,
+        subdomain: 'stripe-dev',
+      }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(unauthTunRes.status, 401, 'Unsigned tunnel registration must return 401');
+
+  // 9b. Cross-peer IP spoofing (pointing tunnel at another WireGuard IP) must return 403
+  const nowSecStr = String(Math.floor(Date.now() / 1000));
+  const spoofIpRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/tunnels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        peer_id: laptopPeer.id,
+        public_key: 'wgFunnelLaptopPubKey123=',
+        target_ip: '100.64.99.99',
+        target_port: 41234,
+        subdomain: 'spoof-test',
+        timestamp: nowSecStr,
+        ssh_signature: await signTunnelProof('open', 'wgFunnelLaptopPubKey123=', nowSecStr),
+      }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(spoofIpRes.status, 403, 'Cross-peer overlay IP spoofing must return 403');
+
+  // 9c. Hijacking an active Fleet manifest domain (orders-uat.example.com) must return 409
+  const hijackDomainRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/tunnels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        peer_id: laptopPeer.id,
+        public_key: 'wgFunnelLaptopPubKey123=',
+        target_ip: laptopPeer.overlay_ip,
+        target_port: 41234,
+        domain: 'orders-uat.example.com',
+        timestamp: nowSecStr,
+        ssh_signature: await signTunnelProof('open', 'wgFunnelLaptopPubKey123=', nowSecStr),
+      }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(hijackDomainRes.status, 409, 'Protected Fleet service domain collision must return 409');
+
+  // 9d. Valid keyless Ed25519 tunnel open -> 201 + sync_tunnel queued
+  const openTunRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/tunnels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        peer_id: laptopPeer.id,
+        public_key: 'wgFunnelLaptopPubKey123=',
+        target_ip: laptopPeer.overlay_ip,
+        target_port: 41234,
+        local_port: 3000,
+        subdomain: 'stripe-dev',
+        has_auth: true,
+        timestamp: nowSecStr,
+        ssh_signature: await signTunnelProof('open', 'wgFunnelLaptopPubKey123=', nowSecStr),
+      }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(openTunRes.status, 201, 'Valid Ed25519 tunnel open must return 201');
+  const openTunBody = await openTunRes.json();
+  assert.strictEqual(openTunBody.tunnel.domain, 'stripe-dev.flarelens.dev');
+  assert.strictEqual(openTunBody.tunnel.public_url, 'https://stripe-dev.flarelens.dev');
+  const tunnelId = openTunBody.tunnel.tunnel_id;
+  const gatewayNodeId = openTunBody.tunnel.node_id;
+
+  const syncTunCmds = await env.CONTROL_DB
+    .prepare("SELECT payload_json FROM node_commands WHERE node_id = ? AND type = 'sync_tunnel'")
+    .bind(gatewayNodeId)
+    .all();
+  assert.ok((syncTunCmds.results || []).length >= 1, 'Gateway node must receive sync_tunnel command');
+
+  // 9e. Lease heartbeat renewal -> 200
+  const renewTunRes = await worker.fetch(
+    new Request(`https://control.flarelens.dev/api/v1/control/tunnels/${tunnelId}/heartbeat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        peer_id: laptopPeer.id,
+        public_key: 'wgFunnelLaptopPubKey123=',
+        timestamp: nowSecStr,
+        ssh_signature: await signTunnelProof('renew', 'wgFunnelLaptopPubKey123=', nowSecStr),
+      }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(renewTunRes.status, 200, 'Ed25519 tunnel lease renewal must return 200');
+
+  // 9f. Keyless Ed25519 Ctrl+C close -> 200 + remove_tunnel queued
+  const closeTunRes = await worker.fetch(
+    new Request(`https://control.flarelens.dev/api/v1/control/tunnels/${tunnelId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        peer_id: laptopPeer.id,
+        public_key: 'wgFunnelLaptopPubKey123=',
+        timestamp: nowSecStr,
+        ssh_signature: await signTunnelProof('close', 'wgFunnelLaptopPubKey123=', nowSecStr),
+      }),
+    }),
+    env,
+    ctx
+  );
+  assert.strictEqual(closeTunRes.status, 200, 'Ed25519 tunnel close must return 200');
+  const rmTunCmds = await env.CONTROL_DB
+    .prepare("SELECT payload_json FROM node_commands WHERE node_id = ? AND type = 'remove_tunnel'")
+    .bind(gatewayNodeId)
+    .all();
+  assert.ok((rmTunCmds.results || []).length >= 1, 'Gateway node must receive remove_tunnel command on close');
+
+  // 9g. Automatic TTL expiry reaper
+  const expOpenRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/tunnels', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-admin-password',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        peer_id: laptopPeer.id,
+        target_ip: laptopPeer.overlay_ip,
+        target_port: 41235,
+        subdomain: 'ephemeral-exp',
+      }),
+    }),
+    env,
+    ctx
+  );
+  const expOpenBody = await expOpenRes.json();
+  await env.CONTROL_DB
+    .prepare('UPDATE mesh_tunnels SET expires_at = ? WHERE tunnel_id = ?')
+    .bind('2020-01-01T00:00:00.000Z', expOpenBody.tunnel.tunnel_id)
+    .run();
+
+  const listAfterExpRes = await worker.fetch(
+    new Request('https://control.flarelens.dev/api/v1/control/tunnels', {
+      headers: { Authorization: 'Bearer test-admin-password' },
+    }),
+    env,
+    ctx
+  );
+  const listAfterExpBody = await listAfterExpRes.json();
+  assert.strictEqual(listAfterExpBody.tunnels.length, 0, 'Expired mesh tunnel must be automatically reaped');
+  console.log('   ✅ Passed: Keyless Ed25519 funnel open/renew/close, IP spoof block, domain guard & TTL expiry verified!\n');
+
   console.log('🎉 ALL FLARELENS OPEN-SOURCE D1 CONTROL PLANE TESTS PASSED!');
 }
 

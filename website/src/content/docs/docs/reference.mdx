@@ -44,6 +44,10 @@ sudo flarelensd login --control https://ops.example.com
 sudo flarelensd down
 sudo flarelensd logout
 
+# Expose localhost:<port> on a temporary public HTTPS URL over WireGuard + Gateway Traefik
+flarelensd http 3000 --subdomain my-preview
+flarelensd http 8080 --subdomain webhook-test --auth user:pass
+
 # Cleanly unenroll a server or completely uninstall flarelensd (running Docker apps stay untouched)
 sudo flarelensd leave --yes
 sudo flarelensd uninstall --yes
@@ -100,4 +104,7 @@ jobs:
 | `GET /api/v1/control/jobs` | Operator / API Token | List declared manifest jobs (with `next_run_at`) and recent D1 `job_runs` history. |
 | `POST /api/v1/control/jobs/run` | Operator / API Token | Queue a declared manifest job or ad-hoc ephemeral container command (`run_job`). |
 | `POST /api/v1/control/jobs/status` | Agent Token | Host daemon callback reporting job `running` / `succeeded` / `failed` / `timed_out`, `exit_code`, and output logs. |
+| `GET /api/v1/control/tunnels` | Operator / API Token | List active public HTTPS localhost funnel tunnels (`flarelensd http`). |
+| `POST /api/v1/control/tunnels` | Token / Ed25519 Proof | Register an ephemeral `100.64.0.0/10` WireGuard funnel tunnel and queue `sync_tunnel` on the gateway node. |
+| `DELETE /api/v1/control/tunnels/:id` | Token / Ed25519 Proof | Revoke a funnel tunnel lease and queue `remove_tunnel` on the gateway node. |
 | `POST /api/v1/control/agent/releases` | Operator / API Token | Publish SHA-256 verified `flarelensd` binary release for zero-SSH OTA rollouts. |

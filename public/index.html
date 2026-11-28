@@ -2253,6 +2253,43 @@
           </table>
         </div>
 
+        <!-- Active Localhost Funnel Tunnels (`flarelensd http <port>`) -->
+        <div class="card"
+          style="margin-top:1.5rem; border:1px solid #1f2937; background:linear-gradient(180deg, #111827 0%, #0d131f 100%);">
+          <div class="card-header"
+            style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
+            <div>
+              <div class="card-title" id="meshTunnelsCardTitle"
+                style="display:flex; align-items:center; gap:0.5rem; font-size:0.98rem;">
+                <span>🚇</span> Active Public Funnel Tunnels (<code>flarelensd http</code>)
+                <span class="status-badge healthy" id="meshActiveTunnelsBadge" style="font-size:0.7rem;">0 Active</span>
+              </div>
+              <p style="color:var(--text-muted); font-size:0.75rem; margin-top:0.2rem;">
+                Ephemeral public HTTPS developer tunnels forwarded over WireGuard (<code>100.64.0.0/10</code>) via Gateway Traefik. Run <code>flarelensd http 3000 --subdomain dev-api</code> on any logged-in workstation.
+              </p>
+            </div>
+          </div>
+          <div tabindex="0" role="region" aria-labelledby="meshTunnelsCardTitle"
+            style="overflow:auto; max-inline-size:100%; max-block-size:min(420px, 70vh); container-type:inline-size;">
+            <table class="data-table" style="border-collapse:separate; border-spacing:0;">
+              <thead style="position:sticky; inset-block-start:0; z-index:1;">
+                <tr>
+                  <th>Public HTTPS URL</th>
+                  <th>Workstation Peer</th>
+                  <th>Mesh Upstream</th>
+                  <th>Gateway Node</th>
+                  <th>Access Guard</th>
+                  <th>Lease Expiry</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="meshTunnelsTableBody">
+                <tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:1.5rem;">No active localhost tunnels. Run <code>flarelensd http 3000</code> on a connected workstation to open a temporary public HTTPS URL.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <!-- Edge Ingress & Cloudflare Tunnel Route Mapping -->
         <div class="card"
           style="margin-top:1.5rem; border:1px solid #1f2937; background:linear-gradient(180deg, #111827 0%, #0b0f19 100%);">
@@ -5522,6 +5559,66 @@
         });
       } catch (err) {
         console.error('Failed to fetch mesh peers', err);
+      }
+      fetchMeshTunnels();
+    }
+
+    async function fetchMeshTunnels() {
+      const tbody = document.getElementById('meshTunnelsTableBody');
+      if (!tbody) return;
+      try {
+        const resp = await fetch('/api/v1/control/tunnels');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const tunnels = data.tunnels || [];
+        const badge = document.getElementById('meshActiveTunnelsBadge');
+        if (badge) badge.textContent = `${tunnels.length} Active`;
+
+        if (tunnels.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:1.5rem;">No active localhost tunnels. Run <code>flarelensd http 3000</code> on a connected workstation to open a temporary public HTTPS URL.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = tunnels.map(t => {
+          const publicUrl = t.public_url || `https://${t.domain}`;
+          const remSec = Math.max(0, Math.round((Date.parse(t.expires_at) - Date.now()) / 1000));
+          const authBadge = t.has_auth
+            ? '<span class="status-badge warning" style="font-size:0.68rem;">🔒 Basic Auth</span>'
+            : '<span class="status-badge healthy" style="font-size:0.68rem;">🌍 Public HTTPS</span>';
+          const localHint = t.local_port ? ` <span style="color:var(--text-dim);">→ :${Number(t.local_port)}</span>` : '';
+          return `
+            <tr>
+              <th scope="row" style="text-align:left; font-weight:600; white-space:nowrap;">
+                <a href="${escapeHtml(publicUrl)}" target="_blank" rel="noopener" style="color:#38bdf8; text-decoration:none;">${escapeHtml(publicUrl)} ↗</a>
+              </th>
+              <td style="font-family:var(--font-mono); font-size:0.75rem; color:#e2e8f0;">${escapeHtml(t.peer_id || 'workstation')}</td>
+              <td style="font-family:var(--font-mono); font-size:0.74rem; color:#10b981; white-space:nowrap;">${escapeHtml(t.target_ip)}:${Number(t.target_port)}${localHint}</td>
+              <td style="font-size:0.75rem; color:#cbd5e1;">${escapeHtml(t.node_id)}</td>
+              <td>${authBadge}</td>
+              <td style="font-size:0.73rem; color:var(--text-muted); white-space:nowrap;">in ${remSec}s</td>
+              <td>
+                <button type="button" class="btn btn-sm btn-close-mesh-tunnel" data-tunnel-id="${escapeHtml(t.tunnel_id)}" data-domain="${escapeHtml(t.domain)}" style="font-size:0.7rem; padding:3px 9px; color:#f43f5e; border-color:rgba(244,63,94,0.4); background:rgba(244,63,94,0.1); font-weight:600; border-radius:4px;">✕ Close</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        tbody.querySelectorAll('.btn-close-mesh-tunnel').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const tunnelId = btn.getAttribute('data-tunnel-id');
+            const domain = btn.getAttribute('data-domain');
+            if (!tunnelId || !confirm(`Close active public tunnel https://${domain}?`)) return;
+            btn.disabled = true;
+            try {
+              const del = await fetch(`/api/v1/control/tunnels/${encodeURIComponent(tunnelId)}`, { method: 'DELETE' });
+              if (del.ok) fetchMeshTunnels();
+            } finally {
+              btn.disabled = false;
+            }
+          });
+        });
+      } catch (err) {
+        console.error('Failed to fetch mesh tunnels', err);
       }
     }
 

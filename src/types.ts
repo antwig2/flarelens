@@ -243,6 +243,7 @@ export interface Env {
   GITHUB_OIDC_ALLOWED_OWNERS?: string;
   GITHUB_OIDC_AUDIENCE?: string;
   VAULT_MASTER_KEY?: string;
+  TUNNEL_BASE_DOMAIN?: string;
 }
 
 export { ParsedWebhookDeploy } from './control/webhook';

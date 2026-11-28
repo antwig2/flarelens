@@ -45,3 +45,22 @@ psql postgres://readonly@postgres.uat.mesh:5432/app
 sudo flarelens-agent down
 sudo flarelens-agent logout
 ```
+
+## Public HTTPS Localhost Funnel (`flarelensd http`)
+
+Expose a local development server (`localhost:3000`, `localhost:8080`, Vite, Next.js, or webhook receiver) on a temporary public HTTPS URL—like `ngrok` or Tailscale Funnel, at **$0/mo** with zero third-party tunnel SaaS:
+
+```bash title="Expose localhost:3000 on a public HTTPS subdomain"
+# 1. Authenticate onto the mesh once (if not already connected)
+sudo flarelensd login --control https://ops.example.com
+
+# 2. Open a public HTTPS tunnel -> http://127.0.0.1:3000
+flarelensd http 3000 --subdomain stripe-webhooks
+
+# Optional: protect public preview with HTTP Basic Auth
+flarelensd http 5173 --subdomain ui-preview --auth demo:s3cr3t
+```
+
+- **Zero LAN Exposure**: `flarelensd http` binds a local HTTP + WebSocket reverse proxy strictly on your workstation's `100.64.0.x` WireGuard interface—never `0.0.0.0`—and rewrites `Host: localhost:<port>` automatically while setting `X-Forwarded-Host` and `X-Forwarded-Proto: https`.
+- **Keyless Ed25519 Ownership & Collision Guards**: Requests are signed with your workstation's `~/.flarelens/id_ed25519` key (`flarelens-mesh-tunnel:<action>:<wg_pub>:<ts>`). Active Fleet service domains cannot be overwritten (`409 Conflict`).
+- **Automatic Cleanup**: Pressing `Ctrl+C` immediately deletes the D1 lease and removes `funnel-<id>.yaml` from the gateway node's Traefik directory; if a laptop disconnects abruptly, the 1-minute Control Plane cron reaps expired leases automatically.

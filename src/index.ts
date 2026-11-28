@@ -77,6 +77,13 @@ import {
   listJobRunsD1,
   hasCronSlotFiredD1,
   listActiveJobRunsForSpecD1,
+  type MeshTunnelRecord,
+  upsertMeshTunnelD1,
+  getMeshTunnelD1,
+  getMeshTunnelByDomainD1,
+  listMeshTunnelsD1,
+  listExpiredMeshTunnelsD1,
+  deleteMeshTunnelD1,
 } from './control/db';
 import {
   type ClusterEndpoint,
@@ -92,7 +99,7 @@ import {
 import { encryptSecrets, decryptSecrets, parseEnvContent, getVaultLookupKeys, resolveVaultSecrets } from './control/vault';
 import { verifyGitHubSignature, parseDeployWebhook, reportGitHubStatus, resolveWebhookDeployPayload, getServiceDeclarativeDefaults } from './control/webhook';
 import { isGitHubOidcToken, verifyGitHubOidcToken } from './control/github_oidc';
-import { verifyMeshLeaveSignature } from './control/leave';
+import { verifyMeshLeaveSignature, verifyMeshTunnelSignature } from './control/leave';
 import {
   MESH_SUBNET,
   COORDINATOR_URL,
@@ -267,6 +274,21 @@ export default {
     // 3c-leave. Self-service Mesh Peer Leave (accepts Agent/Dashboard Auth OR Ed25519 SSH signature)
     if (url.pathname === '/api/v1/control/mesh/leave' && request.method === 'POST') {
       return handleMeshLeave(request, env, ctx, url);
+    }
+    if (url.pathname === '/api/v1/control/tunnels' && request.method === 'POST') {
+      return handleCreateMeshTunnel(request, env, ctx, url);
+    }
+    if (url.pathname.startsWith('/api/v1/control/tunnels/') && url.pathname.endsWith('/heartbeat') && request.method === 'POST') {
+      const tunnelId = decodeURIComponent(
+        url.pathname.replace('/api/v1/control/tunnels/', '').replace('/heartbeat', '').replace(/\/+$/, '').trim()
+      );
+      if (tunnelId) return handleRenewMeshTunnel(tunnelId, request, env, url);
+    }
+    if (url.pathname.startsWith('/api/v1/control/tunnels/') && request.method === 'DELETE') {
+      const tunnelId = decodeURIComponent(
+        url.pathname.replace('/api/v1/control/tunnels/', '').replace(/\/+$/, '').trim()
+      );
+      if (tunnelId) return handleCloseMeshTunnel(tunnelId, request, env, ctx, url);
     }
 
     // 3d. Agent-authenticated Control Callbacks (accept ENROLL_TOKEN, INGEST_SECRET, or Dashboard Auth)
@@ -546,6 +568,9 @@ export default {
     if (url.pathname === '/api/v1/control/mesh/peers' && request.method === 'GET') {
       return handleMeshListPeers(env);
     }
+    if (url.pathname === '/api/v1/control/tunnels' && request.method === 'GET') {
+      return handleListMeshTunnels(env, ctx);
+    }
 
     // 23b. Zero-Trust Sovereign Mesh: Generate Tailscale Pre-Auth Key (POST /api/v1/control/mesh/preauth-key)
     if (url.pathname === '/api/v1/control/mesh/preauth-key' && request.method === 'POST') {
@@ -663,6 +688,9 @@ export default {
     // 4. Declarative Scheduled CronJobs Evaluator (1-minute UTC resolution)
     const cronDate = event?.scheduledTime ? new Date(event.scheduledTime) : new Date();
     ctx.waitUntil(evaluateScheduledCronJobs(env, ctx, cronDate).then(() => {}));
+
+    // 5. Ephemeral Mesh + Traefik Funnel Lease Expiry Reaper
+    ctx.waitUntil(reapExpiredMeshTunnels(env, ctx).then(() => {}));
   },
 
   /**
@@ -5977,6 +6005,10 @@ async function handleMeshLeave(
     removedIds.push(peerId);
   }
 
+  if (removedIds.length > 0) {
+    await closeMeshTunnelsForPeers(removedIds, publicKey, env);
+  }
+
   return new Response(JSON.stringify({ status: 'deleted', removed_ids: removedIds }), {
     status: 200,
     headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -6533,6 +6565,513 @@ async function handleManualCronTick(request: Request, env: Env, ctx: ExecutionCo
     status: 200,
     headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
   });
+}
+
+// ============================================================================
+// Ephemeral WireGuard + Traefik Public HTTPS Funnel Tunnels (`flarelensd http`)
+// ============================================================================
+
+const MESH_TUNNEL_LEASE_MS = 180_000; // 3-minute TTL renewed every 45s by `flarelensd http`
+
+function isOverlayMeshIP(ip: string): boolean {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(String(ip || '').trim());
+  if (!m) return false;
+  const oct = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
+  if (oct.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return false;
+  return oct[0] === 100 && oct[1] >= 64 && oct[1] <= 127;
+}
+
+function resolveTunnelBaseDomain(env: Env, url: URL): string {
+  const configured = String(env.TUNNEL_BASE_DOMAIN || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^\.+|\.+$/g, '');
+  if (configured) return configured;
+
+  const host = url.hostname.toLowerCase();
+  if (!host || host === 'localhost' || host === '127.0.0.1') {
+    return 'tunnel.localhost';
+  }
+  const parts = host.split('.');
+  if (parts.length >= 3 && ['control', 'ops', 'dash', 'mesh'].includes(parts[0])) {
+    return parts.slice(1).join('.');
+  }
+  return host;
+}
+
+function isValidPublicTunnelDomain(domain: string): boolean {
+  if (!domain || domain.length > 253) return false;
+  return /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(domain);
+}
+
+async function selectGatewayNodeForFunnel(env: Env, requestedNodeId?: string): Promise<string> {
+  const explicit = String(requestedNodeId || '').trim();
+  if (explicit && explicit !== 'auto' && explicit !== 'smart') {
+    return explicit;
+  }
+  const nodes = await loadAllNodesMerged(env);
+  const healthy = nodes.filter((n) => n.status !== 'dead');
+  const traefikNode = healthy.find((n) => {
+    const tags = (n.tags || []).map((t) => String(t).toLowerCase());
+    if (tags.some((t) => t === 'gateway' || t === 'ingress' || t === 'edge')) return true;
+    return (n.latest_telemetry?.containers || []).some((c) => {
+      const img = String(c.image || '').toLowerCase();
+      const names = (c.names || []).map((nm: string) => String(nm).toLowerCase());
+      return (
+        c.state === 'running' &&
+        (img.includes('traefik') ||
+          img.includes('cloudflared') ||
+          names.some((nm: string) => nm.includes('traefik') || nm.includes('cloudflared')))
+      );
+    });
+  });
+  if (traefikNode?.node_id) {
+    return traefikNode.node_id;
+  }
+  return selectBestNodeForService('traefik-funnel', env, 64);
+}
+
+async function reapExpiredMeshTunnels(
+  env: Env,
+  _ctx: ExecutionContext,
+  nowIso = new Date().toISOString()
+): Promise<MeshTunnelRecord[]> {
+  const expired = await listExpiredMeshTunnelsD1(env, nowIso);
+  for (const tun of expired) {
+    await deleteMeshTunnelD1(env, tun.tunnel_id);
+    await enqueueFleetCommand(
+      tun.node_id,
+      {
+        id: `tun_exp_${Date.now()}_${tun.tunnel_id}`,
+        type: 'remove_tunnel',
+        tunnel_id: tun.tunnel_id,
+        domain: tun.domain,
+        node_id: tun.node_id,
+      },
+      env
+    );
+    broadcastTelemetry({
+      type: 'mesh_tunnel_expired',
+      tunnel_id: tun.tunnel_id,
+      domain: tun.domain,
+    });
+  }
+  return expired;
+}
+
+async function closeMeshTunnelsForPeers(
+  peerIds: string[],
+  publicKey: string,
+  env: Env
+): Promise<void> {
+  const idSet = new Set(peerIds.filter(Boolean));
+  const active = await listMeshTunnelsD1(env);
+  for (const tun of active) {
+    if ((tun.peer_id && idSet.has(tun.peer_id)) || (publicKey && tun.public_key === publicKey)) {
+      await deleteMeshTunnelD1(env, tun.tunnel_id);
+      await enqueueFleetCommand(
+        tun.node_id,
+        {
+          id: `tun_peer_rm_${Date.now()}_${tun.tunnel_id}`,
+          type: 'remove_tunnel',
+          tunnel_id: tun.tunnel_id,
+          domain: tun.domain,
+          node_id: tun.node_id,
+        },
+        env
+      );
+    }
+  }
+}
+
+async function handleListMeshTunnels(env: Env, ctx: ExecutionContext): Promise<Response> {
+  await reapExpiredMeshTunnels(env, ctx);
+  const tunnels = await listMeshTunnelsD1(env);
+  return new Response(
+    JSON.stringify({
+      tunnels: tunnels.map((t) => ({
+        ...t,
+        public_url: `https://${t.domain}`,
+      })),
+      count: tunnels.length,
+    }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+async function handleCreateMeshTunnel(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  url: URL
+): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as {
+    peer_id?: string;
+    public_key?: string;
+    target_ip?: string;
+    target_port?: number;
+    local_port?: number;
+    subdomain?: string;
+    domain?: string;
+    node_id?: string;
+    has_auth?: boolean;
+    timestamp?: string;
+    ssh_signature?: string;
+  };
+
+  const peerId = String(body.peer_id || '').trim();
+  const publicKey = String(body.public_key || '').trim();
+  const targetIp = String(body.target_ip || '').trim();
+  const targetPort = Math.trunc(Number(body.target_port || 0));
+  const localPort = Math.max(0, Math.trunc(Number(body.local_port || 0)));
+
+  if (!isOverlayMeshIP(targetIp)) {
+    return new Response(
+      JSON.stringify({ error: `Invalid target_ip '${targetIp}': must belong to WireGuard overlay 100.64.0.0/10` }),
+      { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+    );
+  }
+  if (!Number.isInteger(targetPort) || targetPort < 1 || targetPort > 65535) {
+    return new Response(JSON.stringify({ error: 'target_port must be between 1 and 65535' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const hasTokenAuth = hasExplicitMeshLeaveAuth(request, env, url);
+  const allPeers = await loadAllMeshPeers(env);
+  const matchedPeers = allPeers.filter(
+    (p) => (publicKey && p.public_key === publicKey) || (peerId && p.id === peerId)
+  );
+
+  let verifiedPeer: MeshPeerRecord | null = matchedPeers[0] || null;
+  if (!hasTokenAuth) {
+    verifiedPeer = null;
+    if (publicKey && body.timestamp && body.ssh_signature && matchedPeers.length > 0) {
+      for (const p of matchedPeers) {
+        if (await verifyMeshTunnelSignature(p, 'open', publicKey, String(body.timestamp), String(body.ssh_signature))) {
+          verifiedPeer = p;
+          break;
+        }
+      }
+    }
+    if (!verifiedPeer) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized: valid API token or Ed25519 mesh tunnel signature required' }),
+        { status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+      );
+    }
+    const peerOverlayIp = String(verifiedPeer.overlay_ip || verifiedPeer.tailscale_ip || '').trim();
+    if (peerOverlayIp && peerOverlayIp !== targetIp) {
+      return new Response(
+        JSON.stringify({
+          error: `Forbidden: peer '${verifiedPeer.id}' (${peerOverlayIp}) cannot open funnel targeting '${targetIp}'`,
+        }),
+        { status: 403, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+      );
+    }
+  }
+
+  await reapExpiredMeshTunnels(env, ctx);
+
+  const baseDomain = resolveTunnelBaseDomain(env, url);
+  let cleanDomain = String(body.domain || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '')
+    .replace(/\.+$/, '');
+
+  if (!cleanDomain) {
+    let sub = String(body.subdomain || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/^-+|-+$/g, '');
+    if (!sub) {
+      sub = `tun-${Math.random().toString(36).slice(2, 8)}`;
+    }
+    if (!/^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$/.test(sub)) {
+      return new Response(JSON.stringify({ error: `Invalid subdomain '${sub}'` }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+    cleanDomain = `${sub}.${baseDomain}`;
+  }
+
+  if (!isValidPublicTunnelDomain(cleanDomain)) {
+    return new Response(JSON.stringify({ error: `Invalid tunnel domain '${cleanDomain}'` }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+  if (cleanDomain === url.hostname.toLowerCase()) {
+    return new Response(JSON.stringify({ error: 'Cannot shadow Control Plane hostname' }), {
+      status: 409,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  // Block hijacking domains declared by Fleet service manifests
+  if (env.FLEET_KV) {
+    const manifests = await listFleetManifests(env.FLEET_KV);
+    for (const m of manifests) {
+      const declared = [m.domain, ...(m.domains || [])]
+        .filter((d): d is string => Boolean(d && d.trim()))
+        .map((d) => d.trim().toLowerCase());
+      if (declared.includes(cleanDomain)) {
+        return new Response(
+          JSON.stringify({
+            error: `Domain '${cleanDomain}' is reserved by Fleet service '${normalizeFleetEnv(m.env)}/${m.service}'`,
+          }),
+          { status: 409, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+        );
+      }
+    }
+  }
+
+  const existingByDomain = await getMeshTunnelByDomainD1(env, cleanDomain);
+  const resolvedPeerId = verifiedPeer?.id || peerId || 'operator';
+  const resolvedPubKey = verifiedPeer?.public_key || publicKey || '';
+
+  if (existingByDomain) {
+    const sameOwner =
+      hasTokenAuth ||
+      (resolvedPubKey && existingByDomain.public_key === resolvedPubKey) ||
+      (resolvedPeerId && existingByDomain.peer_id === resolvedPeerId);
+    if (!sameOwner) {
+      return new Response(
+        JSON.stringify({ error: `Domain '${cleanDomain}' is already in use by another active tunnel` }),
+        { status: 409, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+      );
+    }
+  }
+
+  const gatewayNodeId = await selectGatewayNodeForFunnel(env, body.node_id);
+  if (existingByDomain && existingByDomain.node_id && existingByDomain.node_id !== gatewayNodeId) {
+    await enqueueFleetCommand(
+      existingByDomain.node_id,
+      {
+        id: `tun_reloc_${Date.now()}_${existingByDomain.tunnel_id}`,
+        type: 'remove_tunnel',
+        tunnel_id: existingByDomain.tunnel_id,
+        domain: existingByDomain.domain,
+        node_id: existingByDomain.node_id,
+      },
+      env
+    );
+  }
+
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  const expiresIso = new Date(now + MESH_TUNNEL_LEASE_MS).toISOString();
+  const tunnelId =
+    existingByDomain?.tunnel_id || `tun_${now.toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+
+  const record: MeshTunnelRecord = {
+    tunnel_id: tunnelId,
+    peer_id: resolvedPeerId,
+    public_key: resolvedPubKey,
+    domain: cleanDomain,
+    node_id: gatewayNodeId,
+    target_ip: targetIp,
+    target_port: targetPort,
+    local_port: localPort,
+    has_auth: Boolean(body.has_auth),
+    created_at: existingByDomain?.created_at || nowIso,
+    expires_at: expiresIso,
+    updated_at: nowIso,
+  };
+
+  await upsertMeshTunnelD1(env, record);
+
+  await enqueueFleetCommand(
+    gatewayNodeId,
+    {
+      id: `tun_sync_${now}_${tunnelId}`,
+      type: 'sync_tunnel',
+      tunnel_id: tunnelId,
+      domain: cleanDomain,
+      target_ip: targetIp,
+      target_port: targetPort,
+      node_id: gatewayNodeId,
+    },
+    env
+  );
+
+  broadcastTelemetry({
+    type: 'mesh_tunnel_opened',
+    tunnel: { ...record, public_url: `https://${cleanDomain}` },
+  });
+
+  return new Response(
+    JSON.stringify({
+      status: 'active',
+      tunnel: {
+        ...record,
+        public_url: `https://${cleanDomain}`,
+      },
+    }),
+    {
+      status: 201,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+async function handleRenewMeshTunnel(
+  tunnelId: string,
+  request: Request,
+  env: Env,
+  url: URL
+): Promise<Response> {
+  const existing = await getMeshTunnelD1(env, tunnelId);
+  if (!existing) {
+    return new Response(JSON.stringify({ error: `Tunnel '${tunnelId}' not found or expired` }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
+    peer_id?: string;
+    public_key?: string;
+    timestamp?: string;
+    ssh_signature?: string;
+  };
+  const publicKey = String(body.public_key || '').trim();
+  const hasTokenAuth = hasExplicitMeshLeaveAuth(request, env, url);
+
+  if (!hasTokenAuth) {
+    if (!publicKey || (existing.public_key && existing.public_key !== publicKey)) {
+      return new Response(JSON.stringify({ error: 'Forbidden: tunnel belongs to another peer' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+    const peers = await loadAllMeshPeers(env);
+    const matched = peers.filter((p) => p.public_key === publicKey);
+    let ok = false;
+    if (body.timestamp && body.ssh_signature) {
+      for (const p of matched) {
+        if (await verifyMeshTunnelSignature(p, 'renew', publicKey, String(body.timestamp), String(body.ssh_signature))) {
+          ok = true;
+          break;
+        }
+      }
+    }
+    if (!ok) {
+      return new Response(JSON.stringify({ error: 'Unauthorized: invalid tunnel renewal signature' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+  }
+
+  const now = Date.now();
+  const updated: MeshTunnelRecord = {
+    ...existing,
+    expires_at: new Date(now + MESH_TUNNEL_LEASE_MS).toISOString(),
+    updated_at: new Date(now).toISOString(),
+  };
+  await upsertMeshTunnelD1(env, updated);
+
+  return new Response(
+    JSON.stringify({
+      status: 'renewed',
+      tunnel: { ...updated, public_url: `https://${updated.domain}` },
+    }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
+}
+
+async function handleCloseMeshTunnel(
+  tunnelId: string,
+  request: Request,
+  env: Env,
+  _ctx: ExecutionContext,
+  url: URL
+): Promise<Response> {
+  const existing = await getMeshTunnelD1(env, tunnelId);
+  if (!existing) {
+    return new Response(JSON.stringify({ status: 'closed', tunnel_id: tunnelId }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
+    peer_id?: string;
+    public_key?: string;
+    timestamp?: string;
+    ssh_signature?: string;
+  };
+  const publicKey = String(body.public_key || '').trim();
+  const hasTokenAuth = hasExplicitMeshLeaveAuth(request, env, url);
+
+  if (!hasTokenAuth) {
+    if (!publicKey || (existing.public_key && existing.public_key !== publicKey)) {
+      return new Response(JSON.stringify({ error: 'Forbidden: tunnel belongs to another peer' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+    const peers = await loadAllMeshPeers(env);
+    const matched = peers.filter((p) => p.public_key === publicKey);
+    let ok = false;
+    if (body.timestamp && body.ssh_signature) {
+      for (const p of matched) {
+        if (await verifyMeshTunnelSignature(p, 'close', publicKey, String(body.timestamp), String(body.ssh_signature))) {
+          ok = true;
+          break;
+        }
+      }
+    }
+    if (!ok) {
+      return new Response(JSON.stringify({ error: 'Unauthorized: invalid tunnel close signature' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+  }
+
+  await deleteMeshTunnelD1(env, tunnelId);
+  await enqueueFleetCommand(
+    existing.node_id,
+    {
+      id: `tun_rm_${Date.now()}_${tunnelId}`,
+      type: 'remove_tunnel',
+      tunnel_id: tunnelId,
+      domain: existing.domain,
+      node_id: existing.node_id,
+    },
+    env
+  );
+
+  broadcastTelemetry({
+    type: 'mesh_tunnel_closed',
+    tunnel_id: tunnelId,
+    domain: existing.domain,
+  });
+
+  return new Response(
+    JSON.stringify({
+      status: 'closed',
+      tunnel_id: tunnelId,
+      domain: existing.domain,
+    }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    }
+  );
 }
 
 
